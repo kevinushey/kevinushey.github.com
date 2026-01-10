@@ -1,0 +1,1544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Station Escape</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #050810;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Courier New', monospace;
+        }
+        #game {
+            border: 2px solid #2a4060;
+            cursor: none;
+            box-shadow: 0 0 20px rgba(0, 150, 200, 0.3);
+        }
+        #ui {
+            position: absolute;
+            bottom: 20px;
+            color: #0cf;
+            font-size: 18px;
+            text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
+            letter-spacing: 1px;
+        }
+        #minimap {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            border: 2px solid #2a4060;
+            box-shadow: 0 0 10px rgba(0, 150, 200, 0.3);
+        }
+        #instructions {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #5a8aaa;
+            font-size: 12px;
+            text-shadow: 0 0 5px rgba(0, 150, 200, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game" width="800" height="600"></canvas>
+    <canvas id="minimap" width="160" height="160"></canvas>
+    <div id="ui"><span id="health">Health: 100</span> | <span id="ammo">Ammo: 50</span> | <span id="kills">Kills: 0</span> | <span id="weapon">Weapon: Gun</span></div>
+    <div id="instructions">WASD: Move | Mouse/Arrows: Look | Space/Click: Attack | 1: Hammer | 2: Gun | E: Open Airlock</div>
+    <div id="crosshair" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#0ff;font-size:24px;pointer-events:none;text-shadow:0 0 10px #0ff;">+</div>
+    <script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const minimap = document.getElementById('minimap');
+const minimapCtx = minimap.getContext('2d');
+
+const SCREEN_W = canvas.width;
+const SCREEN_H = canvas.height;
+const FOV = Math.PI / 3;
+const HALF_FOV = FOV / 2;
+const NUM_RAYS = 320;
+const MAX_DEPTH = 20;
+const SCALE = SCREEN_W / NUM_RAYS;
+
+// Map: 1 = wall, 0 = empty, 2 = door, 3 = elevator door, 4 = elevator interior
+const MAP = [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,1,2,0,0,0,0,2,0,0,0,0,0,0,1,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1],
+    [1,1,0,0,0,0,0,2,0,0,0,0,0,0,1,1],
+    [1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,1,0,0,0,0,0,2,0,0,0,0,0,0,1,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1],
+    [1,1,0,0,0,0,0,2,0,0,0,0,0,0,1,1],
+    [1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,1,3,4,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
+const MAP_W = MAP[0].length;
+const MAP_H = MAP.length;
+
+// Elevator position
+const ELEVATOR = { x: 3, y: 14 };
+
+// Doors - track state of each door (0 = closed, 1 = open, 0-1 = opening/closing)
+// Type: 'normal' or 'elevator'
+const doors = [];
+for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+        if (MAP[y][x] === 2) {
+            doors.push({ x, y, state: 0, opening: false, type: 'normal' });
+        } else if (MAP[y][x] === 3) {
+            doors.push({ x, y, state: 0, opening: false, type: 'elevator' });
+        }
+    }
+}
+
+// Player - start in the hallway entrance, facing right
+let player = { x: 1.5, y: 1.5, angle: 0, speed: 0.06, rotSpeed: 0.04, health: 100, ammo: 50, kills: 0 };
+
+// Enemies - placed along the hallway
+let enemies = [
+    { x: 8.5, y: 3.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
+    { x: 13.5, y: 5.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
+    { x: 5.5, y: 6.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
+    { x: 10.5, y: 9.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
+    { x: 3.5, y: 9.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
+    { x: 8.5, y: 12.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
+    { x: 2.5, y: 13.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
+];
+
+// Depth buffer for sprite occlusion
+let depthBuffer = new Array(NUM_RAYS);
+
+// Shooting state
+let shootCooldown = 0;
+let muzzleFlash = 0;
+
+// Weapon system: 0 = hammer (melee), 1 = gun (ranged)
+let currentWeapon = 1;
+let swingAnimation = 0; // For hammer swing
+
+// === MUSIC SYSTEM ===
+let audioCtx = null;
+let musicStarted = false;
+let musicPlaying = false;
+let victoryPlayed = false;
+
+function startMusic() {
+    if (musicStarted) return;
+    musicStarted = true;
+
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    const BPM = 140;
+    const beatTime = 60 / BPM;
+    const barTime = beatTime * 4;
+
+    // Master volume
+    const masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.4;
+    masterGain.connect(audioCtx.destination);
+
+    // Kick drum
+    function playKick(time) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(150, time);
+        osc.frequency.exponentialRampToValueAtTime(30, time + 0.1);
+
+        gain.gain.setValueAtTime(1, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+
+        osc.connect(gain);
+        gain.connect(masterGain);
+
+        osc.start(time);
+        osc.stop(time + 0.3);
+    }
+
+    // Hi-hat
+    function playHiHat(time, accent = false) {
+        const bufferSize = audioCtx.sampleRate * 0.05;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.value = 8000;
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(accent ? 0.15 : 0.08, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGain);
+
+        noise.start(time);
+        noise.stop(time + 0.05);
+    }
+
+    // Bass synth
+    function playBass(time, freq, duration = 0.2) {
+        const osc = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const filter = audioCtx.createBiquadFilter();
+
+        osc.type = 'sawtooth';
+        osc.frequency.value = freq;
+        osc2.type = 'square';
+        osc2.frequency.value = freq * 0.5;
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(800, time);
+        filter.frequency.exponentialRampToValueAtTime(200, time + duration);
+
+        gain.gain.setValueAtTime(0.3, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
+
+        osc.connect(filter);
+        osc2.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGain);
+
+        osc.start(time);
+        osc2.start(time);
+        osc.stop(time + duration);
+        osc2.stop(time + duration);
+    }
+
+    // Synth pad (atmospheric)
+    function playPad(time, freq, duration = 2) {
+        const osc = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const filter = audioCtx.createBiquadFilter();
+
+        osc.type = 'sawtooth';
+        osc.frequency.value = freq;
+        osc2.type = 'sawtooth';
+        osc2.frequency.value = freq * 1.005; // Slight detune for richness
+
+        filter.type = 'lowpass';
+        filter.frequency.value = 1500;
+        filter.Q.value = 2;
+
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.08, time + 0.3);
+        gain.gain.linearRampToValueAtTime(0.08, time + duration - 0.3);
+        gain.gain.linearRampToValueAtTime(0, time + duration);
+
+        osc.connect(filter);
+        osc2.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGain);
+
+        osc.start(time);
+        osc2.start(time);
+        osc.stop(time + duration);
+        osc2.stop(time + duration);
+    }
+
+    // Arpeggio synth
+    function playArp(time, freq) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const filter = audioCtx.createBiquadFilter();
+
+        osc.type = 'square';
+        osc.frequency.value = freq;
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(3000, time);
+        filter.frequency.exponentialRampToValueAtTime(500, time + 0.15);
+
+        gain.gain.setValueAtTime(0.1, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.15);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGain);
+
+        osc.start(time);
+        osc.stop(time + 0.15);
+    }
+
+    // Schedule music loop
+    function scheduleBar(barStartTime, barNum) {
+        // Kick on 1, 2, 3, 4 (four-on-floor)
+        for (let beat = 0; beat < 4; beat++) {
+            playKick(barStartTime + beat * beatTime);
+        }
+
+        // Hi-hats on eighth notes
+        for (let i = 0; i < 8; i++) {
+            playHiHat(barStartTime + i * beatTime * 0.5, i % 2 === 0);
+        }
+
+        // Bass line (minor key pattern)
+        const bassNotes = [55, 55, 65.41, 73.42]; // A1, A1, C2, D2
+        const bassPattern = barNum % 2 === 0 ? [0, 0, 1, 2] : [0, 3, 1, 0];
+        for (let i = 0; i < 4; i++) {
+            playBass(barStartTime + i * beatTime, bassNotes[bassPattern[i]], beatTime * 0.8);
+        }
+
+        // Pad chord every 2 bars
+        if (barNum % 2 === 0) {
+            const padFreqs = barNum % 4 === 0 ? [220, 261.63, 329.63] : [196, 246.94, 293.66]; // Am, G
+            padFreqs.forEach(f => playPad(barStartTime, f, barTime * 2));
+        }
+
+        // Arpeggio pattern
+        const arpNotes = [440, 523.25, 659.25, 523.25, 440, 392, 440, 523.25]; // A4, C5, E5...
+        for (let i = 0; i < 8; i++) {
+            if ((barNum + i) % 3 !== 0) { // Add some variation
+                playArp(barStartTime + i * beatTime * 0.5, arpNotes[i]);
+            }
+        }
+    }
+
+    // Main music scheduler
+    let nextBarTime = audioCtx.currentTime + 0.1;
+    let barNumber = 0;
+
+    function scheduler() {
+        if (!musicPlaying) return; // Stop scheduling when music stops
+        while (nextBarTime < audioCtx.currentTime + 0.5) {
+            scheduleBar(nextBarTime, barNumber);
+            nextBarTime += barTime;
+            barNumber++;
+        }
+        setTimeout(scheduler, 100);
+    }
+
+    musicPlaying = true;
+    scheduler();
+}
+
+function stopMusic() {
+    musicPlaying = false;
+}
+
+// === SOUND EFFECTS ===
+function ensureAudioCtx() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return audioCtx;
+}
+
+function playGunSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // Plasma zap sound
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(800, now);
+    osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.1);
+
+    // Add a click/snap
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'square';
+    osc2.frequency.value = 150;
+    gain2.gain.setValueAtTime(0.1, now);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.03);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now);
+    osc2.stop(now + 0.03);
+}
+
+function playHammerSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // Whoosh sound (noise burst)
+    const bufferSize = ctx.sampleRate * 0.15;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 400;
+    filter.Q.value = 1;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    noise.start(now);
+    noise.stop(now + 0.15);
+
+    // Electric zap
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(200, now + 0.05);
+    osc.frequency.exponentialRampToValueAtTime(80, now + 0.12);
+    oscGain.gain.setValueAtTime(0.08, now + 0.05);
+    oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+    osc.connect(oscGain);
+    oscGain.connect(ctx.destination);
+    osc.start(now + 0.05);
+    osc.stop(now + 0.12);
+}
+
+function playEnemyHitSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // Soft thud
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(100, now);
+    osc.frequency.exponentialRampToValueAtTime(50, now + 0.08);
+
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.08);
+}
+
+function playEnemyDeathSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // Descending tone (alien death cry)
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(300, now);
+    osc.frequency.exponentialRampToValueAtTime(60, now + 0.3);
+
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.3);
+
+    // Static burst
+    const bufferSize = ctx.sampleRate * 0.2;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize) * 0.5;
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 2000;
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.06, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+
+    noise.start(now);
+    noise.stop(now + 0.2);
+}
+
+function playVictoryMusic() {
+    if (victoryPlayed) return;
+    victoryPlayed = true;
+    stopMusic();
+
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    const masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.5;
+    masterGain.connect(audioCtx.destination);
+
+    // Victory fanfare note
+    function playFanfare(time, freq, duration = 0.3) {
+        const osc = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.value = freq;
+        osc2.type = 'square';
+        osc2.frequency.value = freq * 1.002;
+
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.25, time + 0.05);
+        gain.gain.linearRampToValueAtTime(0.2, time + duration * 0.7);
+        gain.gain.linearRampToValueAtTime(0, time + duration);
+
+        osc.connect(gain);
+        osc2.connect(gain);
+        gain.connect(masterGain);
+
+        osc.start(time);
+        osc2.start(time);
+        osc.stop(time + duration);
+        osc2.stop(time + duration);
+    }
+
+    // Triumph chord
+    function playChord(time, freqs, duration = 1.5) {
+        freqs.forEach(freq => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+
+            gain.gain.setValueAtTime(0, time);
+            gain.gain.linearRampToValueAtTime(0.15, time + 0.1);
+            gain.gain.linearRampToValueAtTime(0.1, time + duration * 0.8);
+            gain.gain.linearRampToValueAtTime(0, time + duration);
+
+            osc.connect(gain);
+            gain.connect(masterGain);
+
+            osc.start(time);
+            osc.stop(time + duration);
+        });
+    }
+
+    const now = audioCtx.currentTime;
+
+    // Fanfare melody (C major triumphant)
+    playFanfare(now, 523.25, 0.15);        // C5
+    playFanfare(now + 0.15, 659.25, 0.15); // E5
+    playFanfare(now + 0.3, 783.99, 0.15);  // G5
+    playFanfare(now + 0.45, 1046.5, 0.6);  // C6 (held)
+
+    // Rising arpeggio
+    playFanfare(now + 0.6, 523.25, 0.1);   // C5
+    playFanfare(now + 0.7, 659.25, 0.1);   // E5
+    playFanfare(now + 0.8, 783.99, 0.1);   // G5
+    playFanfare(now + 0.9, 1046.5, 0.1);   // C6
+    playFanfare(now + 1.0, 1318.5, 0.5);   // E6 (held)
+
+    // Final triumphant chord (C major)
+    playChord(now + 1.2, [261.63, 329.63, 392, 523.25], 2.5); // C4, E4, G4, C5
+}
+
+// Input - use e.code for reliable key detection
+const keys = {};
+window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    e.preventDefault();
+});
+window.addEventListener('keyup', e => {
+    keys[e.code] = false;
+});
+
+canvas.addEventListener('click', () => {
+    startMusic(); // Start music on first click
+    if (document.pointerLockElement !== canvas) {
+        canvas.requestPointerLock();
+    }
+});
+document.addEventListener('mousemove', e => {
+    if (document.pointerLockElement === canvas) {
+        player.angle += e.movementX * 0.002;
+    }
+});
+document.addEventListener('mousedown', e => {
+    if (document.pointerLockElement === canvas && e.button === 0) {
+        attack();
+    }
+});
+
+// Weapon switching
+window.addEventListener('keydown', e => {
+    if (e.code === 'Digit1') currentWeapon = 0; // Hammer
+    if (e.code === 'Digit2') currentWeapon = 1; // Gun
+});
+
+// Get door at position
+function getDoor(x, y) {
+    return doors.find(d => d.x === x && d.y === y);
+}
+
+// Check if position is blocked (wall or closed door)
+function isWall(x, y) {
+    const mapX = Math.floor(x);
+    const mapY = Math.floor(y);
+    if (mapX < 0 || mapX >= MAP_W || mapY < 0 || mapY >= MAP_H) return true;
+    const tile = MAP[mapY][mapX];
+    if (tile === 1) return true;
+    if (tile === 2 || tile === 3) { // Normal door or elevator door
+        const door = getDoor(mapX, mapY);
+        return door && door.state < 0.8; // Door blocks if less than 80% open
+    }
+    // Tile 4 (elevator interior) is walkable
+    return false;
+}
+
+// Check if player is in the elevator
+function isInElevator() {
+    const px = Math.floor(player.x);
+    const py = Math.floor(player.y);
+    return px === ELEVATOR.x && py === ELEVATOR.y;
+}
+
+// Try to open nearby door
+function tryOpenDoor() {
+    const checkDist = 1.5;
+    const px = player.x + Math.cos(player.angle) * checkDist;
+    const py = player.y + Math.sin(player.angle) * checkDist;
+
+    for (const door of doors) {
+        const dx = (door.x + 0.5) - player.x;
+        const dy = (door.y + 0.5) - player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 2 && door.state < 0.5) {
+            door.opening = true;
+        }
+    }
+}
+
+// Update doors (animate opening)
+function updateDoors() {
+    for (const door of doors) {
+        if (door.opening && door.state < 1) {
+            door.state += 0.05; // Opening speed
+            if (door.state >= 1) {
+                door.state = 1;
+                door.opening = false;
+            }
+        }
+    }
+}
+
+// Cast a single ray and return distance + wall hit position
+function castRay(angle) {
+    const sin = Math.sin(angle);
+    const cos = Math.cos(angle);
+
+    // DDA algorithm
+    let mapX = Math.floor(player.x);
+    let mapY = Math.floor(player.y);
+
+    const deltaDistX = Math.abs(1 / cos) || 1e10;
+    const deltaDistY = Math.abs(1 / sin) || 1e10;
+
+    let stepX, stepY, sideDistX, sideDistY;
+
+    if (cos < 0) {
+        stepX = -1;
+        sideDistX = (player.x - mapX) * deltaDistX;
+    } else {
+        stepX = 1;
+        sideDistX = (mapX + 1 - player.x) * deltaDistX;
+    }
+    if (sin < 0) {
+        stepY = -1;
+        sideDistY = (player.y - mapY) * deltaDistY;
+    } else {
+        stepY = 1;
+        sideDistY = (mapY + 1 - player.y) * deltaDistY;
+    }
+
+    let side = 0;
+    let dist = 0;
+
+    for (let i = 0; i < MAX_DEPTH * MAP_W; i++) {
+        if (sideDistX < sideDistY) {
+            sideDistX += deltaDistX;
+            mapX += stepX;
+            side = 0;
+        } else {
+            sideDistY += deltaDistY;
+            mapY += stepY;
+            side = 1;
+        }
+
+        if (mapX < 0 || mapX >= MAP_W || mapY < 0 || mapY >= MAP_H) break;
+
+        const tile = MAP[mapY][mapX];
+        if (tile === 1) {
+            if (side === 0) dist = sideDistX - deltaDistX;
+            else dist = sideDistY - deltaDistY;
+            // Calculate wall hit position (0-1 along the wall)
+            let wallX;
+            if (side === 0) wallX = player.y + dist * sin;
+            else wallX = player.x + dist * cos;
+            wallX -= Math.floor(wallX);
+            return { dist: dist || MAX_DEPTH, side, tile: 1, wallX };
+        }
+        if (tile === 2) { // Normal door
+            const door = getDoor(mapX, mapY);
+            if (door && door.state < 0.95) {
+                if (side === 0) dist = sideDistX - deltaDistX;
+                else dist = sideDistY - deltaDistY;
+                let wallX;
+                if (side === 0) wallX = player.y + dist * sin;
+                else wallX = player.x + dist * cos;
+                wallX -= Math.floor(wallX);
+                return { dist: dist || MAX_DEPTH, side, tile: 2, doorState: door.state, wallX };
+            }
+        }
+        if (tile === 3) { // Elevator door (green)
+            const door = getDoor(mapX, mapY);
+            if (door && door.state < 0.95) {
+                if (side === 0) dist = sideDistX - deltaDistX;
+                else dist = sideDistY - deltaDistY;
+                let wallX;
+                if (side === 0) wallX = player.y + dist * sin;
+                else wallX = player.x + dist * cos;
+                wallX -= Math.floor(wallX);
+                return { dist: dist || MAX_DEPTH, side, tile: 3, doorState: door.state, wallX };
+            }
+        }
+        if (tile === 4) { // Elevator interior wall
+            if (side === 0) dist = sideDistX - deltaDistX;
+            else dist = sideDistY - deltaDistY;
+            let wallX;
+            if (side === 0) wallX = player.y + dist * sin;
+            else wallX = player.x + dist * cos;
+            wallX -= Math.floor(wallX);
+            return { dist: dist || MAX_DEPTH, side, tile: 4, wallX };
+        }
+    }
+
+    return { dist: MAX_DEPTH, side, tile: 0, wallX: 0 };
+}
+
+// Render 3D view
+function render3D() {
+    // Ceiling - dark spaceship interior with blue lighting strips
+    const ceilGrad = ctx.createLinearGradient(0, 0, 0, SCREEN_H / 2);
+    ceilGrad.addColorStop(0, '#0a1520');
+    ceilGrad.addColorStop(0.3, '#0d1a28');
+    ceilGrad.addColorStop(0.7, '#101820');
+    ceilGrad.addColorStop(1, '#1a2530');
+    ctx.fillStyle = ceilGrad;
+    ctx.fillRect(0, 0, SCREEN_W, SCREEN_H / 2);
+
+    // Ceiling light strips
+    ctx.fillStyle = '#304050';
+    for (let x = 0; x < SCREEN_W; x += 80) {
+        ctx.fillRect(x, SCREEN_H / 2 - 8, 40, 6);
+    }
+    ctx.fillStyle = '#5080a0';
+    for (let x = 0; x < SCREEN_W; x += 80) {
+        ctx.fillRect(x + 5, SCREEN_H / 2 - 6, 30, 2);
+    }
+
+    // Floor - metallic spaceship floor with grid pattern
+    const floorGrad = ctx.createLinearGradient(0, SCREEN_H / 2, 0, SCREEN_H);
+    floorGrad.addColorStop(0, '#252830');
+    floorGrad.addColorStop(0.5, '#1a1d24');
+    floorGrad.addColorStop(1, '#12151a');
+    ctx.fillStyle = floorGrad;
+    ctx.fillRect(0, SCREEN_H / 2, SCREEN_W, SCREEN_H / 2);
+
+
+    // Cast rays
+    for (let i = 0; i < NUM_RAYS; i++) {
+        const rayAngle = player.angle - HALF_FOV + (i / NUM_RAYS) * FOV;
+        const { dist, side, tile, doorState, wallX } = castRay(rayAngle);
+
+        // Fix fisheye
+        const correctedDist = dist * Math.cos(rayAngle - player.angle);
+
+        // Wall height
+        const wallHeight = Math.min(SCREEN_H * 1.5, SCREEN_H / correctedDist);
+        const wallTop = (SCREEN_H - wallHeight) / 2;
+
+        // Wall/door color with shading
+        const shade = Math.max(0.2, 1 - correctedDist / MAX_DEPTH);
+        let r, g, b;
+
+        if (tile === 2) {
+            // Metallic door
+            const baseColor = side === 0 ? 160 : 140;
+            const openAmount = doorState || 0;
+
+            // Door dimensions
+            const doorHeight = wallHeight * (1 - openAmount);
+            const doorTop = wallTop + (wallHeight - doorHeight);
+
+            // Check for border (edges of door)
+            const isBorder = wallX < 0.08 || wallX > 0.92;
+
+            // Check for handle area (right side, middle height)
+            const isHandle = wallX > 0.75 && wallX < 0.85;
+
+            if (isBorder) {
+                // Darker metallic border
+                r = Math.floor(50 * shade);
+                g = Math.floor(55 * shade);
+                b = Math.floor(60 * shade);
+            } else {
+                // Main door panel - metallic grey with subtle variation
+                const innerX = (wallX - 0.08) / 0.84;
+                const panelPos = (innerX * 2) % 1; // 2 panels
+                const edgeDist = Math.min(panelPos, 1 - panelPos);
+                const panelShade = 0.9 + edgeDist * 0.2;
+
+                r = Math.floor(baseColor * shade * 0.55 * panelShade);
+                g = Math.floor(baseColor * shade * 0.58 * panelShade);
+                b = Math.floor(baseColor * shade * 0.65 * panelShade);
+            }
+
+            // Draw main door
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(i * SCALE, doorTop, SCALE + 1, doorHeight);
+
+            // Draw top border
+            const borderSize = doorHeight * 0.06;
+            ctx.fillStyle = `rgb(${Math.floor(50 * shade)},${Math.floor(55 * shade)},${Math.floor(60 * shade)})`;
+            ctx.fillRect(i * SCALE, doorTop, SCALE + 1, borderSize);
+
+            // Draw handle
+            if (isHandle && doorHeight > 0) {
+                const handleTop = doorTop + doorHeight * 0.4;
+                const handleHeight = doorHeight * 0.2;
+                // Handle base - slightly lighter metal
+                ctx.fillStyle = `rgb(${Math.floor(100 * shade)},${Math.floor(105 * shade)},${Math.floor(115 * shade)})`;
+                ctx.fillRect(i * SCALE, handleTop, SCALE + 1, handleHeight);
+                // Handle highlight
+                if (wallX > 0.78 && wallX < 0.82) {
+                    ctx.fillStyle = `rgb(${Math.floor(140 * shade)},${Math.floor(145 * shade)},${Math.floor(155 * shade)})`;
+                    ctx.fillRect(i * SCALE, handleTop + handleHeight * 0.2, SCALE + 1, handleHeight * 0.6);
+                }
+            }
+        } else if (tile === 3) {
+            // Elevator door (bright green - escape route)
+            const baseColor = side === 0 ? 180 : 150;
+            const openAmount = doorState || 0;
+
+            // Door dimensions
+            const doorHeight = wallHeight * (1 - openAmount);
+            const doorTop = wallTop + (wallHeight - doorHeight);
+
+            // Check for border
+            const isBorder = wallX < 0.06 || wallX > 0.94;
+
+            // Check for handle area
+            const isHandle = wallX > 0.72 && wallX < 0.82;
+
+            if (isBorder) {
+                // Bright border for escape door
+                r = Math.floor(100 * shade);
+                g = Math.floor(200 * shade);
+                b = Math.floor(120 * shade);
+            } else {
+                // Inner panel
+                const innerX = (wallX - 0.06) / 0.88;
+                const panelPos = (innerX * 2) % 1; // 2 panels
+                const nearEdge = panelPos < 0.05 || panelPos > 0.95;
+                const highlight = nearEdge ? 0.2 : 0;
+
+                r = Math.floor(baseColor * shade * (0.2 + highlight));
+                g = Math.floor(baseColor * shade * (1.0 + highlight * 0.2));
+                b = Math.floor(baseColor * shade * (0.3 + highlight));
+            }
+
+            // Draw main door
+            ctx.fillStyle = `rgb(${Math.min(255,r)},${Math.min(255,g)},${Math.min(255,b)})`;
+            ctx.fillRect(i * SCALE, doorTop, SCALE + 1, doorHeight);
+
+            // Draw top border
+            const borderSize = doorHeight * 0.05;
+            ctx.fillStyle = `rgb(${Math.floor(100 * shade)},${Math.floor(200 * shade)},${Math.floor(120 * shade)})`;
+            ctx.fillRect(i * SCALE, doorTop, SCALE + 1, borderSize);
+
+            // Draw handle
+            if (isHandle && doorHeight > 0) {
+                const handleTop = doorTop + doorHeight * 0.4;
+                const handleHeight = doorHeight * 0.2;
+                // Handle base (metallic)
+                ctx.fillStyle = `rgb(${Math.floor(150 * shade)},${Math.floor(160 * shade)},${Math.floor(155 * shade)})`;
+                ctx.fillRect(i * SCALE, handleTop, SCALE + 1, handleHeight);
+                // Handle grip highlight
+                if (wallX > 0.75 && wallX < 0.79) {
+                    ctx.fillStyle = `rgb(${Math.floor(200 * shade)},${Math.floor(210 * shade)},${Math.floor(205 * shade)})`;
+                    ctx.fillRect(i * SCALE, handleTop + handleHeight * 0.15, SCALE + 1, handleHeight * 0.7);
+                }
+            }
+        } else if (tile === 4) {
+            // Elevator interior (bright white/green - safe zone)
+            const baseColor = side === 0 ? 200 : 170;
+
+            // Use wallX for perspective-correct panel lines (soft)
+            const panelPos = (wallX * 4) % 1;
+            const edgeDist = Math.min(panelPos, 1 - panelPos);
+            const edgeFade = Math.min(1, edgeDist * 10); // Soft edge
+            const panelShade = 0.9 + edgeFade * 0.1;
+
+            r = Math.floor(baseColor * shade * 0.7 * panelShade);
+            g = Math.floor(baseColor * shade * 1.0 * panelShade);
+            b = Math.floor(baseColor * shade * 0.8 * panelShade);
+
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(i * SCALE, wallTop, SCALE + 1, wallHeight);
+        } else {
+            // Spaceship wall (metallic blue-gray panels)
+            const baseColor = side === 0 ? 160 : 130;
+
+            // Use wallX for perspective-correct panel pattern (soft gradient)
+            const panelPos = (wallX * 2) % 1; // 2 panels per wall tile
+            const edgeDist = Math.min(panelPos, 1 - panelPos); // Distance to nearest edge
+            const edgeFade = Math.min(1, edgeDist * 8); // Soft falloff near edges
+
+            // Subtle darkening near panel edges, highlight in center
+            const panelShade = 0.85 + edgeFade * 0.15;
+
+            r = Math.floor(baseColor * shade * 0.4 * panelShade);
+            g = Math.floor(baseColor * shade * 0.5 * panelShade);
+            b = Math.floor(baseColor * shade * 0.7 * panelShade);
+
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(i * SCALE, wallTop, SCALE + 1, wallHeight);
+        }
+
+        // Store depth for sprite occlusion
+        depthBuffer[i] = correctedDist;
+    }
+
+    // Render enemies as sprites
+    renderSprites();
+
+    // Muzzle flash effect
+    if (muzzleFlash > 0) {
+        ctx.fillStyle = `rgba(255, 200, 50, ${muzzleFlash * 0.3})`;
+        ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+        muzzleFlash -= 0.2;
+    }
+
+    // Render weapon
+    if (currentWeapon === 0) {
+        renderHammer();
+    } else {
+        renderGun();
+    }
+}
+
+// Render player's stun baton (sci-fi melee weapon)
+function renderHammer() {
+    const centerX = SCREEN_W / 2;
+    const baseY = SCREEN_H;
+
+    // Idle bob animation
+    const bobX = Math.sin(Date.now() * 0.004) * 10;
+    const bobY = Math.abs(Math.cos(Date.now() * 0.008)) * 6;
+
+    // Swing animation (rotates the baton)
+    const swingAngle = swingAnimation > 0 ? (1 - swingAnimation / 20) * Math.PI * 0.6 - 0.3 : 0;
+    const swingOffsetX = swingAnimation > 0 ? Math.sin(swingAngle) * 100 : 0;
+    const swingOffsetY = swingAnimation > 0 ? -Math.abs(Math.cos(swingAngle)) * 50 : 0;
+
+    const batonX = centerX + bobX + 50 + swingOffsetX;
+    const batonY = baseY + bobY - 100 + swingOffsetY;
+
+    ctx.save();
+    ctx.translate(batonX, batonY);
+    ctx.rotate(-0.4 + swingAngle); // Slight tilt + swing
+
+    // Handle (metallic grip)
+    ctx.fillStyle = '#2a3040';
+    ctx.fillRect(-10, 20, 20, 160);
+
+    // Grip ridges
+    ctx.fillStyle = '#1a2030';
+    for (let i = 0; i < 6; i++) {
+        ctx.fillRect(-12, 40 + i * 22, 24, 8);
+    }
+
+    // Main body (sleek metallic)
+    ctx.fillStyle = '#4a5565';
+    ctx.fillRect(-14, -80, 28, 110);
+
+    // Side panels
+    ctx.fillStyle = '#3a4555';
+    ctx.fillRect(-16, -70, 6, 90);
+    ctx.fillRect(10, -70, 6, 90);
+
+    // Energy prongs (top)
+    ctx.fillStyle = '#5a6575';
+    ctx.fillRect(-20, -110, 12, 35);
+    ctx.fillRect(8, -110, 12, 35);
+
+    // Glowing energy core
+    const glowPulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.015);
+    ctx.fillStyle = `rgba(0, 200, 255, ${glowPulse})`;
+    ctx.fillRect(-8, -100, 16, 50);
+
+    // Energy between prongs
+    ctx.fillStyle = `rgba(0, 255, 255, ${glowPulse * 0.8})`;
+    ctx.fillRect(-16, -115, 32, 8);
+
+    // Status light
+    ctx.fillStyle = swingAnimation > 0 ? '#f80' : '#0f8';
+    ctx.fillRect(-4, 10, 8, 8);
+
+    // Electric arc effect when swinging
+    if (swingAnimation > 15) {
+        ctx.strokeStyle = `rgba(0, 255, 255, ${(swingAnimation - 15) / 5})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-18, -115);
+        ctx.lineTo(-25, -140);
+        ctx.lineTo(-10, -130);
+        ctx.lineTo(-30, -160);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(18, -115);
+        ctx.lineTo(25, -140);
+        ctx.lineTo(10, -130);
+        ctx.lineTo(30, -160);
+        ctx.stroke();
+
+        // Glow effect
+        ctx.fillStyle = `rgba(0, 255, 255, ${(swingAnimation - 15) / 8})`;
+        ctx.beginPath();
+        ctx.arc(0, -120, 40, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    ctx.restore();
+
+    // Decrease swing animation
+    if (swingAnimation > 0) swingAnimation--;
+}
+
+// Render player's gun (sci-fi plasma rifle)
+function renderGun() {
+    const centerX = SCREEN_W / 2;
+    const baseY = SCREEN_H;
+
+    // Gun recoil animation
+    const recoil = muzzleFlash > 0 ? muzzleFlash * 20 : 0;
+    const bobX = Math.sin(Date.now() * 0.004) * 12;
+    const bobY = Math.abs(Math.cos(Date.now() * 0.008)) * 8;
+
+    const gunX = centerX + bobX;
+    const gunY = baseY + bobY - recoil;
+
+    ctx.save();
+
+    // Gun hand/grip (gloved hand)
+    ctx.fillStyle = '#2a3040';
+    ctx.fillRect(gunX - 35, gunY - 70, 70, 80);
+    ctx.fillStyle = '#1a2030';
+    ctx.fillRect(gunX - 30, gunY - 60, 60, 60);
+
+    // Gun body (main frame - sleek sci-fi)
+    ctx.fillStyle = '#3a4555';
+    ctx.fillRect(gunX - 40, gunY - 150, 80, 90);
+
+    // Side panels
+    ctx.fillStyle = '#2a3545';
+    ctx.fillRect(gunX - 42, gunY - 145, 10, 75);
+    ctx.fillRect(gunX + 32, gunY - 145, 10, 75);
+
+    // Gun barrel (elongated sci-fi)
+    ctx.fillStyle = '#4a5565';
+    ctx.fillRect(gunX - 15, gunY - 220, 30, 80);
+
+    // Barrel core (glowing)
+    const glowIntensity = 0.5 + 0.3 * Math.sin(Date.now() * 0.01);
+    ctx.fillStyle = `rgba(0, 200, 255, ${glowIntensity})`;
+    ctx.fillRect(gunX - 8, gunY - 215, 16, 70);
+
+    // Barrel tip
+    ctx.fillStyle = '#5a6575';
+    ctx.fillRect(gunX - 18, gunY - 225, 36, 12);
+
+    // Energy coils on barrel
+    ctx.fillStyle = '#0af';
+    for (let i = 0; i < 3; i++) {
+        ctx.fillRect(gunX - 12, gunY - 200 + i * 25, 24, 3);
+    }
+
+    // Top rail
+    ctx.fillStyle = '#4a5060';
+    ctx.fillRect(gunX - 10, gunY - 165, 20, 8);
+
+    // Side lights
+    ctx.fillStyle = muzzleFlash > 0 ? '#f80' : '#0a8';
+    ctx.fillRect(gunX - 38, gunY - 130, 6, 20);
+    ctx.fillRect(gunX + 32, gunY - 130, 6, 20);
+
+    // Muzzle flash (plasma burst)
+    if (muzzleFlash > 0.5) {
+        ctx.fillStyle = '#0ff';
+        ctx.beginPath();
+        ctx.moveTo(gunX, gunY - 230);
+        ctx.lineTo(gunX - 25, gunY - 270);
+        ctx.lineTo(gunX - 6, gunY - 240);
+        ctx.lineTo(gunX, gunY - 300);
+        ctx.lineTo(gunX + 6, gunY - 240);
+        ctx.lineTo(gunX + 25, gunY - 270);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(gunX, gunY - 230, 15, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Plasma glow
+        ctx.fillStyle = `rgba(0, 255, 255, ${muzzleFlash * 0.3})`;
+        ctx.beginPath();
+        ctx.arc(gunX, gunY - 230, 40, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    ctx.restore();
+}
+
+// Render enemy sprites
+function renderSprites() {
+    // Calculate distance and angle for each enemy (include dying enemies)
+    const spriteData = enemies.filter(e => e.alive || e.dying).map(enemy => {
+        const dx = enemy.x - player.x;
+        const dy = enemy.y - player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) - player.angle;
+        return { enemy, dist, angle };
+    });
+
+    // Sort by distance (far to near)
+    spriteData.sort((a, b) => b.dist - a.dist);
+
+    // Render each sprite
+    for (const { enemy, dist, angle } of spriteData) {
+        // Normalize angle to -PI to PI
+        let normAngle = angle;
+        while (normAngle > Math.PI) normAngle -= 2 * Math.PI;
+        while (normAngle < -Math.PI) normAngle += 2 * Math.PI;
+
+        // Skip if behind player or too far to side
+        if (Math.abs(normAngle) > HALF_FOV + 0.3) continue;
+
+        // Screen position
+        const screenX = (0.5 + normAngle / FOV) * SCREEN_W;
+
+        // Death animation parameters
+        const deathProgress = enemy.dying ? enemy.deathTimer / 30 : 0; // 30 frames to die
+        const collapse = deathProgress; // 0 to 1
+        const tilt = deathProgress * 0.5; // Tilt/lean as they fall
+
+        // Sprite size based on distance (shrink vertically when dying)
+        const baseHeight = Math.min(SCREEN_H * 1.2, SCREEN_H / dist);
+        const spriteHeight = baseHeight * (1 - collapse * 0.7);
+        const spriteWidth = baseHeight * 0.6 * (1 + collapse * 0.3); // Spread out as they fall
+        const spriteTop = (SCREEN_H - baseHeight) / 2 + (baseHeight - spriteHeight);
+
+        // Draw sprite column by column (for proper depth testing)
+        const startCol = Math.floor((screenX - spriteWidth / 2) / SCALE);
+        const endCol = Math.floor((screenX + spriteWidth / 2) / SCALE);
+
+        let visibleOnScreen = false;
+
+        for (let col = startCol; col <= endCol; col++) {
+            if (col < 0 || col >= NUM_RAYS) continue;
+            if (depthBuffer[col] < dist) continue; // Behind wall
+
+            // Enemy is visible (not behind wall)
+            visibleOnScreen = true;
+
+            const spriteX = col * SCALE;
+            const colRatio = (col - startCol) / (endCol - startCol);
+
+            // Draw enemy as alien creature
+            const shade = Math.max(0.3, 1 - dist / MAX_DEPTH);
+
+            // Body color (purple/magenta alien, turns darker when dying)
+            const deathColor = enemy.dying ? collapse : 0;
+            const r = Math.floor((120 + 60 * Math.sin(colRatio * Math.PI)) * shade * (1 - deathColor * 0.5));
+            const g = Math.floor((40 - 20 * deathColor) * shade);
+            const b = Math.floor((160 + 40 * Math.sin(colRatio * Math.PI * 2)) * shade * (1 - deathColor * 0.3));
+
+            // Draw column of sprite with death deformation
+            let colHeight = spriteHeight * getEnemyShape(colRatio);
+
+            // Add wobble/collapse effect when dying
+            if (enemy.dying) {
+                const wobble = Math.sin(colRatio * Math.PI * 4 + enemy.deathTimer * 0.3) * collapse * 10;
+                colHeight *= (1 - Math.abs(colRatio - 0.5) * collapse);
+            }
+
+            const colTop = spriteTop + (spriteHeight - colHeight);
+
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(spriteX, colTop, SCALE + 1, colHeight);
+
+            // Glowing cyan eyes (in upper portion) - fade out when dying
+            if (!enemy.dying && (colRatio > 0.25 && colRatio < 0.4 || colRatio > 0.6 && colRatio < 0.75)) {
+                const eyeY = spriteTop + spriteHeight * 0.2;
+                const eyeSize = spriteHeight * 0.08;
+                ctx.fillStyle = `rgb(0, ${Math.floor(255 * shade)}, ${Math.floor(255 * shade)})`;
+                ctx.fillRect(spriteX, eyeY, SCALE + 1, eyeSize);
+            }
+
+            // Alien markings/patterns
+            if (!enemy.dying && colRatio > 0.3 && colRatio < 0.7 && (col % 4 === 0)) {
+                const markY = spriteTop + spriteHeight * 0.5;
+                const markSize = spriteHeight * 0.15;
+                ctx.fillStyle = `rgba(0, 255, 200, ${0.3 * shade})`;
+                ctx.fillRect(spriteX, markY, SCALE + 1, markSize);
+            }
+        }
+
+        // Mark enemy as seen if any part was visible on screen
+        if (visibleOnScreen && !enemy.seen) {
+            enemy.seen = true;
+        }
+    }
+}
+
+// Enemy shape function (returns height multiplier based on column position)
+function getEnemyShape(t) {
+    // Creates an alien silhouette
+    if (t < 0.1 || t > 0.9) return 0.3; // Thin appendages
+    if (t < 0.2 || t > 0.8) return 0.5; // Arms
+    if (t < 0.3 || t > 0.7) return 0.75; // Shoulders
+    return 0.85 + Math.sin(t * Math.PI) * 0.15; // Body/head bulge
+}
+
+// Attack function (handles both melee and ranged)
+function attack() {
+    if (shootCooldown > 0) return;
+
+    if (currentWeapon === 0) {
+        // Hammer (melee) - no ammo needed, more damage, short range
+        shootCooldown = 25;
+        swingAnimation = 20;
+        playHammerSound();
+
+        // Check if any enemy is in melee range
+        const hitEnemy = enemies.find(enemy => {
+            if (!enemy.alive) return false;
+
+            const dx = enemy.x - player.x;
+            const dy = enemy.y - player.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            let angle = Math.atan2(dy, dx) - player.angle;
+
+            while (angle > Math.PI) angle -= 2 * Math.PI;
+            while (angle < -Math.PI) angle += 2 * Math.PI;
+
+            // Melee range: close distance, wider angle
+            return dist < 1.5 && Math.abs(angle) < 0.5;
+        });
+
+        if (hitEnemy) {
+            hitEnemy.health -= 30; // Hammer does more damage
+            if (hitEnemy.health <= 0 && !hitEnemy.dying) {
+                hitEnemy.alive = false;
+                hitEnemy.dying = true;
+                hitEnemy.deathTimer = 0;
+                player.kills++;
+                playEnemyDeathSound();
+            } else {
+                playEnemyHitSound();
+            }
+        }
+    } else {
+        // Gun (ranged) - uses ammo
+        if (player.ammo <= 0) return;
+
+        player.ammo--;
+        shootCooldown = 15;
+        muzzleFlash = 1;
+        playGunSound();
+
+        // Check if any enemy is in crosshairs
+        const hitEnemy = enemies.find(enemy => {
+            if (!enemy.alive) return false;
+
+            const dx = enemy.x - player.x;
+            const dy = enemy.y - player.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            let angle = Math.atan2(dy, dx) - player.angle;
+
+            while (angle > Math.PI) angle -= 2 * Math.PI;
+            while (angle < -Math.PI) angle += 2 * Math.PI;
+
+            // Check if in crosshair and not behind wall
+            const screenX = (0.5 + angle / FOV) * SCREEN_W;
+            const col = Math.floor(screenX / SCALE);
+            if (col < 0 || col >= NUM_RAYS) return false;
+
+            return Math.abs(angle) < 0.1 && depthBuffer[col] >= dist;
+        });
+
+        if (hitEnemy) {
+            hitEnemy.health -= 15;
+            if (hitEnemy.health <= 0 && !hitEnemy.dying) {
+                hitEnemy.alive = false;
+                hitEnemy.dying = true;
+                hitEnemy.deathTimer = 0;
+                player.kills++;
+                playEnemyDeathSound();
+            } else {
+                playEnemyHitSound();
+            }
+        }
+    }
+}
+
+// Update enemies (AI)
+function updateEnemies() {
+    for (const enemy of enemies) {
+        // Progress death animation
+        if (enemy.dying) {
+            enemy.deathTimer++;
+            if (enemy.deathTimer >= 30) {
+                enemy.dying = false; // Animation complete, fully dead
+            }
+            continue;
+        }
+
+        if (!enemy.alive) continue;
+        if (!enemy.seen) continue; // Don't move until player has seen this enemy
+
+        const dx = player.x - enemy.x;
+        const dy = player.y - enemy.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Move toward player if close enough
+        if (dist < 10 && dist > 0.5) {
+            const moveX = (dx / dist) * enemy.speed;
+            const moveY = (dy / dist) * enemy.speed;
+
+            const newX = enemy.x + moveX;
+            const newY = enemy.y + moveY;
+
+            if (!isWall(newX, enemy.y)) enemy.x = newX;
+            if (!isWall(enemy.x, newY)) enemy.y = newY;
+        }
+
+        // Damage player if very close (disabled - player is invulnerable)
+        // if (dist < 0.6) {
+        //     player.health -= 0.5;
+        // }
+    }
+}
+
+// Update UI
+function updateUI() {
+    document.getElementById('health').textContent = `Health: ${Math.floor(player.health)}`;
+    document.getElementById('ammo').textContent = `Plasma: ${player.ammo}`;
+    document.getElementById('kills').textContent = `Kills: ${player.kills}`;
+    document.getElementById('weapon').textContent = `Weapon: ${currentWeapon === 0 ? 'Stun Baton' : 'Plasma Rifle'}`;
+
+    // Health color (sci-fi theme)
+    const healthEl = document.getElementById('health');
+    if (player.health < 30) healthEl.style.color = '#f44';
+    else if (player.health < 60) healthEl.style.color = '#fa0';
+    else healthEl.style.color = '#0f8';
+
+    // Ammo color (dim when using melee)
+    const ammoEl = document.getElementById('ammo');
+    ammoEl.style.color = currentWeapon === 0 ? '#446' : '#0cf';
+}
+
+// Render minimap
+function renderMinimap() {
+    const scale = minimap.width / MAP_W;
+    minimapCtx.fillStyle = '#0a0a12';
+    minimapCtx.fillRect(0, 0, minimap.width, minimap.height);
+
+    for (let y = 0; y < MAP_H; y++) {
+        for (let x = 0; x < MAP_W; x++) {
+            const tile = MAP[y][x];
+            if (tile === 1) {
+                // Spaceship walls - blue-gray
+                minimapCtx.fillStyle = '#3a4555';
+            } else if (tile === 2) {
+                const door = getDoor(x, y);
+                // Metallic door: grey when closed, fades when open
+                const openness = door ? door.state : 0;
+                const r = Math.floor(120 * (1 - openness) + 20 * openness);
+                const g = Math.floor(125 * (1 - openness) + 20 * openness);
+                const b = Math.floor(135 * (1 - openness) + 20 * openness);
+                minimapCtx.fillStyle = `rgb(${r},${g},${b})`;
+            } else if (tile === 3) {
+                // Escape elevator door: green when closed, fades when open
+                const door = getDoor(x, y);
+                const openness = door ? door.state : 0;
+                const r = Math.floor(30 * (1 - openness) + 20 * openness);
+                const g = Math.floor(200 * (1 - openness) + 20 * openness);
+                const b = Math.floor(60 * (1 - openness) + 20 * openness);
+                minimapCtx.fillStyle = `rgb(${r},${g},${b})`;
+            } else if (tile === 4) {
+                // Elevator interior: bright green
+                minimapCtx.fillStyle = '#2a8';
+            } else {
+                // Floor - dark blue
+                minimapCtx.fillStyle = '#151820';
+            }
+            minimapCtx.fillRect(x * scale, y * scale, scale - 1, scale - 1);
+        }
+    }
+
+    // Player - cyan
+    minimapCtx.fillStyle = '#0ff';
+    minimapCtx.beginPath();
+    minimapCtx.arc(player.x * scale, player.y * scale, 3, 0, Math.PI * 2);
+    minimapCtx.fill();
+
+    // Direction - cyan
+    minimapCtx.strokeStyle = '#0ff';
+    minimapCtx.beginPath();
+    minimapCtx.moveTo(player.x * scale, player.y * scale);
+    minimapCtx.lineTo(
+        player.x * scale + Math.cos(player.angle) * 15,
+        player.y * scale + Math.sin(player.angle) * 15
+    );
+    minimapCtx.stroke();
+
+    // Enemies - magenta/purple (aliens)
+    for (const enemy of enemies) {
+        if (!enemy.alive && !enemy.dying) continue;
+        // Fade out dying enemies
+        const alpha = enemy.dying ? 1 - enemy.deathTimer / 30 : 1;
+        minimapCtx.fillStyle = enemy.dying ? `rgba(80, 40, 80, ${alpha})` : '#c4f';
+        minimapCtx.beginPath();
+        minimapCtx.arc(enemy.x * scale, enemy.y * scale, 3, 0, Math.PI * 2);
+        minimapCtx.fill();
+    }
+}
+
+// Handle input
+function handleInput() {
+    const cos = Math.cos(player.angle);
+    const sin = Math.sin(player.angle);
+
+    let newX = player.x;
+    let newY = player.y;
+
+    if (keys['KeyW']) { newX += cos * player.speed; newY += sin * player.speed; }
+    if (keys['KeyS']) { newX -= cos * player.speed; newY -= sin * player.speed; }
+    if (keys['KeyA']) { newX += sin * player.speed; newY -= cos * player.speed; }
+    if (keys['KeyD']) { newX -= sin * player.speed; newY += cos * player.speed; }
+    if (keys['ArrowLeft']) player.angle -= player.rotSpeed;
+    if (keys['ArrowRight']) player.angle += player.rotSpeed;
+
+    // Collision detection with sliding
+    const margin = 0.2;
+    if (!isWall(newX + margin, player.y) && !isWall(newX - margin, player.y)) {
+        player.x = newX;
+    }
+    if (!isWall(player.x, newY + margin) && !isWall(player.x, newY - margin)) {
+        player.y = newY;
+    }
+}
+
+// Game loop
+function gameLoop() {
+    if (player.health <= 0) {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+        ctx.fillStyle = '#f00';
+        ctx.font = '48px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('GAME OVER', SCREEN_W / 2, SCREEN_H / 2);
+        ctx.font = '24px monospace';
+        ctx.fillText(`Kills: ${player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 40);
+        ctx.fillText('Refresh to restart', SCREEN_W / 2, SCREEN_H / 2 + 80);
+        return;
+    }
+
+    // Check win condition - player reached the elevator
+    if (isInElevator()) {
+        playVictoryMusic();
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+        ctx.fillStyle = '#0ff';
+        ctx.font = '48px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('LEVEL COMPLETE!', SCREEN_W / 2, SCREEN_H / 2 - 20);
+        ctx.fillStyle = '#0f0';
+        ctx.font = '24px monospace';
+        ctx.fillText('You reached the elevator!', SCREEN_W / 2, SCREEN_H / 2 + 20);
+        ctx.fillText(`Kills: ${player.kills} / ${enemies.length}`, SCREEN_W / 2, SCREEN_H / 2 + 50);
+        ctx.fillStyle = '#888';
+        ctx.fillText('Refresh to play again', SCREEN_W / 2, SCREEN_H / 2 + 90);
+        return;
+    }
+
+    handleInput();
+
+    // Attack
+    if (keys['Space']) attack();
+    if (shootCooldown > 0) shootCooldown--;
+
+    // Open doors
+    if (keys['KeyE']) {
+        tryOpenDoor();
+        keys['KeyE'] = false; // Prevent holding E from spamming
+    }
+
+    updateDoors();
+    updateEnemies();
+    render3D();
+    renderMinimap();
+    updateUI();
+
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+    </script>
+</body>
+</html>
