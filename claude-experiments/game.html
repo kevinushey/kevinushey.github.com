@@ -202,6 +202,56 @@ generateMap();
 // Player - start position set by map generator
 let player = { x: playerStart.x, y: playerStart.y, angle: 0, speed: 0.06, rotSpeed: 0.04, health: 100, ammo: 50, kills: 0 };
 
+// Game state: 'playing', 'gameover', 'victory'
+let gameState = 'playing';
+
+// Restart the game with a fresh map
+function restartGame() {
+    // Clear arrays
+    MAP.length = 0;
+    doors.length = 0;
+    enemies.length = 0;
+    lights.length = 0;
+
+    // Reset music state
+    musicPlaying = false;
+    musicStarted = false;
+    victoryPlayed = false;
+
+    // Regenerate map, enemies, lights
+    generateMap();
+    generateLights();
+
+    // Reset player
+    player.x = playerStart.x;
+    player.y = playerStart.y;
+    player.angle = 0;
+    player.health = 100;
+    player.ammo = 50;
+    player.kills = 0;
+
+    // Reset other state
+    shootCooldown = 0;
+    muzzleFlash = 0;
+    headLookDir = 0;
+    headLookTimer = 0;
+    lastPlayerAngle = 0;
+    headDamageFlash = 0;
+    currentWeapon = 1;
+    swingAnimation = 0;
+
+    // Clear key states to prevent immediate actions
+    for (const key in keys) {
+        keys[key] = false;
+    }
+
+    // Reset game state
+    gameState = 'playing';
+
+    // Restart music
+    startMusic();
+}
+
 // Depth buffer for sprite occlusion
 let depthBuffer = new Array(NUM_RAYS);
 
@@ -771,6 +821,11 @@ window.addEventListener('keyup', e => {
 });
 
 canvas.addEventListener('click', () => {
+    // Handle restart on end screens
+    if (gameState === 'gameover' || gameState === 'victory') {
+        restartGame();
+        return;
+    }
     startMusic(); // Start music on first click
     if (document.pointerLockElement !== canvas) {
         canvas.requestPointerLock();
@@ -787,10 +842,15 @@ document.addEventListener('mousedown', e => {
     }
 });
 
-// Weapon switching
+// Weapon switching and restart
 window.addEventListener('keydown', e => {
     if (e.code === 'Digit1') currentWeapon = 0; // Hammer
     if (e.code === 'Digit2') currentWeapon = 1; // Gun
+
+    // Handle restart on end screens
+    if (e.code === 'Space' && (gameState === 'gameover' || gameState === 'victory')) {
+        restartGame();
+    }
 });
 
 // Get door at position
@@ -1867,7 +1927,19 @@ function handleInput() {
 
 // Game loop
 function gameLoop() {
+    // Handle game over state
     if (player.health <= 0) {
+        gameState = 'gameover';
+    }
+
+    // Handle victory state
+    if (gameState === 'playing' && isInElevator()) {
+        gameState = 'victory';
+        playVictoryMusic();
+    }
+
+    // Show end screens
+    if (gameState === 'gameover') {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
         ctx.fillStyle = '#f00';
@@ -1876,13 +1948,13 @@ function gameLoop() {
         ctx.fillText('GAME OVER', SCREEN_W / 2, SCREEN_H / 2);
         ctx.font = '24px monospace';
         ctx.fillText(`Kills: ${player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 40);
-        ctx.fillText('Refresh to restart', SCREEN_W / 2, SCREEN_H / 2 + 80);
+        ctx.fillStyle = '#888';
+        ctx.fillText('Press SPACE or click to restart', SCREEN_W / 2, SCREEN_H / 2 + 80);
+        requestAnimationFrame(gameLoop);
         return;
     }
 
-    // Check win condition - player reached the elevator
-    if (isInElevator()) {
-        playVictoryMusic();
+    if (gameState === 'victory') {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
         ctx.fillStyle = '#0ff';
@@ -1892,9 +1964,10 @@ function gameLoop() {
         ctx.fillStyle = '#0f0';
         ctx.font = '24px monospace';
         ctx.fillText('You reached the elevator!', SCREEN_W / 2, SCREEN_H / 2 + 20);
-        ctx.fillText(`Kills: ${player.kills} / ${enemies.length}`, SCREEN_W / 2, SCREEN_H / 2 + 50);
+        ctx.fillText(`Kills: ${player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 50);
         ctx.fillStyle = '#888';
-        ctx.fillText('Refresh to play again', SCREEN_W / 2, SCREEN_H / 2 + 90);
+        ctx.fillText('Press SPACE or click to restart', SCREEN_W / 2, SCREEN_H / 2 + 90);
+        requestAnimationFrame(gameLoop);
         return;
     }
 
