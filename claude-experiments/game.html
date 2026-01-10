@@ -19,14 +19,6 @@
             cursor: none;
             box-shadow: 0 0 20px rgba(0, 150, 200, 0.3);
         }
-        #ui {
-            position: absolute;
-            bottom: 20px;
-            color: #0cf;
-            font-size: 18px;
-            text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
-            letter-spacing: 1px;
-        }
         #minimap {
             position: absolute;
             top: 10px;
@@ -47,7 +39,7 @@
 <body>
     <canvas id="game" width="800" height="600"></canvas>
     <canvas id="minimap" width="160" height="160"></canvas>
-    <div id="ui"><span id="health">Health: 100</span> | <span id="ammo">Ammo: 50</span> | <span id="kills">Kills: 0</span> | <span id="weapon">Weapon: Gun</span></div>
+    <div id="ui" style="display:none;"><span id="health">Health: 100</span> | <span id="ammo">Ammo: 50</span> | <span id="kills">Kills: 0</span> | <span id="weapon">Weapon: Gun</span></div>
     <div id="instructions">WASD: Move | Mouse/Arrows: Look | Space/Click: Attack | 1: Hammer | 2: Gun | E: Open Airlock</div>
     <div id="crosshair" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#0ff;font-size:24px;pointer-events:none;text-shadow:0 0 10px #0ff;">+</div>
     <script>
@@ -65,63 +57,193 @@ const MAX_DEPTH = 20;
 const SCALE = SCREEN_W / NUM_RAYS;
 
 // Map: 1 = wall, 0 = empty, 2 = door, 3 = elevator door, 4 = elevator interior
-const MAP = [
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,1,2,0,0,0,0,2,0,0,0,0,0,0,1,1],
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1],
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1],
-    [1,1,0,0,0,0,0,2,0,0,0,0,0,0,1,1],
-    [1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,1,0,0,0,0,0,2,0,0,0,0,0,0,1,1],
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1],
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1],
-    [1,1,0,0,0,0,0,2,0,0,0,0,0,0,1,1],
-    [1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,1,3,4,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-];
-const MAP_W = MAP[0].length;
-const MAP_H = MAP.length;
-
-// Elevator position
-const ELEVATOR = { x: 3, y: 14 };
-
-// Doors - track state of each door (0 = closed, 1 = open, 0-1 = opening/closing)
-// Type: 'normal' or 'elevator'
+const MAP_W = 16;
+const MAP_H = 16;
+const MAP = [];
+const ELEVATOR = { x: 0, y: 0 };
 const doors = [];
-for (let y = 0; y < MAP_H; y++) {
-    for (let x = 0; x < MAP_W; x++) {
-        if (MAP[y][x] === 2) {
-            doors.push({ x, y, state: 0, opening: false, type: 'normal' });
-        } else if (MAP[y][x] === 3) {
-            doors.push({ x, y, state: 0, opening: false, type: 'elevator' });
+let playerStart = { x: 1.5, y: 1.5 };
+let enemies = [];
+
+// Generate random map with contiguous hallway
+function generateMap() {
+    // Fill with walls
+    for (let y = 0; y < MAP_H; y++) {
+        MAP[y] = [];
+        for (let x = 0; x < MAP_W; x++) {
+            MAP[y][x] = 1;
         }
+    }
+
+    // Track hallway tiles for later use
+    const hallwayTiles = [];
+
+    // Start position (near top-left corner)
+    let cx = 2;
+    let cy = 2;
+    MAP[cy][cx] = 0;
+    hallwayTiles.push({ x: cx, y: cy });
+
+    // Random walk to create winding hallway
+    const directions = [
+        { dx: 1, dy: 0 },  // right
+        { dx: -1, dy: 0 }, // left
+        { dx: 0, dy: 1 },  // down
+        { dx: 0, dy: -1 }  // up
+    ];
+
+    let currentDir = 0; // Start going right
+    const minHallwayLength = 40 + Math.floor(Math.random() * 20);
+
+    while (hallwayTiles.length < minHallwayLength) {
+        // Occasionally change direction (prefer continuing straight)
+        if (Math.random() < 0.3) {
+            // Turn left or right relative to current direction
+            if (Math.random() < 0.5) {
+                currentDir = (currentDir + 1) % 4;
+            } else {
+                currentDir = (currentDir + 3) % 4;
+            }
+        }
+
+        const dir = directions[currentDir];
+        const nx = cx + dir.dx;
+        const ny = cy + dir.dy;
+
+        // Check bounds (stay away from edges)
+        if (nx >= 2 && nx < MAP_W - 2 && ny >= 2 && ny < MAP_H - 2) {
+            // Carve the hallway
+            if (MAP[ny][nx] === 1) {
+                MAP[ny][nx] = 0;
+                hallwayTiles.push({ x: nx, y: ny });
+            }
+            cx = nx;
+            cy = ny;
+        } else {
+            // Hit boundary, change direction
+            currentDir = (currentDir + 1) % 4;
+        }
+    }
+
+    // Find the tile furthest from start for elevator
+    let maxDist = 0;
+    let elevatorTile = hallwayTiles[hallwayTiles.length - 1];
+    for (const tile of hallwayTiles) {
+        const dist = Math.abs(tile.x - 2) + Math.abs(tile.y - 2);
+        if (dist > maxDist) {
+            maxDist = dist;
+            elevatorTile = tile;
+        }
+    }
+
+    // Place elevator door and interior
+    ELEVATOR.x = elevatorTile.x;
+    ELEVATOR.y = elevatorTile.y;
+    MAP[elevatorTile.y][elevatorTile.x] = 4; // Elevator interior
+
+    // Find adjacent wall to place elevator door
+    for (const dir of directions) {
+        const doorX = elevatorTile.x + dir.dx;
+        const doorY = elevatorTile.y + dir.dy;
+        if (doorX >= 0 && doorX < MAP_W && doorY >= 0 && doorY < MAP_H) {
+            if (MAP[doorY][doorX] === 0) {
+                MAP[doorY][doorX] = 3; // Elevator door
+                doors.push({ x: doorX, y: doorY, state: 0, opening: false, type: 'elevator' });
+                break;
+            }
+        }
+    }
+
+    // Add some doors along the hallway (at random positions)
+    const numDoors = 3 + Math.floor(Math.random() * 4);
+    const doorCandidates = hallwayTiles.filter(tile => {
+        // Don't place doors near start, elevator, or map edges
+        const distFromStart = Math.abs(tile.x - 2) + Math.abs(tile.y - 2);
+        const distFromElevator = Math.abs(tile.x - elevatorTile.x) + Math.abs(tile.y - elevatorTile.y);
+        return distFromStart > 3 && distFromElevator > 2 && MAP[tile.y][tile.x] === 0;
+    });
+
+    for (let i = 0; i < numDoors && doorCandidates.length > 0; i++) {
+        const idx = Math.floor(Math.random() * doorCandidates.length);
+        const tile = doorCandidates.splice(idx, 1)[0];
+        MAP[tile.y][tile.x] = 2;
+        doors.push({ x: tile.x, y: tile.y, state: 0, opening: false, type: 'normal' });
+    }
+
+    // Set player start (first hallway tile)
+    playerStart = { x: hallwayTiles[0].x + 0.5, y: hallwayTiles[0].y + 0.5 };
+
+    // Generate enemies at random positions along hallway
+    const numEnemies = 5 + Math.floor(Math.random() * 6); // 5-10 enemies
+    const enemyCandidates = hallwayTiles.filter(tile => {
+        const distFromStart = Math.abs(tile.x - hallwayTiles[0].x) + Math.abs(tile.y - hallwayTiles[0].y);
+        return distFromStart > 4 && MAP[tile.y][tile.x] === 0;
+    });
+
+    enemies = [];
+    for (let i = 0; i < numEnemies && enemyCandidates.length > 0; i++) {
+        const idx = Math.floor(Math.random() * enemyCandidates.length);
+        const tile = enemyCandidates.splice(idx, 1)[0];
+        enemies.push({
+            x: tile.x + 0.5,
+            y: tile.y + 0.5,
+            health: 30,
+            speed: 0.02,
+            alive: true,
+            dying: false,
+            deathTimer: 0,
+            seen: false
+        });
     }
 }
 
-// Player - start in the hallway entrance, facing right
-let player = { x: 1.5, y: 1.5, angle: 0, speed: 0.06, rotSpeed: 0.04, health: 100, ammo: 50, kills: 0 };
+generateMap();
 
-// Enemies - placed along the hallway
-let enemies = [
-    { x: 8.5, y: 3.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
-    { x: 13.5, y: 5.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
-    { x: 5.5, y: 6.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
-    { x: 10.5, y: 9.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
-    { x: 3.5, y: 9.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
-    { x: 8.5, y: 12.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
-    { x: 2.5, y: 13.5, health: 30, speed: 0.02, alive: true, dying: false, deathTimer: 0, seen: false },
-];
+// Player - start position set by map generator
+let player = { x: playerStart.x, y: playerStart.y, angle: 0, speed: 0.06, rotSpeed: 0.04, health: 100, ammo: 50, kills: 0 };
 
 // Depth buffer for sprite occlusion
 let depthBuffer = new Array(NUM_RAYS);
 
+// Light sprites - randomly generated along hallways
+const lights = [];
+function generateLights() {
+    const numLights = 5 + Math.floor(Math.random() * 6); // 5-10 lights
+    // Find walkable floor positions (tile 0)
+    const walkable = [];
+    for (let y = 0; y < MAP_H; y++) {
+        for (let x = 0; x < MAP_W; x++) {
+            if (MAP[y][x] === 0) {
+                walkable.push({ x: x + 0.5, y: y + 0.5 });
+            }
+        }
+    }
+    // Randomly pick positions for lights
+    for (let i = 0; i < numLights && walkable.length > 0; i++) {
+        const idx = Math.floor(Math.random() * walkable.length);
+        const pos = walkable.splice(idx, 1)[0];
+        // Offset slightly toward a wall for wall-mounted effect
+        const offsetX = (Math.random() - 0.5) * 0.6;
+        const offsetY = (Math.random() - 0.5) * 0.6;
+        lights.push({
+            x: pos.x + offsetX,
+            y: pos.y + offsetY,
+            color: '#0cf',
+            phase: Math.random() * Math.PI * 2 // For flicker variation
+        });
+    }
+}
+generateLights();
+
 // Shooting state
 let shootCooldown = 0;
 let muzzleFlash = 0;
+
+// HUD space-man head state
+let headLookDir = 0; // -1 left, 0 center, 1 right
+let headLookTimer = 0;
+let lastPlayerAngle = 0;
+let headDamageFlash = 0;
 
 // Weapon system: 0 = hammer (melee), 1 = gun (ranged)
 let currentWeapon = 1;
@@ -444,6 +566,70 @@ function playEnemyHitSound() {
 
     osc.start(now);
     osc.stop(now + 0.08);
+}
+
+function playEnemyRoarSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // Scary descending growl
+    const osc = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(180, now);
+    osc.frequency.exponentialRampToValueAtTime(60, now + 0.4);
+
+    osc2.type = 'square';
+    osc2.frequency.setValueAtTime(185, now);
+    osc2.frequency.exponentialRampToValueAtTime(55, now + 0.4);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(600, now);
+    filter.frequency.exponentialRampToValueAtTime(200, now + 0.4);
+
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+
+    osc.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc2.start(now);
+    osc.stop(now + 0.4);
+    osc2.stop(now + 0.4);
+
+    // Add a harsh noise burst
+    const bufferSize = ctx.sampleRate * 0.15;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.value = 300;
+    noiseFilter.Q.value = 2;
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.08, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+
+    noise.start(now);
+    noise.stop(now + 0.15);
 }
 
 function playEnemyDeathSound() {
@@ -952,6 +1138,9 @@ function render3D() {
         depthBuffer[i] = correctedDist;
     }
 
+    // Render light sprites
+    renderLights();
+
     // Render enemies as sprites
     renderSprites();
 
@@ -968,6 +1157,9 @@ function render3D() {
     } else {
         renderGun();
     }
+
+    // Render HUD
+    renderHUD();
 }
 
 // Render player's stun baton (sci-fi melee weapon)
@@ -1144,6 +1336,207 @@ function renderGun() {
     ctx.restore();
 }
 
+// Render HUD at bottom of screen (Doom-style)
+function renderHUD() {
+    const hudHeight = 60;
+    const hudY = SCREEN_H - hudHeight;
+
+    // HUD background (dark metallic panel)
+    const hudGrad = ctx.createLinearGradient(0, hudY, 0, SCREEN_H);
+    hudGrad.addColorStop(0, '#2a3040');
+    hudGrad.addColorStop(0.1, '#1a2030');
+    hudGrad.addColorStop(1, '#0a1020');
+    ctx.fillStyle = hudGrad;
+    ctx.fillRect(0, hudY, SCREEN_W, hudHeight);
+
+    // Top border line
+    ctx.fillStyle = '#4a6080';
+    ctx.fillRect(0, hudY, SCREEN_W, 2);
+
+    // Panel dividers
+    ctx.fillStyle = '#3a4050';
+    ctx.fillRect(200, hudY + 5, 2, hudHeight - 10);
+    ctx.fillRect(598, hudY + 5, 2, hudHeight - 10);
+
+    // Update head look direction based on player turning
+    const angleDiff = player.angle - lastPlayerAngle;
+    if (Math.abs(angleDiff) > 0.02) {
+        headLookDir = angleDiff > 0 ? 1 : -1;
+        headLookTimer = 30;
+    }
+    lastPlayerAngle = player.angle;
+
+    if (headLookTimer > 0) {
+        headLookTimer--;
+    } else {
+        headLookDir = 0;
+    }
+
+    // Draw space-man head (center of HUD)
+    const headX = SCREEN_W / 2;
+    const headY = hudY + hudHeight / 2 + 2;
+    const headSize = 22;
+
+    ctx.save();
+    ctx.translate(headX, headY);
+
+    // Helmet (outer)
+    ctx.fillStyle = '#4a5565';
+    ctx.beginPath();
+    ctx.arc(0, 0, headSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Helmet rim
+    ctx.fillStyle = '#3a4555';
+    ctx.beginPath();
+    ctx.arc(0, 0, headSize - 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Visor (dark)
+    ctx.fillStyle = '#1a2535';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, headSize - 6, headSize - 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Visor reflection
+    ctx.fillStyle = 'rgba(100, 180, 220, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(-5, -2, 6, 4, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Face inside visor
+    const faceOffsetX = headLookDir * 4;
+    ctx.fillStyle = headDamageFlash > 0 ? '#ff8866' : '#e8c8a8';
+    ctx.beginPath();
+    ctx.ellipse(faceOffsetX, 3, 10, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes
+    const eyeOffsetX = headLookDir * 2;
+    ctx.fillStyle = '#222';
+    ctx.fillRect(faceOffsetX - 5 + eyeOffsetX, -1, 3, 4);
+    ctx.fillRect(faceOffsetX + 2 + eyeOffsetX, -1, 3, 4);
+
+    // Eye whites/direction
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(faceOffsetX - 5 + eyeOffsetX + (headLookDir > 0 ? 1 : 0), 0, 2, 2);
+    ctx.fillRect(faceOffsetX + 2 + eyeOffsetX + (headLookDir > 0 ? 1 : 0), 0, 2, 2);
+
+    // Mouth (changes with health)
+    ctx.fillStyle = '#833';
+    if (player.health > 60) {
+        // Slight smile
+        ctx.beginPath();
+        ctx.arc(faceOffsetX, 10, 4, 0.1 * Math.PI, 0.9 * Math.PI);
+        ctx.stroke();
+    } else if (player.health > 30) {
+        // Neutral
+        ctx.fillRect(faceOffsetX - 3, 9, 6, 2);
+    } else {
+        // Grimace
+        ctx.beginPath();
+        ctx.arc(faceOffsetX, 12, 4, 1.1 * Math.PI, 1.9 * Math.PI);
+        ctx.stroke();
+    }
+
+    // Helmet lights
+    ctx.fillStyle = player.health > 30 ? '#0f8' : '#f44';
+    ctx.fillRect(-headSize + 4, -8, 4, 4);
+    ctx.fillRect(headSize - 8, -8, 4, 4);
+
+    ctx.restore();
+
+    // Decrease damage flash
+    if (headDamageFlash > 0) headDamageFlash--;
+
+    // Left panel - Health
+    ctx.fillStyle = '#0cf';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('HEALTH', 15, hudY + 20);
+
+    const healthColor = player.health > 60 ? '#0f8' : player.health > 30 ? '#fa0' : '#f44';
+    ctx.fillStyle = healthColor;
+    ctx.font = 'bold 28px monospace';
+    ctx.fillText(Math.floor(player.health), 15, hudY + 48);
+
+    // Health bar
+    ctx.fillStyle = '#1a2030';
+    ctx.fillRect(90, hudY + 30, 100, 16);
+    ctx.fillStyle = healthColor;
+    ctx.fillRect(92, hudY + 32, Math.max(0, (player.health / 100) * 96), 12);
+
+    // Right panel - Ammo & Kills
+    ctx.fillStyle = '#0cf';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText('PLASMA', SCREEN_W - 15, hudY + 20);
+    ctx.fillText('KILLS', SCREEN_W - 100, hudY + 20);
+
+    ctx.fillStyle = currentWeapon === 1 ? '#0cf' : '#446';
+    ctx.font = 'bold 28px monospace';
+    ctx.fillText(player.ammo, SCREEN_W - 15, hudY + 48);
+
+    ctx.fillStyle = '#f4a';
+    ctx.fillText(player.kills, SCREEN_W - 100, hudY + 48);
+
+    // Weapon indicator
+    ctx.fillStyle = '#5a6a7a';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(currentWeapon === 0 ? '[ BATON ]' : '[ RIFLE ]', SCREEN_W / 2, hudY + 55);
+}
+
+// Render light sprites
+function renderLights() {
+    const lightData = lights.map(light => {
+        const dx = light.x - player.x;
+        const dy = light.y - player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) - player.angle;
+        return { light, dist, angle };
+    });
+
+    // Sort by distance (far to near)
+    lightData.sort((a, b) => b.dist - a.dist);
+
+    for (const { light, dist, angle } of lightData) {
+        let normAngle = angle;
+        while (normAngle > Math.PI) normAngle -= 2 * Math.PI;
+        while (normAngle < -Math.PI) normAngle += 2 * Math.PI;
+
+        if (Math.abs(normAngle) > HALF_FOV + 0.2) continue;
+
+        const screenX = (0.5 + normAngle / FOV) * SCREEN_W;
+        const spriteSize = Math.min(SCREEN_H * 0.3, (SCREEN_H * 0.15) / dist);
+        const spriteTop = SCREEN_H / 2 - spriteSize * 1.5; // Position higher (wall-mounted)
+
+        // Check depth - only draw if not behind wall
+        const col = Math.floor(screenX / SCALE);
+        if (col >= 0 && col < NUM_RAYS && depthBuffer[col] < dist) continue;
+
+        // Flicker effect
+        const flicker = 0.7 + 0.3 * Math.sin(Date.now() * 0.008 + light.phase);
+        const glowSize = spriteSize * (1.5 + 0.2 * Math.sin(Date.now() * 0.005 + light.phase));
+
+        // Outer glow
+        const gradient = ctx.createRadialGradient(screenX, spriteTop + spriteSize / 2, 0, screenX, spriteTop + spriteSize / 2, glowSize);
+        gradient.addColorStop(0, `rgba(0, 200, 255, ${0.4 * flicker})`);
+        gradient.addColorStop(0.4, `rgba(0, 150, 200, ${0.2 * flicker})`);
+        gradient.addColorStop(1, 'rgba(0, 100, 150, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(screenX - glowSize, spriteTop + spriteSize / 2 - glowSize, glowSize * 2, glowSize * 2);
+
+        // Light fixture (small rectangle)
+        ctx.fillStyle = `rgba(40, 60, 80, ${flicker})`;
+        ctx.fillRect(screenX - spriteSize * 0.4, spriteTop, spriteSize * 0.8, spriteSize * 0.5);
+
+        // Bright center
+        ctx.fillStyle = `rgba(150, 230, 255, ${flicker})`;
+        ctx.fillRect(screenX - spriteSize * 0.25, spriteTop + spriteSize * 0.15, spriteSize * 0.5, spriteSize * 0.25);
+    }
+}
+
 // Render enemy sprites
 function renderSprites() {
     // Calculate distance and angle for each enemy (include dying enemies)
@@ -1241,6 +1634,7 @@ function renderSprites() {
         // Mark enemy as seen if any part was visible on screen
         if (visibleOnScreen && !enemy.seen) {
             enemy.seen = true;
+            playEnemyRoarSound();
         }
     }
 }
@@ -1374,22 +1768,9 @@ function updateEnemies() {
     }
 }
 
-// Update UI
+// Update UI (now handled by renderHUD)
 function updateUI() {
-    document.getElementById('health').textContent = `Health: ${Math.floor(player.health)}`;
-    document.getElementById('ammo').textContent = `Plasma: ${player.ammo}`;
-    document.getElementById('kills').textContent = `Kills: ${player.kills}`;
-    document.getElementById('weapon').textContent = `Weapon: ${currentWeapon === 0 ? 'Stun Baton' : 'Plasma Rifle'}`;
-
-    // Health color (sci-fi theme)
-    const healthEl = document.getElementById('health');
-    if (player.health < 30) healthEl.style.color = '#f44';
-    else if (player.health < 60) healthEl.style.color = '#fa0';
-    else healthEl.style.color = '#0f8';
-
-    // Ammo color (dim when using melee)
-    const ammoEl = document.getElementById('ammo');
-    ammoEl.style.color = currentWeapon === 0 ? '#446' : '#0cf';
+    // HUD is now rendered on canvas
 }
 
 // Render minimap
