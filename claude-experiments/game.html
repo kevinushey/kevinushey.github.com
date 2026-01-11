@@ -319,23 +319,10 @@ function generateMap() {
         }
     }
 
-    // Place elevator door and interior
+    // Place elevator interior (no door - just walk in to win)
     ELEVATOR.x = elevatorTile.x;
     ELEVATOR.y = elevatorTile.y;
     MAP[elevatorTile.y][elevatorTile.x] = 4; // Elevator interior
-
-    // Find adjacent wall to place elevator door
-    for (const dir of directions) {
-        const doorX = elevatorTile.x + dir.dx;
-        const doorY = elevatorTile.y + dir.dy;
-        if (doorX >= 0 && doorX < MAP_W && doorY >= 0 && doorY < MAP_H) {
-            if (MAP[doorY][doorX] === 0) {
-                MAP[doorY][doorX] = 3; // Elevator door
-                doors.push({ x: doorX, y: doorY, state: 0, opening: false, type: 'elevator' });
-                break;
-            }
-        }
-    }
 
     // Add some doors along the hallway (at random positions)
     const numDoors = 3 + Math.floor(Math.random() * 4);
@@ -375,7 +362,8 @@ function generateMap() {
             alive: true,
             dying: false,
             deathTimer: 0,
-            seen: false
+            seen: false,
+            damageFlash: 0
         });
     }
 }
@@ -383,13 +371,16 @@ function generateMap() {
 // Game state: 'playing', 'gameover', 'victory'
 let gameState = 'playing';
 let currentLevel = 1;
-let targetAngle = 0; // Target angle for smooth mouse look interpolation
+
+// Frame rate limiting
+const TARGET_FPS = 120;
+const FRAME_TIME = 1000 / TARGET_FPS;
+let lastFrameTime = 0;
 
 generateMap();
 
 // Player - start position set by map generator
 let player = { x: playerStart.x, y: playerStart.y, angle: 0, speed: 0.06, rotSpeed: 0.04, health: 100, ammo: 50, kills: 0 };
-targetAngle = player.angle; // Sync target angle with player
 
 // Restart the game with a fresh map (full reset)
 function restartGame() {
@@ -424,7 +415,7 @@ function nextLevel(fullReset = false) {
     player.x = playerStart.x;
     player.y = playerStart.y;
     player.angle = 0;
-    targetAngle = 0; // Sync target angle with player
+    rawMouseAngle = 0;
 
     // Reset other state
     shootCooldown = 0;
@@ -1061,6 +1052,28 @@ function playPlayerHitSound() {
     noise.stop(now + 0.08);
 }
 
+function playEmptyClickSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // Short dry click
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(120, now);
+    osc.frequency.exponentialRampToValueAtTime(60, now + 0.05);
+
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.05);
+}
+
 function playPlasmaBallSound() {
     const ctx = ensureAudioCtx();
     const now = ctx.currentTime;
@@ -1229,8 +1242,8 @@ function playVictoryMusic() {
 
 // Input - use e.code for reliable key detection
 const keys = {};
-let pendingMouseMovement = 0; // Accumulate mouse movement between frames
-let lastFrameTime = performance.now();
+let rawMouseAngle = 0; // Accumulate raw mouse movement at full resolution
+const MOUSE_SENSITIVITY = 0.01;
 
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
@@ -1253,12 +1266,18 @@ canvas.addEventListener('click', () => {
     }
     startMusic(); // Start music on first click
     if (document.pointerLockElement !== canvas) {
-        canvas.requestPointerLock();
+        // Request pointer lock with unadjusted movement for raw mouse input (if supported)
+        canvas.requestPointerLock({ unadjustedMovement: true }).catch(() => {
+            // Fall back to standard pointer lock if unadjusted not supported
+            canvas.requestPointerLock();
+        });
     }
 });
 document.addEventListener('mousemove', e => {
     if (document.pointerLockElement === canvas) {
-        pendingMouseMovement += e.movementX; // Accumulate for smooth application in game loop
+        // Accumulate raw mouse pixels at full resolution, then scale
+        rawMouseAngle += e.movementX;
+        player.angle = rawMouseAngle * MOUSE_SENSITIVITY;
     }
 });
 document.addEventListener('mousedown', e => {
@@ -1359,7 +1378,8 @@ lookZone.addEventListener('touchmove', e => {
     for (const touch of e.changedTouches) {
         if (touch.identifier === touchState.look.id) {
             const deltaX = touch.clientX - touchState.look.lastX;
-            targetAngle += deltaX * 0.008;
+            rawMouseAngle += deltaX * (0.008 / MOUSE_SENSITIVITY);
+            player.angle = rawMouseAngle * MOUSE_SENSITIVITY;
             touchState.look.lastX = touch.clientX;
         }
     }
@@ -1567,15 +1587,7 @@ function castRay(angle) {
                 return { dist: dist || MAX_DEPTH, side, tile: 3, doorState: door.state, wallX };
             }
         }
-        if (tile === 4) { // Elevator interior wall
-            if (side === 0) dist = sideDistX - deltaDistX;
-            else dist = sideDistY - deltaDistY;
-            let wallX;
-            if (side === 0) wallX = player.y + dist * sin;
-            else wallX = player.x + dist * cos;
-            wallX -= Math.floor(wallX);
-            return { dist: dist || MAX_DEPTH, side, tile: 4, wallX };
-        }
+        // Tile 4 (exit portal) is not a wall - rays pass through
     }
 
     return { dist: MAX_DEPTH, side, tile: 0, wallX: 0 };
@@ -1735,22 +1747,6 @@ function render3D() {
                     ctx.fillRect(i * SCALE, handleTop + handleHeight * 0.15, SCALE + 1, handleHeight * 0.7);
                 }
             }
-        } else if (tile === 4) {
-            // Elevator interior (bright white/green - safe zone)
-            const baseColor = side === 0 ? 200 : 170;
-
-            // Use wallX for perspective-correct panel lines (soft)
-            const panelPos = (wallX * 4) % 1;
-            const edgeDist = Math.min(panelPos, 1 - panelPos);
-            const edgeFade = Math.min(1, edgeDist * 10); // Soft edge
-            const panelShade = 0.9 + edgeFade * 0.1;
-
-            r = Math.floor(baseColor * shade * 0.7 * panelShade);
-            g = Math.floor(baseColor * shade * 1.0 * panelShade);
-            b = Math.floor(baseColor * shade * 0.8 * panelShade);
-
-            ctx.fillStyle = `rgb(${r},${g},${b})`;
-            ctx.fillRect(i * SCALE, wallTop, SCALE + 1, wallHeight);
         } else {
             // Spaceship wall (metallic blue-gray panels)
             const baseColor = side === 0 ? 160 : 130;
@@ -1777,6 +1773,9 @@ function render3D() {
 
     // Render light sprites
     renderLights();
+
+    // Render victory portal
+    renderVictoryPortal();
 
     // Render ammo boxes
     renderAmmoBoxes();
@@ -2212,6 +2211,97 @@ function renderLights() {
     }
 }
 
+// Render victory portal sprite at exit location
+function renderVictoryPortal() {
+    const portalX = ELEVATOR.x + 0.5;
+    const portalY = ELEVATOR.y + 0.5;
+
+    const dx = portalX - player.x;
+    const dy = portalY - player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    let angle = Math.atan2(dy, dx) - player.angle;
+
+    // Normalize angle
+    while (angle > Math.PI) angle -= 2 * Math.PI;
+    while (angle < -Math.PI) angle += 2 * Math.PI;
+
+    // Skip if behind player or too far to side
+    if (Math.abs(angle) > HALF_FOV + 0.3) return;
+
+    const screenX = (0.5 + angle / FOV) * SCREEN_W;
+    const spriteHeight = Math.min(SCREEN_H * 1.5, SCREEN_H / dist);
+    const spriteWidth = spriteHeight * 0.8;
+    const spriteTop = (SCREEN_H - spriteHeight) / 2;
+
+    // Check if behind wall (use center column)
+    const col = Math.floor(screenX / SCALE);
+    if (col >= 0 && col < NUM_RAYS && depthBuffer[col] < dist) return;
+
+    // Animated pulse
+    const time = Date.now() * 0.003;
+    const pulse = 0.7 + 0.3 * Math.sin(time);
+    const rotationPhase = time * 0.5;
+
+    // Outer glow (large, soft)
+    const glowSize = spriteHeight * 1.2;
+    const outerGlow = ctx.createRadialGradient(screenX, SCREEN_H / 2, 0, screenX, SCREEN_H / 2, glowSize);
+    outerGlow.addColorStop(0, `rgba(100, 255, 150, ${0.4 * pulse})`);
+    outerGlow.addColorStop(0.3, `rgba(50, 255, 100, ${0.25 * pulse})`);
+    outerGlow.addColorStop(0.6, `rgba(0, 200, 100, ${0.1 * pulse})`);
+    outerGlow.addColorStop(1, 'rgba(0, 150, 50, 0)');
+    ctx.fillStyle = outerGlow;
+    ctx.beginPath();
+    ctx.arc(screenX, SCREEN_H / 2, glowSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner portal (bright core)
+    const innerSize = spriteHeight * 0.5;
+    const innerGlow = ctx.createRadialGradient(screenX, SCREEN_H / 2, 0, screenX, SCREEN_H / 2, innerSize);
+    innerGlow.addColorStop(0, `rgba(255, 255, 255, ${0.9 * pulse})`);
+    innerGlow.addColorStop(0.3, `rgba(150, 255, 200, ${0.7 * pulse})`);
+    innerGlow.addColorStop(0.7, `rgba(50, 255, 150, ${0.4 * pulse})`);
+    innerGlow.addColorStop(1, 'rgba(0, 200, 100, 0)');
+    ctx.fillStyle = innerGlow;
+    ctx.beginPath();
+    ctx.arc(screenX, SCREEN_H / 2, innerSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rotating energy rings
+    ctx.strokeStyle = `rgba(100, 255, 180, ${0.6 * pulse})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+        const ringPhase = rotationPhase + (i * Math.PI * 2 / 3);
+        const ringSize = spriteHeight * (0.3 + i * 0.15);
+        const squeeze = 0.3 + 0.2 * Math.sin(ringPhase);
+
+        ctx.beginPath();
+        ctx.ellipse(screenX, SCREEN_H / 2, ringSize, ringSize * squeeze, ringPhase, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    // Sparkles
+    ctx.fillStyle = `rgba(255, 255, 255, ${pulse})`;
+    for (let i = 0; i < 6; i++) {
+        const sparkAngle = rotationPhase * 2 + (i * Math.PI / 3);
+        const sparkDist = spriteHeight * (0.25 + 0.1 * Math.sin(time * 2 + i));
+        const sparkX = screenX + Math.cos(sparkAngle) * sparkDist;
+        const sparkY = SCREEN_H / 2 + Math.sin(sparkAngle) * sparkDist * 0.5;
+        const sparkSize = 3 + 2 * Math.sin(time * 3 + i);
+
+        ctx.beginPath();
+        ctx.arc(sparkX, sparkY, sparkSize, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // "EXIT" text above portal
+    const textY = spriteTop + spriteHeight * 0.1;
+    const fontSize = Math.max(12, Math.floor(spriteHeight * 0.12));
+    ctx.font = `bold ${fontSize}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = `rgba(150, 255, 200, ${0.8 + 0.2 * Math.sin(time * 2)})`;
+    ctx.fillText('EXIT', screenX, textY);
+}
+
 // Render ammo box sprites
 function renderAmmoBoxes() {
     const boxData = ammoBoxes.filter(b => !b.collected).map(box => {
@@ -2481,7 +2571,11 @@ function getEnemyShape(t) {
 function firePlasmaBall() {
     if (currentWeapon !== 1) return; // Only works with plasma gun equipped
     if (plasmaballCooldown > 0) return;
-    if (player.ammo < 10) return;
+    if (player.ammo < 10) {
+        playEmptyClickSound();
+        plasmaballCooldown = 15; // Brief cooldown to prevent click spam
+        return;
+    }
 
     player.ammo -= 10;
     plasmaballCooldown = 60; // 1 second cooldown
@@ -2594,7 +2688,11 @@ function attack() {
         }
     } else {
         // Gun (ranged) - uses ammo
-        if (player.ammo <= 0) return;
+        if (player.ammo <= 0) {
+            playEmptyClickSound();
+            shootCooldown = 15; // Brief cooldown to prevent click spam
+            return;
+        }
 
         player.ammo--;
         shootCooldown = 15;
@@ -2751,8 +2849,10 @@ function renderMinimap() {
                 const b = Math.floor(60 * (1 - openness) + 20 * openness);
                 minimapCtx.fillStyle = `rgb(${r},${g},${b})`;
             } else if (tile === 4) {
-                // Elevator interior: bright green
-                minimapCtx.fillStyle = '#2a8';
+                // Exit portal: pulsing bright green
+                const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.005);
+                const g = Math.floor(200 + 55 * pulse);
+                minimapCtx.fillStyle = `rgb(50, ${g}, 100)`;
             } else {
                 // Floor - dark blue
                 minimapCtx.fillStyle = '#151820';
@@ -2805,20 +2905,7 @@ function renderMinimap() {
 
 // Handle input
 function handleInput() {
-    // Calculate delta time for frame-rate independent smoothing
-    const now = performance.now();
-    const deltaTime = Math.min((now - lastFrameTime) / 16.67, 3); // Normalize to ~60fps, cap at 3x
-    lastFrameTime = now;
-
-    // Apply accumulated mouse movement to target angle
-    if (pendingMouseMovement !== 0) {
-        targetAngle += pendingMouseMovement * 0.002;
-        pendingMouseMovement = 0;
-    }
-
-    // Smoothly interpolate current angle toward target (reduces jitter)
-    const smoothing = 0.5 * deltaTime; // Adjust for frame rate
-    player.angle += (targetAngle - player.angle) * Math.min(smoothing, 1);
+    // Mouse movement is applied directly in the mousemove event handler
 
     const cos = Math.cos(player.angle);
     const sin = Math.sin(player.angle);
@@ -2831,8 +2918,9 @@ function handleInput() {
     if (keys['KeyS']) { newX -= cos * player.speed; newY -= sin * player.speed; }
     if (keys['KeyA']) { newX += sin * player.speed; newY -= cos * player.speed; }
     if (keys['KeyD']) { newX -= sin * player.speed; newY += cos * player.speed; }
-    if (keys['ArrowLeft']) targetAngle -= player.rotSpeed;
-    if (keys['ArrowRight']) targetAngle += player.rotSpeed;
+    if (keys['ArrowLeft']) rawMouseAngle -= player.rotSpeed / MOUSE_SENSITIVITY;
+    if (keys['ArrowRight']) rawMouseAngle += player.rotSpeed / MOUSE_SENSITIVITY;
+    player.angle = rawMouseAngle * MOUSE_SENSITIVITY;
 
     // Touch joystick input (forward/back is -dy, strafe is dx)
     if (touchState.joystick.active) {
@@ -2857,7 +2945,15 @@ function handleInput() {
 }
 
 // Game loop
-function gameLoop() {
+function gameLoop(currentTime) {
+    // Frame rate limiting
+    const elapsed = currentTime - lastFrameTime;
+    if (elapsed < FRAME_TIME) {
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+    lastFrameTime = currentTime - (elapsed % FRAME_TIME); // Adjust for drift
+
     // Handle game over state
     if (player.health <= 0) {
         gameState = 'gameover';
@@ -2891,15 +2987,14 @@ function gameLoop() {
         ctx.fillStyle = '#0ff';
         ctx.font = '48px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(`LEVEL ${currentLevel} COMPLETE!`, SCREEN_W / 2, SCREEN_H / 2 - 40);
+        ctx.fillText(`LEVEL ${currentLevel} COMPLETE!`, SCREEN_W / 2, SCREEN_H / 2 - 20);
         ctx.fillStyle = '#0f0';
         ctx.font = '24px monospace';
-        ctx.fillText('You reached the elevator!', SCREEN_W / 2, SCREEN_H / 2);
-        ctx.fillText(`Kills: ${player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 35);
+        ctx.fillText(`Kills: ${player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 25);
         ctx.fillStyle = '#fa0';
-        ctx.fillText(`Health: ${Math.floor(player.health)} | Ammo: ${player.ammo}`, SCREEN_W / 2, SCREEN_H / 2 + 70);
+        ctx.fillText(`Health: ${Math.floor(player.health)} | Ammo: ${player.ammo}`, SCREEN_W / 2, SCREEN_H / 2 + 60);
         ctx.fillStyle = '#888';
-        ctx.fillText('Press SPACE or click for next level', SCREEN_W / 2, SCREEN_H / 2 + 110);
+        ctx.fillText('Press SPACE or click for next level', SCREEN_W / 2, SCREEN_H / 2 + 100);
         requestAnimationFrame(gameLoop);
         return;
     }
@@ -2928,7 +3023,7 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
-gameLoop();
+requestAnimationFrame(gameLoop);
     </script>
 </body>
 </html>
