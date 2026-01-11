@@ -1865,7 +1865,7 @@ document.addEventListener('contextmenu', e => {
 
 // === TOUCH CONTROLS ===
 const touchState = {
-    move: { active: false, id: null, startX: 0, startY: 0, dx: 0, dy: 0 },
+    move: { active: false, id: null, startX: 0, startY: 0, dx: 0, dy: 0, startTime: 0, moved: false },
     look: { active: false, id: null, startX: 0, startY: 0, dx: 0, dy: 0, startTime: 0, moved: false }
 };
 
@@ -1882,6 +1882,8 @@ joystickMove.addEventListener('touchstart', e => {
     touchState.move.id = touch.identifier;
     touchState.move.startX = rect.left + rect.width / 2;
     touchState.move.startY = rect.top + rect.height / 2;
+    touchState.move.startTime = Date.now();
+    touchState.move.moved = false;
     updateMoveJoystick(touch.clientX, touch.clientY);
 });
 
@@ -1889,6 +1891,11 @@ joystickMove.addEventListener('touchmove', e => {
     e.preventDefault();
     for (const touch of e.changedTouches) {
         if (touch.identifier === touchState.move.id) {
+            const dx = touch.clientX - touchState.move.startX;
+            const dy = touch.clientY - touchState.move.startY;
+            if (Math.sqrt(dx * dx + dy * dy) > MOVE_THRESHOLD) {
+                touchState.move.moved = true;
+            }
             updateMoveJoystick(touch.clientX, touch.clientY);
         }
     }
@@ -1897,6 +1904,19 @@ joystickMove.addEventListener('touchmove', e => {
 joystickMove.addEventListener('touchend', e => {
     for (const touch of e.changedTouches) {
         if (touch.identifier === touchState.move.id) {
+            // Check for tap (short duration, minimal movement) to open doors
+            const tapDuration = Date.now() - touchState.move.startTime;
+            if (tapDuration < TAP_THRESHOLD && !touchState.move.moved) {
+                // Handle game state or open door
+                if (gameState === 'gameover') {
+                    restartGame();
+                } else if (gameState === 'victory') {
+                    currentLevel++;
+                    nextLevel();
+                } else {
+                    tryOpenDoor();
+                }
+            }
             touchState.move.active = false;
             touchState.move.dx = 0;
             touchState.move.dy = 0;
@@ -2008,11 +2028,7 @@ function updateLookJoystick(x, y) {
     touchState.look.dx = dx / maxDist;
     touchState.look.dy = dy / maxDist;
 
-    // Apply horizontal look rotation
-    if (touchState.look.moved) {
-        rawMouseAngle += touchState.look.dx * 0.08;
-        player.angle = rawMouseAngle * MOUSE_SENSITIVITY;
-    }
+    // Note: Look rotation is now applied continuously in handleInput()
 
     lookKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
 }
@@ -3849,6 +3865,13 @@ function handleInput() {
         // Strafe left/right
         newX -= sin * player.speed * jx;
         newY += cos * player.speed * jx;
+    }
+
+    // Touch look joystick input (continuous rotation based on joystick position)
+    if (touchState.look.active && touchState.look.moved) {
+        const lookSensitivity = 0.06; // Rotation speed multiplier
+        rawMouseAngle += touchState.look.dx * lookSensitivity / MOUSE_SENSITIVITY;
+        player.angle = rawMouseAngle * MOUSE_SENSITIVITY;
     }
 
     // Collision detection with sliding - check all four corners of player's collision box
