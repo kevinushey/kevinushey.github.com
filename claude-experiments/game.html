@@ -2479,6 +2479,7 @@ function getEnemyShape(t) {
 
 // Fire plasma ball (secondary fire - right click)
 function firePlasmaBall() {
+    if (currentWeapon !== 1) return; // Only works with plasma gun equipped
     if (plasmaballCooldown > 0) return;
     if (player.ammo < 10) return;
 
