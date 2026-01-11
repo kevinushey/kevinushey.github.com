@@ -63,10 +63,9 @@
         .touch-btn:active {
             background: rgba(0, 200, 255, 0.5);
         }
-        #joystick-zone {
+        .joystick-zone {
             position: absolute;
             bottom: 10%;
-            left: 5%;
             width: 35%;
             max-width: 120px;
             aspect-ratio: 1;
@@ -76,7 +75,13 @@
             pointer-events: auto;
             touch-action: none;
         }
-        #joystick-knob {
+        #joystick-move {
+            left: 5%;
+        }
+        #joystick-look {
+            right: 5%;
+        }
+        .joystick-knob {
             position: absolute;
             width: 50%;
             height: 50%;
@@ -88,46 +93,15 @@
             transform: translate(-50%, -50%);
             pointer-events: none;
         }
-        #btn-attack {
-            bottom: 10%;
-            right: 5%;
-            width: 25%;
-            max-width: 80px;
-            aspect-ratio: 1;
-            font-size: 12px;
-        }
-        #btn-door {
-            bottom: 10%;
-            right: calc(5% + 90px);
-            width: 18%;
-            max-width: 55px;
-            aspect-ratio: 1;
-            font-size: 10px;
-        }
-        #btn-weapon1 {
-            bottom: 55%;
-            left: calc(50% - 60px);
-            width: 15%;
-            max-width: 45px;
-            aspect-ratio: 1;
-            font-size: 10px;
-        }
-        #btn-weapon2 {
-            bottom: 55%;
-            left: calc(50% + 15px);
-            width: 15%;
-            max-width: 45px;
-            aspect-ratio: 1;
-            font-size: 10px;
-        }
-        #look-zone {
+        #btn-weapon {
             position: absolute;
-            top: 0;
-            left: 30%;
-            width: 40%;
-            height: 100%;
-            pointer-events: auto;
-            touch-action: none;
+            bottom: 25%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 18%;
+            max-width: 60px;
+            aspect-ratio: 1;
+            font-size: 10px;
         }
         @media (pointer: coarse), (max-width: 1024px) {
             #touch-controls { display: block; }
@@ -146,18 +120,17 @@
     <canvas id="game"></canvas>
     <canvas id="minimap" width="160" height="160"></canvas>
     <div id="ui" style="display:none;"><span id="health">Health: 100</span> | <span id="ammo">Ammo: 50</span> | <span id="kills">Kills: 0</span> | <span id="weapon">Weapon: Gun</span></div>
-    <div id="instructions">WASD: Move | Mouse: Look | Click: Attack | Right-Click: Plasma Ball (10 ammo) | 1: Baton | 2: Rifle | E: Door</div>
+    <div id="instructions">WASD: Move | Mouse: Look | Click: Attack | Right-Click: Plasma Ball (10 ammo) | 1: Baton | 2: Rifle | E: Door | Find KEY to unlock exit</div>
     <div id="crosshair" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#0ff;font-size:24px;pointer-events:none;text-shadow:0 0 10px #0ff;">+</div>
     <!-- Touch controls for mobile -->
     <div id="touch-controls">
-        <div id="look-zone"></div>
-        <div id="joystick-zone">
-            <div id="joystick-knob"></div>
+        <div id="joystick-move" class="joystick-zone">
+            <div id="move-knob" class="joystick-knob"></div>
         </div>
-        <div id="btn-attack" class="touch-btn">FIRE</div>
-        <div id="btn-door" class="touch-btn">DOOR</div>
-        <div id="btn-weapon1" class="touch-btn">1</div>
-        <div id="btn-weapon2" class="touch-btn">2</div>
+        <div id="btn-weapon" class="touch-btn">WPN</div>
+        <div id="joystick-look" class="joystick-zone">
+            <div id="look-knob" class="joystick-knob"></div>
+        </div>
     </div>
     <script>
 const canvas = document.getElementById('game');
@@ -239,16 +212,124 @@ resizeCanvas();
 // Resize on window change
 window.addEventListener('resize', resizeCanvas);
 
-// Map: 1 = wall, 0 = empty, 2 = door, 3 = elevator door, 4 = elevator interior
-const MAP_W = 16;
-const MAP_H = 16;
+// Map: 1 = wall, 0 = empty, 2 = door, 3 = locked door, 4 = exit portal
+const MAP_W = 24;
+const MAP_H = 24;
 const MAP = [];
 const ELEVATOR = { x: 0, y: 0 };
 const doors = [];
 let playerStart = { x: 1.5, y: 1.5 };
 let enemies = [];
+let roomCenters = []; // Track room centers for light placement
 
-// Generate random map with contiguous hallway
+// Key system
+let levelKey = { x: 0, y: 0, collected: false };
+let hasKey = false;
+
+// Room templates (sized for 24x24 map)
+const ROOM_TEMPLATES = {
+    // Large room (5x5) - good for arenas
+    large: {
+        width: 5,
+        height: 5,
+        lightsInCorners: true,
+        enemySpots: 2
+    },
+    // Medium room (4x4)
+    medium: {
+        width: 4,
+        height: 4,
+        lightsInCorners: false,
+        enemySpots: 1
+    },
+    // Small room (3x3)
+    small: {
+        width: 3,
+        height: 3,
+        lightsInCorners: false,
+        enemySpots: 1
+    }
+};
+
+// Carve a rectangular room into the map
+function carveRoom(x, y, width, height) {
+    const tiles = [];
+    for (let dy = 0; dy < height; dy++) {
+        for (let dx = 0; dx < width; dx++) {
+            const tx = x + dx;
+            const ty = y + dy;
+            if (tx > 0 && tx < MAP_W - 1 && ty > 0 && ty < MAP_H - 1) {
+                MAP[ty][tx] = 0;
+                tiles.push({ x: tx, y: ty });
+            }
+        }
+    }
+    return tiles;
+}
+
+// Carve a narrow corridor between two points (1 tile wide)
+function carveCorridor(x1, y1, x2, y2) {
+    const tiles = [];
+    let x = x1, y = y1;
+
+    // Randomly decide to go horizontal or vertical first
+    const horizontalFirst = Math.random() < 0.5;
+
+    if (horizontalFirst) {
+        // Horizontal then vertical
+        while (x !== x2) {
+            x += x < x2 ? 1 : -1;
+            if (x > 0 && x < MAP_W - 1 && y > 0 && y < MAP_H - 1) {
+                if (MAP[y][x] === 1) tiles.push({ x, y });
+                MAP[y][x] = 0;
+            }
+        }
+        while (y !== y2) {
+            y += y < y2 ? 1 : -1;
+            if (x > 0 && x < MAP_W - 1 && y > 0 && y < MAP_H - 1) {
+                if (MAP[y][x] === 1) tiles.push({ x, y });
+                MAP[y][x] = 0;
+            }
+        }
+    } else {
+        // Vertical then horizontal
+        while (y !== y2) {
+            y += y < y2 ? 1 : -1;
+            if (x > 0 && x < MAP_W - 1 && y > 0 && y < MAP_H - 1) {
+                if (MAP[y][x] === 1) tiles.push({ x, y });
+                MAP[y][x] = 0;
+            }
+        }
+        while (x !== x2) {
+            x += x < x2 ? 1 : -1;
+            if (x > 0 && x < MAP_W - 1 && y > 0 && y < MAP_H - 1) {
+                if (MAP[y][x] === 1) tiles.push({ x, y });
+                MAP[y][x] = 0;
+            }
+        }
+    }
+    return tiles;
+}
+
+// Check if a room can be placed without overlapping existing rooms (with margin)
+function canPlaceRoom(x, y, width, height, margin = 2) {
+    for (let dy = -margin; dy < height + margin; dy++) {
+        for (let dx = -margin; dx < width + margin; dx++) {
+            const tx = x + dx;
+            const ty = y + dy;
+            if (tx <= 0 || tx >= MAP_W - 1 || ty <= 0 || ty >= MAP_H - 1) {
+                return false;
+            }
+            if (dx >= 0 && dx < width && dy >= 0 && dy < height) {
+                // Inside room - must be wall
+                if (MAP[ty][tx] !== 1) return false;
+            }
+        }
+    }
+    return true;
+}
+
+// Generate random map with rooms and corridors
 function generateMap() {
     // Fill with walls
     for (let y = 0; y < MAP_H; y++) {
@@ -258,79 +339,134 @@ function generateMap() {
         }
     }
 
-    // Track hallway tiles for later use
-    const hallwayTiles = [];
+    roomCenters = [];
+    const allTiles = [];
 
-    // Start position (near top-left corner)
-    let cx = 2;
-    let cy = 2;
-    MAP[cy][cx] = 0;
-    hallwayTiles.push({ x: cx, y: cy });
+    // Place rooms
+    const numRooms = 4 + Math.floor(Math.random() * 3); // 4-6 rooms for 24x24 map
+    const rooms = [];
 
-    // Random walk to create winding hallway
-    const directions = [
-        { dx: 1, dy: 0 },  // right
-        { dx: -1, dy: 0 }, // left
-        { dx: 0, dy: 1 },  // down
-        { dx: 0, dy: -1 }  // up
-    ];
-
-    let currentDir = 0; // Start going right
-    const minHallwayLength = 40 + Math.floor(Math.random() * 20);
-
-    while (hallwayTiles.length < minHallwayLength) {
-        // Occasionally change direction (prefer continuing straight)
-        if (Math.random() < 0.3) {
-            // Turn left or right relative to current direction
-            if (Math.random() < 0.5) {
-                currentDir = (currentDir + 1) % 4;
-            } else {
-                currentDir = (currentDir + 3) % 4;
+    for (let i = 0; i < numRooms; i++) {
+        // Pick a random room template
+        const templateNames = Object.keys(ROOM_TEMPLATES);
+        // Mix of large and medium rooms with some small ones
+        const weights = [2, 3, 2]; // large, medium, small
+        const totalWeight = weights.reduce((a, b) => a + b, 0);
+        let r = Math.random() * totalWeight;
+        let templateIdx = 0;
+        for (let j = 0; j < weights.length; j++) {
+            r -= weights[j];
+            if (r <= 0) {
+                templateIdx = j;
+                break;
             }
         }
+        const templateName = templateNames[templateIdx];
+        const template = ROOM_TEMPLATES[templateName];
 
-        const dir = directions[currentDir];
-        const nx = cx + dir.dx;
-        const ny = cy + dir.dy;
+        // Try to place the room
+        let placed = false;
+        for (let attempt = 0; attempt < 50 && !placed; attempt++) {
+            const x = 3 + Math.floor(Math.random() * (MAP_W - template.width - 6));
+            const y = 3 + Math.floor(Math.random() * (MAP_H - template.height - 6));
 
-        // Check bounds (stay away from edges)
-        if (nx >= 2 && nx < MAP_W - 2 && ny >= 2 && ny < MAP_H - 2) {
-            // Carve the hallway
-            if (MAP[ny][nx] === 1) {
-                MAP[ny][nx] = 0;
-                hallwayTiles.push({ x: nx, y: ny });
+            if (canPlaceRoom(x, y, template.width, template.height)) {
+                const tiles = carveRoom(x, y, template.width, template.height);
+                allTiles.push(...tiles);
+
+                const centerX = x + Math.floor(template.width / 2);
+                const centerY = y + Math.floor(template.height / 2);
+
+                rooms.push({
+                    x, y,
+                    width: template.width,
+                    height: template.height,
+                    centerX,
+                    centerY,
+                    template: templateName,
+                    lightsInCorners: template.lightsInCorners,
+                    enemySpots: template.enemySpots
+                });
+
+                roomCenters.push({ x: centerX, y: centerY, template: templateName });
+                placed = true;
             }
-            cx = nx;
-            cy = ny;
-        } else {
-            // Hit boundary, change direction
-            currentDir = (currentDir + 1) % 4;
         }
     }
 
-    // Find the tile furthest from start for elevator
-    let maxDist = 0;
-    let elevatorTile = hallwayTiles[hallwayTiles.length - 1];
-    for (const tile of hallwayTiles) {
-        const dist = Math.abs(tile.x - 2) + Math.abs(tile.y - 2);
-        if (dist > maxDist) {
-            maxDist = dist;
-            elevatorTile = tile;
+    // Connect rooms with corridors
+    // Sort rooms by position for more interesting connections
+    rooms.sort((a, b) => (a.centerX + a.centerY) - (b.centerX + b.centerY));
+
+    for (let i = 0; i < rooms.length - 1; i++) {
+        const room1 = rooms[i];
+        const room2 = rooms[i + 1];
+        const corridorTiles = carveCorridor(
+            room1.centerX, room1.centerY,
+            room2.centerX, room2.centerY
+        );
+        allTiles.push(...corridorTiles);
+    }
+
+    // Add some extra random connections for loops
+    const numExtraCorridors = 1 + Math.floor(Math.random() * 2); // 1-2 extra corridors for 24x24
+    for (let i = 0; i < numExtraCorridors; i++) {
+        const room1 = rooms[Math.floor(Math.random() * rooms.length)];
+        const room2 = rooms[Math.floor(Math.random() * rooms.length)];
+        if (room1 !== room2) {
+            const corridorTiles = carveCorridor(
+                room1.centerX, room1.centerY,
+                room2.centerX, room2.centerY
+            );
+            allTiles.push(...corridorTiles);
         }
     }
 
-    // Place elevator interior (no door - just walk in to win)
-    ELEVATOR.x = elevatorTile.x;
-    ELEVATOR.y = elevatorTile.y;
-    MAP[elevatorTile.y][elevatorTile.x] = 4; // Elevator interior
+    // Place player start in a room near the top-left
+    const startRoom = rooms.reduce((best, room) => {
+        const dist = room.centerX + room.centerY;
+        const bestDist = best.centerX + best.centerY;
+        return dist < bestDist ? room : best;
+    });
+    playerStart = { x: startRoom.centerX + 0.5, y: startRoom.centerY + 0.5 };
 
-    // Add some doors along the hallway (at random positions)
-    const numDoors = 3 + Math.floor(Math.random() * 4);
-    const doorCandidates = hallwayTiles.filter(tile => {
-        // Don't place doors near start, elevator, or map edges
-        const distFromStart = Math.abs(tile.x - 2) + Math.abs(tile.y - 2);
-        const distFromElevator = Math.abs(tile.x - elevatorTile.x) + Math.abs(tile.y - elevatorTile.y);
-        return distFromStart > 3 && distFromElevator > 2 && MAP[tile.y][tile.x] === 0;
+    // Place exit in a room far from start
+    const exitRoom = rooms.reduce((best, room) => {
+        const dist = Math.abs(room.centerX - startRoom.centerX) + Math.abs(room.centerY - startRoom.centerY);
+        const bestDist = Math.abs(best.centerX - startRoom.centerX) + Math.abs(best.centerY - startRoom.centerY);
+        return dist > bestDist ? room : best;
+    });
+    ELEVATOR.x = exitRoom.centerX;
+    ELEVATOR.y = exitRoom.centerY;
+    MAP[exitRoom.centerY][exitRoom.centerX] = 4;
+
+    // Add doors at valid doorway positions (walls on one axis, open on the other)
+    const numDoors = 2 + Math.floor(Math.random() * 2); // 2-3 doors for 24x24 map
+    const doorCandidates = allTiles.filter(tile => {
+        const { x, y } = tile;
+
+        // Must be an open tile, not too close to start/exit
+        if (MAP[y][x] !== 0) return false;
+        const distFromStart = Math.abs(x - startRoom.centerX) + Math.abs(y - startRoom.centerY);
+        const distFromExit = Math.abs(x - exitRoom.centerX) + Math.abs(y - exitRoom.centerY);
+        if (distFromStart <= 5 || distFromExit <= 5) return false;
+
+        // Check bounds
+        if (x <= 1 || x >= MAP_W - 2 || y <= 1 || y >= MAP_H - 2) return false;
+
+        // Get neighboring tiles
+        const above = MAP[y - 1][x];
+        const below = MAP[y + 1][x];
+        const left = MAP[y][x - 1];
+        const right = MAP[y][x + 1];
+
+        // Valid horizontal doorway: walls above and below, open left and right
+        const horizontalDoor = (above === 1 && below === 1 && left === 0 && right === 0);
+
+        // Valid vertical doorway: walls left and right, open above and below
+        const verticalDoor = (left === 1 && right === 1 && above === 0 && below === 0);
+
+        return horizontalDoor || verticalDoor;
     });
 
     for (let i = 0; i < numDoors && doorCandidates.length > 0; i++) {
@@ -340,31 +476,137 @@ function generateMap() {
         doors.push({ x: tile.x, y: tile.y, state: 0, opening: false, type: 'normal' });
     }
 
-    // Set player start (first hallway tile)
-    playerStart = { x: hallwayTiles[0].x + 0.5, y: hallwayTiles[0].y + 0.5 };
+    // KEY AND LOCKED DOOR DISABLED FOR NOW - code kept for future use
+    // TODO: Fix map generation to ensure key is always accessible before re-enabling
+    /*
+    // Place locked door near the exit room (blocks access to exit area)
+    const lockedDoorCandidates = [];
+    for (let y = 1; y < MAP_H - 1; y++) {
+        for (let x = 1; x < MAP_W - 1; x++) {
+            if (MAP[y][x] !== 0) continue;
 
-    // Generate enemies at random positions along hallway
-    const numEnemies = 5 + Math.floor(Math.random() * 6); // 5-10 enemies
-    const enemyCandidates = hallwayTiles.filter(tile => {
-        const distFromStart = Math.abs(tile.x - hallwayTiles[0].x) + Math.abs(tile.y - hallwayTiles[0].y);
-        return distFromStart > 4 && MAP[tile.y][tile.x] === 0;
+            // Must be close to exit room but not inside it
+            const distFromExit = Math.abs(x - exitRoom.centerX) + Math.abs(y - exitRoom.centerY);
+            if (distFromExit < 3 || distFromExit > 8) continue;
+
+            // Check for valid doorway position
+            const above = MAP[y - 1][x];
+            const below = MAP[y + 1][x];
+            const left = MAP[y][x - 1];
+            const right = MAP[y][x + 1];
+
+            const horizontalDoor = (above === 1 && below === 1 && left === 0 && right === 0);
+            const verticalDoor = (left === 1 && right === 1 && above === 0 && below === 0);
+
+            if (horizontalDoor || verticalDoor) {
+                lockedDoorCandidates.push({ x, y, distFromExit });
+            }
+        }
+    }
+
+    // Sort by distance to exit (prefer closer ones)
+    lockedDoorCandidates.sort((a, b) => a.distFromExit - b.distFromExit);
+
+    if (lockedDoorCandidates.length > 0) {
+        // Pick one of the closest candidates
+        const pickIdx = Math.floor(Math.random() * Math.min(3, lockedDoorCandidates.length));
+        const lockedTile = lockedDoorCandidates[pickIdx];
+        MAP[lockedTile.y][lockedTile.x] = 3; // Locked door tile type
+        doors.push({ x: lockedTile.x, y: lockedTile.y, state: 0, opening: false, type: 'locked' });
+    }
+
+    // Place key in a room far from exit but not the start room
+    const keyRoomCandidates = rooms.filter(room => {
+        if (room === startRoom || room === exitRoom) return false;
+        const distFromExit = Math.abs(room.centerX - exitRoom.centerX) + Math.abs(room.centerY - exitRoom.centerY);
+        const distFromStart = Math.abs(room.centerX - startRoom.centerX) + Math.abs(room.centerY - startRoom.centerY);
+        // Key should be far from exit, moderately far from start (adjusted for 24x24 map)
+        return distFromExit > 6 && distFromStart > 3;
     });
 
+    // Fall back to any non-start/exit room if no good candidates
+    const keyRoom = keyRoomCandidates.length > 0
+        ? keyRoomCandidates[Math.floor(Math.random() * keyRoomCandidates.length)]
+        : rooms.find(r => r !== startRoom && r !== exitRoom);
+
+    if (keyRoom) {
+        levelKey = {
+            x: keyRoom.centerX + 0.5,
+            y: keyRoom.centerY + 0.5,
+            collected: false
+        };
+    }
+    */
+    // Mark key as collected so locked doors (if any) can be opened
+    levelKey = { x: 0, y: 0, collected: true };
+    hasKey = true;
+
+    // Helper to check if position is in player's initial field of view
+    function isInPlayerInitialView(x, y) {
+        const dx = x - playerStart.x;
+        const dy = y - playerStart.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Player starts facing angle 0 (east)
+        const angleToEnemy = Math.atan2(dy, dx);
+        let angleDiff = angleToEnemy - 0; // Player starts at angle 0
+
+        // Normalize to -PI to PI
+        while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+        while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+        // Check if within FOV and close enough to be visible
+        const inFOV = Math.abs(angleDiff) < FOV / 2 + 0.1;
+        const closeEnough = dist < 8; // Only check nearby enemies
+
+        if (!inFOV || !closeEnough) return false;
+
+        // Check if there's a wall blocking line of sight
+        const steps = Math.ceil(dist * 2);
+        for (let i = 1; i < steps; i++) {
+            const t = i / steps;
+            const checkX = Math.floor(playerStart.x + dx * t);
+            const checkY = Math.floor(playerStart.y + dy * t);
+            if (MAP[checkY] && MAP[checkY][checkX] === 1) {
+                return false; // Wall blocks view
+            }
+        }
+
+        return true; // Enemy would be visible
+    }
+
+    // Generate enemies in rooms
     enemies = [];
-    for (let i = 0; i < numEnemies && enemyCandidates.length > 0; i++) {
-        const idx = Math.floor(Math.random() * enemyCandidates.length);
-        const tile = enemyCandidates.splice(idx, 1)[0];
-        enemies.push({
-            x: tile.x + 0.5,
-            y: tile.y + 0.5,
-            health: 30 * currentLevel, // Enemies get stronger each level
-            speed: 0.02,
-            alive: true,
-            dying: false,
-            deathTimer: 0,
-            seen: false,
-            damageFlash: 0
-        });
+    const numEnemies = 4 + Math.floor(Math.random() * 4) + currentLevel; // Scaled for 24x24 map
+
+    for (const room of rooms) {
+        // Skip start and exit rooms
+        if (room === startRoom || room === exitRoom) continue;
+
+        const enemiesInRoom = Math.min(room.enemySpots, Math.ceil(numEnemies / rooms.length));
+        for (let i = 0; i < enemiesInRoom; i++) {
+            // Try multiple positions to avoid spawning in player's view
+            let placed = false;
+            for (let attempt = 0; attempt < 10 && !placed; attempt++) {
+                const ex = room.x + 1 + Math.floor(Math.random() * (room.width - 2));
+                const ey = room.y + 1 + Math.floor(Math.random() * (room.height - 2));
+
+                if (MAP[ey][ex] === 0 && !isInPlayerInitialView(ex + 0.5, ey + 0.5)) {
+                    enemies.push({
+                        x: ex + 0.5,
+                        y: ey + 0.5,
+                        health: 30 * currentLevel,
+                        speed: 0.02,
+                        alive: true,
+                        dying: false,
+                        deathTimer: 0,
+                        seen: false,
+                        damageFlash: 0
+                    });
+                    placed = true;
+                }
+            }
+        }
     }
 }
 
@@ -438,31 +680,63 @@ function nextLevel(fullReset = false) {
     gameState = 'playing';
 }
 
-// Light sprites - randomly generated along hallways
+// Light sprites - placed in room corners and randomly in hallways
 const lights = [];
 function generateLights() {
-    const numLights = 5 + Math.floor(Math.random() * 6); // 5-10 lights
-    // Find walkable floor positions (tile 0)
+    // First, place lights in corners of large rooms
+    for (const room of roomCenters) {
+        if (room.template === 'large') {
+            // Place lights near corners of large rooms (5x5, so ±2 from center)
+            const corners = [
+                { x: room.x - 2, y: room.y - 2 },
+                { x: room.x + 2, y: room.y - 2 },
+                { x: room.x - 2, y: room.y + 2 },
+                { x: room.x + 2, y: room.y + 2 }
+            ];
+            for (const corner of corners) {
+                if (corner.x > 0 && corner.x < MAP_W - 1 && corner.y > 0 && corner.y < MAP_H - 1) {
+                    if (MAP[Math.floor(corner.y)][Math.floor(corner.x)] === 0) {
+                        lights.push({
+                            x: corner.x + 0.5,
+                            y: corner.y + 0.5,
+                            color: '#0cf',
+                            phase: Math.random() * Math.PI * 2
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Then add some random lights in hallways and other rooms
+    const numLights = 2 + Math.floor(Math.random() * 3); // 2-4 additional lights for 24x24 map
     const walkable = [];
     for (let y = 0; y < MAP_H; y++) {
         for (let x = 0; x < MAP_W; x++) {
             if (MAP[y][x] === 0) {
-                walkable.push({ x: x + 0.5, y: y + 0.5 });
+                // Avoid placing too close to existing lights
+                const tooClose = lights.some(l => {
+                    const dx = l.x - (x + 0.5);
+                    const dy = l.y - (y + 0.5);
+                    return Math.sqrt(dx * dx + dy * dy) < 4;
+                });
+                if (!tooClose) {
+                    walkable.push({ x: x + 0.5, y: y + 0.5 });
+                }
             }
         }
     }
-    // Randomly pick positions for lights
+
     for (let i = 0; i < numLights && walkable.length > 0; i++) {
         const idx = Math.floor(Math.random() * walkable.length);
         const pos = walkable.splice(idx, 1)[0];
-        // Offset slightly toward a wall for wall-mounted effect
         const offsetX = (Math.random() - 0.5) * 0.6;
         const offsetY = (Math.random() - 0.5) * 0.6;
         lights.push({
             x: pos.x + offsetX,
             y: pos.y + offsetY,
             color: '#0cf',
-            phase: Math.random() * Math.PI * 2 // For flicker variation
+            phase: Math.random() * Math.PI * 2
         });
     }
 }
@@ -471,7 +745,7 @@ generateLights();
 // Ammo boxes - randomly generated along hallways
 const ammoBoxes = [];
 function generateAmmoBoxes() {
-    const numBoxes = 3 + Math.floor(Math.random() * 4); // 3-6 ammo boxes
+    const numBoxes = 2 + Math.floor(Math.random() * 2); // 2-3 ammo boxes for 24x24 map
     const walkable = [];
     for (let y = 0; y < MAP_H; y++) {
         for (let x = 0; x < MAP_W; x++) {
@@ -495,7 +769,7 @@ generateAmmoBoxes();
 // Health packs - randomly generated along hallways
 const healthPacks = [];
 function generateHealthPacks() {
-    const numPacks = 2 + Math.floor(Math.random() * 3); // 2-4 health packs
+    const numPacks = 1 + Math.floor(Math.random() * 2); // 1-2 health packs for 24x24 map
     const walkable = [];
     for (let y = 0; y < MAP_H; y++) {
         for (let x = 0; x < MAP_W; x++) {
@@ -965,6 +1239,95 @@ function playDoorOpenSound() {
     osc.stop(now + 0.1);
 }
 
+function playLockedDoorSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // Denied buzz
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(80, now);
+
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.setValueAtTime(0, now + 0.08);
+    gain.gain.setValueAtTime(0.15, now + 0.12);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.25);
+
+    // Low clunk (door won't budge)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(60, now);
+    osc2.frequency.exponentialRampToValueAtTime(30, now + 0.1);
+    gain2.gain.setValueAtTime(0.12, now);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now);
+    osc2.stop(now + 0.1);
+}
+
+function playKeyPickupSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // Triumphant ascending chime
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+
+    notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+
+        const startTime = now + i * 0.08;
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(0.15, startTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.3);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + 0.3);
+    });
+
+    // Add a metallic shimmer
+    const bufferSize = ctx.sampleRate * 0.2;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3)) * 0.3;
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 4000;
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.08, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+
+    noise.start(now);
+    noise.stop(now + 0.2);
+}
+
 function playAmmoPickupSound() {
     const ctx = ensureAudioCtx();
     const now = ctx.currentTime;
@@ -1243,7 +1606,46 @@ function playVictoryMusic() {
 // Input - use e.code for reliable key detection
 const keys = {};
 let rawMouseAngle = 0; // Accumulate raw mouse movement at full resolution
-const MOUSE_SENSITIVITY = 0.01;
+const MOUSE_SENSITIVITY = 0.002;
+
+// Firefox detection and mouse smoothing (Firefox doesn't support unadjustedMovement)
+const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
+const SMOOTHING_SAMPLES = 3; // Number of samples for moving average
+const IMMEDIATE_SAMPLES = 2; // First N samples are applied immediately
+const MOVEMENT_TIMEOUT = 80; // ms - reset to "initial" state after this pause
+const mouseMovementHistory = []; // Recent movement values for smoothing
+let lastMovementTime = 0;
+
+function getSmoothedMovement(rawMovement) {
+    if (!isFirefox) {
+        return rawMovement; // No smoothing needed for browsers with raw input
+    }
+
+    const now = performance.now();
+
+    // Reset history if there's been a pause in movement
+    if (now - lastMovementTime > MOVEMENT_TIMEOUT) {
+        mouseMovementHistory.length = 0;
+    }
+    lastMovementTime = now;
+
+    // Add to history
+    mouseMovementHistory.push(rawMovement);
+
+    // Keep only recent samples
+    while (mouseMovementHistory.length > SMOOTHING_SAMPLES) {
+        mouseMovementHistory.shift();
+    }
+
+    // First few movements are immediate (responsive start)
+    if (mouseMovementHistory.length <= IMMEDIATE_SAMPLES) {
+        return rawMovement;
+    }
+
+    // After initial movements, return smoothed average
+    const sum = mouseMovementHistory.reduce((a, b) => a + b, 0);
+    return sum / mouseMovementHistory.length;
+}
 
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
@@ -1275,8 +1677,9 @@ canvas.addEventListener('click', () => {
 });
 document.addEventListener('mousemove', e => {
     if (document.pointerLockElement === canvas) {
-        // Accumulate raw mouse pixels at full resolution, then scale
-        rawMouseAngle += e.movementX;
+        // Accumulate mouse movement (smoothed on Firefox, raw on other browsers)
+        const movement = getSmoothedMovement(e.movementX);
+        rawMouseAngle += movement;
         player.angle = rawMouseAngle * MOUSE_SENSITIVITY;
     }
 });
@@ -1297,57 +1700,57 @@ document.addEventListener('contextmenu', e => {
 
 // === TOUCH CONTROLS ===
 const touchState = {
-    joystick: { active: false, id: null, startX: 0, startY: 0, dx: 0, dy: 0 },
-    look: { active: false, id: null, lastX: 0 }
+    move: { active: false, id: null, startX: 0, startY: 0, dx: 0, dy: 0 },
+    look: { active: false, id: null, startX: 0, startY: 0, dx: 0, dy: 0, startTime: 0, moved: false }
 };
 
-// Joystick for movement
-const joystickZone = document.getElementById('joystick-zone');
-const joystickKnob = document.getElementById('joystick-knob');
+// Left joystick for movement
+const joystickMove = document.getElementById('joystick-move');
+const moveKnob = document.getElementById('move-knob');
 
-joystickZone.addEventListener('touchstart', e => {
+joystickMove.addEventListener('touchstart', e => {
     e.preventDefault();
     startMusic();
     const touch = e.changedTouches[0];
-    const rect = joystickZone.getBoundingClientRect();
-    touchState.joystick.active = true;
-    touchState.joystick.id = touch.identifier;
-    touchState.joystick.startX = rect.left + rect.width / 2;
-    touchState.joystick.startY = rect.top + rect.height / 2;
-    updateJoystick(touch.clientX, touch.clientY);
+    const rect = joystickMove.getBoundingClientRect();
+    touchState.move.active = true;
+    touchState.move.id = touch.identifier;
+    touchState.move.startX = rect.left + rect.width / 2;
+    touchState.move.startY = rect.top + rect.height / 2;
+    updateMoveJoystick(touch.clientX, touch.clientY);
 });
 
-joystickZone.addEventListener('touchmove', e => {
+joystickMove.addEventListener('touchmove', e => {
     e.preventDefault();
     for (const touch of e.changedTouches) {
-        if (touch.identifier === touchState.joystick.id) {
-            updateJoystick(touch.clientX, touch.clientY);
+        if (touch.identifier === touchState.move.id) {
+            updateMoveJoystick(touch.clientX, touch.clientY);
         }
     }
 });
 
-joystickZone.addEventListener('touchend', e => {
+joystickMove.addEventListener('touchend', e => {
     for (const touch of e.changedTouches) {
-        if (touch.identifier === touchState.joystick.id) {
-            touchState.joystick.active = false;
-            touchState.joystick.dx = 0;
-            touchState.joystick.dy = 0;
-            joystickKnob.style.transform = 'translate(-50%, -50%)';
+        if (touch.identifier === touchState.move.id) {
+            touchState.move.active = false;
+            touchState.move.dx = 0;
+            touchState.move.dy = 0;
+            moveKnob.style.transform = 'translate(-50%, -50%)';
         }
     }
 });
 
-joystickZone.addEventListener('touchcancel', e => {
-    touchState.joystick.active = false;
-    touchState.joystick.dx = 0;
-    touchState.joystick.dy = 0;
-    joystickKnob.style.transform = 'translate(-50%, -50%)';
+joystickMove.addEventListener('touchcancel', e => {
+    touchState.move.active = false;
+    touchState.move.dx = 0;
+    touchState.move.dy = 0;
+    moveKnob.style.transform = 'translate(-50%, -50%)';
 });
 
-function updateJoystick(x, y) {
+function updateMoveJoystick(x, y) {
     const maxDist = 50;
-    let dx = x - touchState.joystick.startX;
-    let dy = y - touchState.joystick.startY;
+    let dx = x - touchState.move.startX;
+    let dy = y - touchState.move.startY;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist > maxDist) {
@@ -1355,83 +1758,107 @@ function updateJoystick(x, y) {
         dy = (dy / dist) * maxDist;
     }
 
-    touchState.joystick.dx = dx / maxDist;
-    touchState.joystick.dy = dy / maxDist;
+    touchState.move.dx = dx / maxDist;
+    touchState.move.dy = dy / maxDist;
 
-    joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    moveKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
 }
 
-// Look zone for camera rotation
-const lookZone = document.getElementById('look-zone');
+// Right joystick for looking + tap to attack
+const joystickLook = document.getElementById('joystick-look');
+const lookKnob = document.getElementById('look-knob');
+const TAP_THRESHOLD = 200; // ms
+const MOVE_THRESHOLD = 10; // pixels
 
-lookZone.addEventListener('touchstart', e => {
+joystickLook.addEventListener('touchstart', e => {
     e.preventDefault();
     startMusic();
     const touch = e.changedTouches[0];
+    const rect = joystickLook.getBoundingClientRect();
     touchState.look.active = true;
     touchState.look.id = touch.identifier;
-    touchState.look.lastX = touch.clientX;
+    touchState.look.startX = rect.left + rect.width / 2;
+    touchState.look.startY = rect.top + rect.height / 2;
+    touchState.look.startTime = Date.now();
+    touchState.look.moved = false;
+    updateLookJoystick(touch.clientX, touch.clientY);
 });
 
-lookZone.addEventListener('touchmove', e => {
+joystickLook.addEventListener('touchmove', e => {
     e.preventDefault();
     for (const touch of e.changedTouches) {
         if (touch.identifier === touchState.look.id) {
-            const deltaX = touch.clientX - touchState.look.lastX;
-            rawMouseAngle += deltaX * (0.008 / MOUSE_SENSITIVITY);
-            player.angle = rawMouseAngle * MOUSE_SENSITIVITY;
-            touchState.look.lastX = touch.clientX;
+            const dx = touch.clientX - touchState.look.startX;
+            const dy = touch.clientY - touchState.look.startY;
+            if (Math.sqrt(dx * dx + dy * dy) > MOVE_THRESHOLD) {
+                touchState.look.moved = true;
+            }
+            updateLookJoystick(touch.clientX, touch.clientY);
         }
     }
 });
 
-lookZone.addEventListener('touchend', e => {
+joystickLook.addEventListener('touchend', e => {
     for (const touch of e.changedTouches) {
         if (touch.identifier === touchState.look.id) {
+            // Check for tap (short duration, minimal movement)
+            const tapDuration = Date.now() - touchState.look.startTime;
+            if (tapDuration < TAP_THRESHOLD && !touchState.look.moved) {
+                // Handle game state or attack
+                if (gameState === 'gameover') {
+                    restartGame();
+                } else if (gameState === 'victory') {
+                    currentLevel++;
+                    nextLevel();
+                } else {
+                    attack();
+                }
+            }
             touchState.look.active = false;
+            touchState.look.dx = 0;
+            touchState.look.dy = 0;
+            lookKnob.style.transform = 'translate(-50%, -50%)';
         }
     }
 });
 
-lookZone.addEventListener('touchcancel', e => {
+joystickLook.addEventListener('touchcancel', e => {
     touchState.look.active = false;
+    touchState.look.dx = 0;
+    touchState.look.dy = 0;
+    lookKnob.style.transform = 'translate(-50%, -50%)';
 });
 
-// Attack button
-const btnAttack = document.getElementById('btn-attack');
-btnAttack.addEventListener('touchstart', e => {
-    e.preventDefault();
-    startMusic();
-    if (gameState === 'gameover') {
-        restartGame();
-    } else if (gameState === 'victory') {
-        currentLevel++;
-        nextLevel();
-    } else {
-        attack();
+function updateLookJoystick(x, y) {
+    const maxDist = 50;
+    let dx = x - touchState.look.startX;
+    let dy = y - touchState.look.startY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist > maxDist) {
+        dx = (dx / dist) * maxDist;
+        dy = (dy / dist) * maxDist;
     }
-});
 
-// Door button
-const btnDoor = document.getElementById('btn-door');
-btnDoor.addEventListener('touchstart', e => {
+    touchState.look.dx = dx / maxDist;
+    touchState.look.dy = dy / maxDist;
+
+    // Apply horizontal look rotation
+    if (touchState.look.moved) {
+        rawMouseAngle += touchState.look.dx * 0.08;
+        player.angle = rawMouseAngle * MOUSE_SENSITIVITY;
+    }
+
+    lookKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+}
+
+// Weapon switch button
+const btnWeapon = document.getElementById('btn-weapon');
+btnWeapon.addEventListener('touchstart', e => {
     e.preventDefault();
     startMusic();
-    tryOpenDoor();
-});
-
-// Weapon buttons
-const btnWeapon1 = document.getElementById('btn-weapon1');
-const btnWeapon2 = document.getElementById('btn-weapon2');
-
-btnWeapon1.addEventListener('touchstart', e => {
-    e.preventDefault();
-    currentWeapon = 0;
-});
-
-btnWeapon2.addEventListener('touchstart', e => {
-    e.preventDefault();
-    currentWeapon = 1;
+    // Toggle between weapons
+    currentWeapon = currentWeapon === 0 ? 1 : 0;
 });
 
 // Weapon switching and restart
@@ -1461,7 +1888,7 @@ function isWall(x, y) {
     if (mapX < 0 || mapX >= MAP_W || mapY < 0 || mapY >= MAP_H) return true;
     const tile = MAP[mapY][mapX];
     if (tile === 1) return true;
-    if (tile === 2 || tile === 3) { // Normal door or elevator door
+    if (tile === 2 || tile === 3) { // Normal door or locked door
         const door = getDoor(mapX, mapY);
         return door && door.state < 0.8; // Door blocks if less than 80% open
     }
@@ -1488,6 +1915,11 @@ function tryOpenDoor() {
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < 2 && door.state < 0.5 && !door.opening) {
+            // Check if door is locked
+            if (door.type === 'locked' && !hasKey) {
+                playLockedDoorSound();
+                return;
+            }
             door.opening = true;
             playDoorOpenSound();
         }
@@ -1694,9 +2126,10 @@ function render3D() {
                 }
             }
         } else if (tile === 3) {
-            // Elevator door (bright green - escape route)
+            // Locked door (red when locked, green when player has key)
             const baseColor = side === 0 ? 180 : 150;
             const openAmount = doorState || 0;
+            const canOpen = hasKey;
 
             // Door dimensions
             const doorHeight = wallHeight * (1 - openAmount);
@@ -1705,24 +2138,38 @@ function render3D() {
             // Check for border
             const isBorder = wallX < 0.06 || wallX > 0.94;
 
-            // Check for handle area
-            const isHandle = wallX > 0.72 && wallX < 0.82;
+            // Check for lock area (center of door)
+            const isLockArea = wallX > 0.42 && wallX < 0.58;
 
             if (isBorder) {
-                // Bright border for escape door
-                r = Math.floor(100 * shade);
-                g = Math.floor(200 * shade);
-                b = Math.floor(120 * shade);
+                // Border color based on lock status
+                if (canOpen) {
+                    r = Math.floor(80 * shade);
+                    g = Math.floor(200 * shade);
+                    b = Math.floor(100 * shade);
+                } else {
+                    r = Math.floor(200 * shade);
+                    g = Math.floor(80 * shade);
+                    b = Math.floor(60 * shade);
+                }
             } else {
                 // Inner panel
                 const innerX = (wallX - 0.06) / 0.88;
-                const panelPos = (innerX * 2) % 1; // 2 panels
+                const panelPos = (innerX * 2) % 1;
                 const nearEdge = panelPos < 0.05 || panelPos > 0.95;
                 const highlight = nearEdge ? 0.2 : 0;
 
-                r = Math.floor(baseColor * shade * (0.2 + highlight));
-                g = Math.floor(baseColor * shade * (1.0 + highlight * 0.2));
-                b = Math.floor(baseColor * shade * (0.3 + highlight));
+                if (canOpen) {
+                    // Green when player has key
+                    r = Math.floor(baseColor * shade * (0.3 + highlight));
+                    g = Math.floor(baseColor * shade * (0.9 + highlight * 0.1));
+                    b = Math.floor(baseColor * shade * (0.4 + highlight));
+                } else {
+                    // Red/orange when locked
+                    r = Math.floor(baseColor * shade * (1.0 + highlight * 0.1));
+                    g = Math.floor(baseColor * shade * (0.35 + highlight));
+                    b = Math.floor(baseColor * shade * (0.25 + highlight));
+                }
             }
 
             // Draw main door
@@ -1731,20 +2178,28 @@ function render3D() {
 
             // Draw top border
             const borderSize = doorHeight * 0.05;
-            ctx.fillStyle = `rgb(${Math.floor(100 * shade)},${Math.floor(200 * shade)},${Math.floor(120 * shade)})`;
+            if (canOpen) {
+                ctx.fillStyle = `rgb(${Math.floor(80 * shade)},${Math.floor(200 * shade)},${Math.floor(100 * shade)})`;
+            } else {
+                ctx.fillStyle = `rgb(${Math.floor(200 * shade)},${Math.floor(80 * shade)},${Math.floor(60 * shade)})`;
+            }
             ctx.fillRect(i * SCALE, doorTop, SCALE + 1, borderSize);
 
-            // Draw handle
-            if (isHandle && doorHeight > 0) {
-                const handleTop = doorTop + doorHeight * 0.4;
-                const handleHeight = doorHeight * 0.2;
-                // Handle base (metallic)
-                ctx.fillStyle = `rgb(${Math.floor(150 * shade)},${Math.floor(160 * shade)},${Math.floor(155 * shade)})`;
-                ctx.fillRect(i * SCALE, handleTop, SCALE + 1, handleHeight);
-                // Handle grip highlight
-                if (wallX > 0.75 && wallX < 0.79) {
-                    ctx.fillStyle = `rgb(${Math.floor(200 * shade)},${Math.floor(210 * shade)},${Math.floor(205 * shade)})`;
-                    ctx.fillRect(i * SCALE, handleTop + handleHeight * 0.15, SCALE + 1, handleHeight * 0.7);
+            // Draw lock symbol (keyhole shape in center)
+            if (isLockArea && doorHeight > 0) {
+                const lockTop = doorTop + doorHeight * 0.35;
+                const lockHeight = doorHeight * 0.3;
+                // Lock body
+                if (canOpen) {
+                    ctx.fillStyle = `rgb(${Math.floor(100 * shade)},${Math.floor(180 * shade)},${Math.floor(80 * shade)})`;
+                } else {
+                    ctx.fillStyle = `rgb(${Math.floor(180 * shade)},${Math.floor(100 * shade)},${Math.floor(50 * shade)})`;
+                }
+                ctx.fillRect(i * SCALE, lockTop, SCALE + 1, lockHeight);
+                // Keyhole (dark center)
+                if (wallX > 0.47 && wallX < 0.53) {
+                    ctx.fillStyle = `rgb(${Math.floor(30 * shade)},${Math.floor(25 * shade)},${Math.floor(20 * shade)})`;
+                    ctx.fillRect(i * SCALE, lockTop + lockHeight * 0.2, SCALE + 1, lockHeight * 0.5);
                 }
             }
         } else {
@@ -1782,6 +2237,9 @@ function render3D() {
 
     // Render health packs
     renderHealthPacks();
+
+    // Render key
+    renderKey();
 
     // Render enemies as sprites
     renderSprites();
@@ -2156,8 +2614,40 @@ function renderHUD() {
     ctx.textAlign = 'center';
     ctx.fillText(`LEVEL ${currentLevel}`, SCREEN_W / 2, hudY + 15 * s);
 
+    // Key indicator (between head and right panel)
+    const keyX = SCREEN_W * 0.62;
+    const keyY = hudY + hudHeight / 2;
+    const keySize = 12 * s;
+
+    if (hasKey) {
+        // Golden key icon when collected
+        ctx.fillStyle = '#fc0';
+        ctx.fillRect(keyX - keySize * 0.3, keyY - keySize * 0.6, keySize * 0.6, keySize * 0.4);
+        ctx.fillStyle = '#da0';
+        ctx.fillRect(keyX - keySize * 0.15, keyY - keySize * 0.2, keySize * 0.3, keySize * 0.8);
+        ctx.fillRect(keyX, keyY + keySize * 0.3, keySize * 0.3, keySize * 0.15);
+        // "KEY" label
+        ctx.fillStyle = '#fc0';
+        ctx.font = `bold ${Math.floor(10 * s)}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillText('KEY', keyX, keyY + keySize * 0.9);
+    } else {
+        // Grey key outline when not collected
+        ctx.fillStyle = '#445';
+        ctx.fillRect(keyX - keySize * 0.3, keyY - keySize * 0.6, keySize * 0.6, keySize * 0.4);
+        ctx.fillRect(keyX - keySize * 0.15, keyY - keySize * 0.2, keySize * 0.3, keySize * 0.8);
+        ctx.fillRect(keyX, keyY + keySize * 0.3, keySize * 0.3, keySize * 0.15);
+        // "KEY" label (dimmed)
+        ctx.fillStyle = '#445';
+        ctx.font = `bold ${Math.floor(10 * s)}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillText('KEY', keyX, keyY + keySize * 0.9);
+    }
+
     // Weapon indicator
     ctx.fillStyle = '#5a6a7a';
+    ctx.font = `bold ${Math.floor(12 * s)}px monospace`;
+    ctx.textAlign = 'center';
     ctx.fillText(currentWeapon === 0 ? '[ BATON ]' : '[ RIFLE ]', SCREEN_W / 2, hudY + 55 * s);
 }
 
@@ -2404,6 +2894,83 @@ function renderHealthPacks() {
         gradient.addColorStop(1, 'rgba(200, 50, 50, 0)');
         ctx.fillStyle = gradient;
         ctx.fillRect(screenX - glowSize, spriteTop - spriteSize * 0.3 - glowSize + bob, glowSize * 2, glowSize * 2);
+    }
+}
+
+// Render key sprite
+function renderKey() {
+    if (levelKey.collected) return;
+
+    const dx = levelKey.x - player.x;
+    const dy = levelKey.y - player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    let angle = Math.atan2(dy, dx) - player.angle;
+
+    // Normalize angle
+    while (angle > Math.PI) angle -= 2 * Math.PI;
+    while (angle < -Math.PI) angle += 2 * Math.PI;
+
+    if (Math.abs(angle) > HALF_FOV + 0.2) return;
+
+    const screenX = (0.5 + angle / FOV) * SCREEN_W;
+    const spriteSize = Math.min(SCREEN_H * 0.5, (SCREEN_H * 0.25) / dist);
+    const spriteTop = SCREEN_H / 2 + spriteSize * 0.1; // Floating slightly
+
+    // Check depth - only draw if not behind wall
+    const col = Math.floor(screenX / SCALE);
+    if (col >= 0 && col < NUM_RAYS && depthBuffer[col] < dist) return;
+
+    const shade = Math.max(0.4, 1 - dist / MAX_DEPTH);
+    const time = Date.now() * 0.003;
+    const bob = Math.sin(time * 2) * spriteSize * 0.15;
+    const pulse = 0.8 + 0.2 * Math.sin(time * 3);
+
+    // Outer glow (golden)
+    const glowSize = spriteSize * 1.2;
+    const outerGlow = ctx.createRadialGradient(screenX, spriteTop - spriteSize * 0.2 + bob, 0, screenX, spriteTop - spriteSize * 0.2 + bob, glowSize);
+    outerGlow.addColorStop(0, `rgba(255, 220, 100, ${0.4 * shade * pulse})`);
+    outerGlow.addColorStop(0.5, `rgba(255, 180, 50, ${0.2 * shade * pulse})`);
+    outerGlow.addColorStop(1, 'rgba(200, 150, 0, 0)');
+    ctx.fillStyle = outerGlow;
+    ctx.beginPath();
+    ctx.arc(screenX, spriteTop - spriteSize * 0.2 + bob, glowSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Key body (golden rectangle - the bow)
+    const keyWidth = spriteSize * 0.3;
+    const keyHeight = spriteSize * 0.5;
+    ctx.fillStyle = `rgb(${Math.floor(220 * shade)}, ${Math.floor(180 * shade)}, ${Math.floor(50 * shade)})`;
+    ctx.fillRect(screenX - keyWidth / 2, spriteTop - keyHeight + bob, keyWidth, keyHeight * 0.4);
+
+    // Key bow hole (dark center)
+    ctx.fillStyle = `rgb(${Math.floor(60 * shade)}, ${Math.floor(50 * shade)}, ${Math.floor(20 * shade)})`;
+    ctx.fillRect(screenX - keyWidth * 0.15, spriteTop - keyHeight * 0.8 + bob, keyWidth * 0.3, keyHeight * 0.2);
+
+    // Key shaft
+    ctx.fillStyle = `rgb(${Math.floor(200 * shade)}, ${Math.floor(160 * shade)}, ${Math.floor(40 * shade)})`;
+    ctx.fillRect(screenX - keyWidth * 0.12, spriteTop - keyHeight * 0.6 + bob, keyWidth * 0.24, keyHeight * 0.8);
+
+    // Key teeth
+    ctx.fillStyle = `rgb(${Math.floor(180 * shade)}, ${Math.floor(140 * shade)}, ${Math.floor(30 * shade)})`;
+    ctx.fillRect(screenX - keyWidth * 0.12, spriteTop + keyHeight * 0.1 + bob, keyWidth * 0.4, keyHeight * 0.1);
+    ctx.fillRect(screenX + keyWidth * 0.1, spriteTop + keyHeight * 0.0 + bob, keyWidth * 0.15, keyHeight * 0.15);
+
+    // Highlight
+    ctx.fillStyle = `rgba(255, 255, 200, ${0.4 * shade * pulse})`;
+    ctx.fillRect(screenX - keyWidth * 0.4, spriteTop - keyHeight * 0.9 + bob, keyWidth * 0.15, keyHeight * 0.25);
+
+    // Sparkles around key
+    ctx.fillStyle = `rgba(255, 255, 200, ${pulse * shade})`;
+    for (let i = 0; i < 4; i++) {
+        const sparkAngle = time * 2 + (i * Math.PI / 2);
+        const sparkDist = spriteSize * (0.4 + 0.1 * Math.sin(time * 3 + i));
+        const sparkX = screenX + Math.cos(sparkAngle) * sparkDist;
+        const sparkY = spriteTop - spriteSize * 0.2 + bob + Math.sin(sparkAngle) * sparkDist * 0.5;
+        const sparkSize = 2 + Math.sin(time * 4 + i) * 1.5;
+
+        ctx.beginPath();
+        ctx.arc(sparkX, sparkY, sparkSize, 0, Math.PI * 2);
+        ctx.fill();
     }
 }
 
@@ -2815,6 +3382,21 @@ function checkHealthPickups() {
     }
 }
 
+// Check for key pickup
+function checkKeyPickup() {
+    if (levelKey.collected || hasKey) return;
+
+    const dx = levelKey.x - player.x;
+    const dy = levelKey.y - player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < 0.5) {
+        levelKey.collected = true;
+        hasKey = true;
+        playKeyPickupSound();
+    }
+}
+
 // Update UI (now handled by renderHUD)
 function updateUI() {
     // HUD is now rendered on canvas
@@ -2841,13 +3423,20 @@ function renderMinimap() {
                 const b = Math.floor(135 * (1 - openness) + 20 * openness);
                 minimapCtx.fillStyle = `rgb(${r},${g},${b})`;
             } else if (tile === 3) {
-                // Escape elevator door: green when closed, fades when open
+                // Locked door: red when locked, green when player has key
                 const door = getDoor(x, y);
                 const openness = door ? door.state : 0;
-                const r = Math.floor(30 * (1 - openness) + 20 * openness);
-                const g = Math.floor(200 * (1 - openness) + 20 * openness);
-                const b = Math.floor(60 * (1 - openness) + 20 * openness);
-                minimapCtx.fillStyle = `rgb(${r},${g},${b})`;
+                if (hasKey) {
+                    const r = Math.floor(60 * (1 - openness) + 20 * openness);
+                    const g = Math.floor(200 * (1 - openness) + 20 * openness);
+                    const b = Math.floor(80 * (1 - openness) + 20 * openness);
+                    minimapCtx.fillStyle = `rgb(${r},${g},${b})`;
+                } else {
+                    const r = Math.floor(200 * (1 - openness) + 20 * openness);
+                    const g = Math.floor(60 * (1 - openness) + 20 * openness);
+                    const b = Math.floor(40 * (1 - openness) + 20 * openness);
+                    minimapCtx.fillStyle = `rgb(${r},${g},${b})`;
+                }
             } else if (tile === 4) {
                 // Exit portal: pulsing bright green
                 const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.005);
@@ -2901,6 +3490,15 @@ function renderMinimap() {
         minimapCtx.fillStyle = '#f44';
         minimapCtx.fillRect(pack.x * scale - 2, pack.y * scale - 2, 4, 4);
     }
+
+    // Key - golden (pulsing)
+    if (!levelKey.collected) {
+        const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.008);
+        minimapCtx.fillStyle = `rgb(255, ${Math.floor(200 * pulse)}, 50)`;
+        minimapCtx.beginPath();
+        minimapCtx.arc(levelKey.x * scale, levelKey.y * scale, 4, 0, Math.PI * 2);
+        minimapCtx.fill();
+    }
 }
 
 // Handle input
@@ -2923,9 +3521,9 @@ function handleInput() {
     player.angle = rawMouseAngle * MOUSE_SENSITIVITY;
 
     // Touch joystick input (forward/back is -dy, strafe is dx)
-    if (touchState.joystick.active) {
-        const jx = touchState.joystick.dx;
-        const jy = -touchState.joystick.dy; // Invert Y so up = forward
+    if (touchState.move.active) {
+        const jx = touchState.move.dx;
+        const jy = -touchState.move.dy; // Invert Y so up = forward
         // Forward/backward
         newX += cos * player.speed * jy;
         newY += sin * player.speed * jy;
@@ -2934,13 +3532,45 @@ function handleInput() {
         newY += cos * player.speed * jx;
     }
 
-    // Collision detection with sliding
-    const margin = 0.2;
-    if (!isWall(newX + margin, player.y) && !isWall(newX - margin, player.y)) {
+    // Collision detection with sliding - check all four corners of player's collision box
+    const margin = 0.25;
+
+    // Check X movement (all 4 corners on the X axis)
+    const canMoveX = !isWall(newX + margin, player.y + margin) &&
+                     !isWall(newX + margin, player.y - margin) &&
+                     !isWall(newX - margin, player.y + margin) &&
+                     !isWall(newX - margin, player.y - margin);
+
+    if (canMoveX) {
         player.x = newX;
     }
-    if (!isWall(player.x, newY + margin) && !isWall(player.x, newY - margin)) {
+
+    // Check Y movement (all 4 corners on the Y axis, using updated X)
+    const canMoveY = !isWall(player.x + margin, newY + margin) &&
+                     !isWall(player.x + margin, newY - margin) &&
+                     !isWall(player.x - margin, newY + margin) &&
+                     !isWall(player.x - margin, newY - margin);
+
+    if (canMoveY) {
         player.y = newY;
+    }
+
+    // Push player out if somehow stuck inside a wall
+    if (isWall(player.x, player.y)) {
+        // Find nearest open space
+        for (let r = 1; r <= 3; r++) {
+            for (let dy = -r; dy <= r; dy++) {
+                for (let dx = -r; dx <= r; dx++) {
+                    const testX = Math.floor(player.x) + dx + 0.5;
+                    const testY = Math.floor(player.y) + dy + 0.5;
+                    if (!isWall(testX, testY)) {
+                        player.x = testX;
+                        player.y = testY;
+                        return;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -2972,11 +3602,14 @@ function gameLoop(currentTime) {
         ctx.fillStyle = '#f00';
         ctx.font = '48px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('GAME OVER', SCREEN_W / 2, SCREEN_H / 2);
+        ctx.fillText('GAME OVER', SCREEN_W / 2, SCREEN_H / 2 - 20);
         ctx.font = '24px monospace';
-        ctx.fillText(`Kills: ${player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 40);
+        ctx.fillStyle = '#fa0';
+        ctx.fillText(`Level: ${currentLevel}`, SCREEN_W / 2, SCREEN_H / 2 + 20);
+        ctx.fillStyle = '#f00';
+        ctx.fillText(`Kills: ${player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 50);
         ctx.fillStyle = '#888';
-        ctx.fillText('Press SPACE or click to restart', SCREEN_W / 2, SCREEN_H / 2 + 80);
+        ctx.fillText('Press SPACE or click to restart', SCREEN_W / 2, SCREEN_H / 2 + 90);
         requestAnimationFrame(gameLoop);
         return;
     }
@@ -3016,6 +3649,7 @@ function gameLoop(currentTime) {
     updatePlasmaBalls();
     checkAmmoPickups();
     checkHealthPickups();
+    checkKeyPickup();
     render3D();
     renderMinimap();
     updateUI();
