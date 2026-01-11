@@ -226,6 +226,167 @@ let roomCenters = []; // Track room centers for light placement
 let levelKey = { x: 0, y: 0, collected: false };
 let hasKey = false;
 
+// Level color theme system
+let levelTheme = {};
+
+function generateLevelTheme() {
+    // Base hue for the level (0-360)
+    const baseHue = Math.random() * 360;
+
+    // Color variation styles
+    const styles = ['cool', 'warm', 'alien', 'industrial', 'organic'];
+    const style = styles[Math.floor(Math.random() * styles.length)];
+
+    let wallHue, accentHue, lightHue;
+
+    switch (style) {
+        case 'cool':
+            wallHue = 200 + Math.random() * 40; // Blue range
+            accentHue = 180 + Math.random() * 60; // Cyan-blue
+            lightHue = 180 + Math.random() * 30; // Cyan
+            break;
+        case 'warm':
+            wallHue = 20 + Math.random() * 30; // Orange-brown
+            accentHue = 30 + Math.random() * 30; // Orange-yellow
+            lightHue = 40 + Math.random() * 20; // Yellow-orange
+            break;
+        case 'alien':
+            wallHue = 270 + Math.random() * 60; // Purple-magenta
+            accentHue = 300 + Math.random() * 40; // Magenta-pink
+            lightHue = 280 + Math.random() * 40; // Purple
+            break;
+        case 'industrial':
+            wallHue = 40 + Math.random() * 20; // Yellow-green (rust)
+            accentHue = 60 + Math.random() * 30; // Green-yellow
+            lightHue = 80 + Math.random() * 40; // Green
+            break;
+        case 'organic':
+            wallHue = 140 + Math.random() * 40; // Green
+            accentHue = 160 + Math.random() * 40; // Teal-green
+            lightHue = 120 + Math.random() * 60; // Green range
+            break;
+    }
+
+    // Wall saturation and lightness
+    const wallSat = 15 + Math.random() * 25; // 15-40% saturation (muted)
+    const wallLight = 20 + Math.random() * 15; // 20-35% lightness (dark)
+
+    // Door variation
+    const doorSat = 10 + Math.random() * 20;
+    const doorLight = 35 + Math.random() * 15;
+
+    // Light brightness
+    const lightSat = 60 + Math.random() * 40;
+    const lightLight = 50 + Math.random() * 20;
+
+    // Enemy color variations - contrasting with environment
+    const enemyStyles = ['demon', 'reptile', 'void', 'toxic', 'fire'];
+    const enemyStyle = enemyStyles[Math.floor(Math.random() * enemyStyles.length)];
+
+    let enemyHue, enemySat, enemyLight, enemyEyeHue;
+
+    switch (enemyStyle) {
+        case 'demon':
+            enemyHue = 280 + Math.random() * 40; // Purple/magenta
+            enemySat = 50 + Math.random() * 30;
+            enemyLight = 35 + Math.random() * 15;
+            enemyEyeHue = 180; // Cyan eyes
+            break;
+        case 'reptile':
+            enemyHue = 100 + Math.random() * 40; // Green
+            enemySat = 40 + Math.random() * 30;
+            enemyLight = 30 + Math.random() * 15;
+            enemyEyeHue = 0; // Red eyes
+            break;
+        case 'void':
+            enemyHue = 220 + Math.random() * 30; // Dark blue
+            enemySat = 30 + Math.random() * 20;
+            enemyLight = 20 + Math.random() * 15;
+            enemyEyeHue = 60; // Yellow eyes
+            break;
+        case 'toxic':
+            enemyHue = 70 + Math.random() * 30; // Yellow-green
+            enemySat = 60 + Math.random() * 30;
+            enemyLight = 35 + Math.random() * 15;
+            enemyEyeHue = 300; // Magenta eyes
+            break;
+        case 'fire':
+            enemyHue = 10 + Math.random() * 30; // Red-orange
+            enemySat = 60 + Math.random() * 30;
+            enemyLight = 35 + Math.random() * 15;
+            enemyEyeHue = 50; // Yellow-orange eyes
+            break;
+    }
+
+    levelTheme = {
+        style,
+        // Wall colors (HSL values)
+        wallHue,
+        wallSat,
+        wallLight,
+        // Door colors
+        doorHue: wallHue + (Math.random() - 0.5) * 30,
+        doorSat,
+        doorLight,
+        // Accent/light colors
+        accentHue,
+        lightHue,
+        lightSat,
+        lightLight,
+        // Ceiling gradient colors
+        ceilDark: `hsl(${wallHue}, ${wallSat * 0.5}%, ${wallLight * 0.4}%)`,
+        ceilMid: `hsl(${wallHue}, ${wallSat * 0.6}%, ${wallLight * 0.5}%)`,
+        ceilLight: `hsl(${wallHue}, ${wallSat * 0.7}%, ${wallLight * 0.7}%)`,
+        // Floor gradient colors
+        floorDark: `hsl(${wallHue}, ${wallSat * 0.3}%, ${wallLight * 0.4}%)`,
+        floorMid: `hsl(${wallHue}, ${wallSat * 0.4}%, ${wallLight * 0.6}%)`,
+        floorLight: `hsl(${wallHue}, ${wallSat * 0.5}%, ${wallLight * 0.8}%)`,
+        // Ceiling strip colors
+        stripDark: `hsl(${accentHue}, ${wallSat}%, ${wallLight * 1.5}%)`,
+        stripLight: `hsl(${accentHue}, ${lightSat * 0.6}%, ${lightLight * 0.8}%)`,
+        // Light glow color (RGB for gradients)
+        lightR: Math.floor(128 + 127 * Math.cos(lightHue * Math.PI / 180)),
+        lightG: Math.floor(128 + 127 * Math.cos((lightHue - 120) * Math.PI / 180)),
+        lightB: Math.floor(128 + 127 * Math.cos((lightHue - 240) * Math.PI / 180)),
+        // Enemy colors
+        enemyStyle,
+        enemyHue,
+        enemySat,
+        enemyLight,
+        enemyEyeHue,
+        // Enemy shape (randomized independently from color)
+        enemyShape: ['humanoid', 'blob', 'insectoid', 'tall', 'squat', 'spider'][Math.floor(Math.random() * 6)],
+    };
+
+    return levelTheme;
+}
+
+// Helper to convert HSL to RGB for wall rendering
+function hslToRgb(h, s, l) {
+    s /= 100;
+    l /= 100;
+    const k = n => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return [Math.floor(f(0) * 255), Math.floor(f(8) * 255), Math.floor(f(4) * 255)];
+}
+
+// Generate initial theme
+generateLevelTheme();
+
+// Update crosshair color to match theme
+function updateCrosshairColor() {
+    const crosshair = document.getElementById('crosshair');
+    if (crosshair) {
+        const color = `rgb(${levelTheme.lightR}, ${levelTheme.lightG}, ${levelTheme.lightB})`;
+        crosshair.style.color = color;
+        crosshair.style.textShadow = `0 0 10px ${color}`;
+    }
+}
+
+// Apply initial crosshair color after DOM loads
+setTimeout(updateCrosshairColor, 0);
+
 // Room templates (sized for 24x24 map)
 const ROOM_TEMPLATES = {
     // Large room (5x5) - good for arenas
@@ -646,6 +807,10 @@ function nextLevel(fullReset = false) {
 
     // Reset victory state (music keeps playing independently)
     victoryPlayed = false;
+
+    // Generate new color theme for this level
+    generateLevelTheme();
+    updateCrosshairColor();
 
     // Regenerate map, enemies, lights, ammo, health
     generateMap();
@@ -2027,30 +2192,30 @@ function castRay(angle) {
 
 // Render 3D view
 function render3D() {
-    // Ceiling - dark spaceship interior with blue lighting strips
+    // Ceiling - dark spaceship interior with lighting strips (themed)
     const ceilGrad = ctx.createLinearGradient(0, 0, 0, SCREEN_H / 2);
-    ceilGrad.addColorStop(0, '#0a1520');
-    ceilGrad.addColorStop(0.3, '#0d1a28');
-    ceilGrad.addColorStop(0.7, '#101820');
-    ceilGrad.addColorStop(1, '#1a2530');
+    ceilGrad.addColorStop(0, levelTheme.ceilDark);
+    ceilGrad.addColorStop(0.3, levelTheme.ceilMid);
+    ceilGrad.addColorStop(0.7, levelTheme.ceilMid);
+    ceilGrad.addColorStop(1, levelTheme.ceilLight);
     ctx.fillStyle = ceilGrad;
     ctx.fillRect(0, 0, SCREEN_W, SCREEN_H / 2);
 
-    // Ceiling light strips
-    ctx.fillStyle = '#304050';
+    // Ceiling light strips (themed)
+    ctx.fillStyle = levelTheme.stripDark;
     for (let x = 0; x < SCREEN_W; x += 80) {
         ctx.fillRect(x, SCREEN_H / 2 - 8, 40, 6);
     }
-    ctx.fillStyle = '#5080a0';
+    ctx.fillStyle = levelTheme.stripLight;
     for (let x = 0; x < SCREEN_W; x += 80) {
         ctx.fillRect(x + 5, SCREEN_H / 2 - 6, 30, 2);
     }
 
-    // Floor - metallic spaceship floor with grid pattern
+    // Floor - metallic spaceship floor (themed)
     const floorGrad = ctx.createLinearGradient(0, SCREEN_H / 2, 0, SCREEN_H);
-    floorGrad.addColorStop(0, '#252830');
-    floorGrad.addColorStop(0.5, '#1a1d24');
-    floorGrad.addColorStop(1, '#12151a');
+    floorGrad.addColorStop(0, levelTheme.floorLight);
+    floorGrad.addColorStop(0.5, levelTheme.floorMid);
+    floorGrad.addColorStop(1, levelTheme.floorDark);
     ctx.fillStyle = floorGrad;
     ctx.fillRect(0, SCREEN_H / 2, SCREEN_W, SCREEN_H / 2);
 
@@ -2072,8 +2237,8 @@ function render3D() {
         let r, g, b;
 
         if (tile === 2) {
-            // Metallic door
-            const baseColor = side === 0 ? 160 : 140;
+            // Metallic door (themed)
+            const sideDarken = side === 0 ? 1.0 : 0.85;
             const openAmount = doorState || 0;
 
             // Door dimensions
@@ -2087,41 +2252,47 @@ function render3D() {
             const isHandle = wallX > 0.75 && wallX < 0.85;
 
             if (isBorder) {
-                // Darker metallic border
-                r = Math.floor(50 * shade);
-                g = Math.floor(55 * shade);
-                b = Math.floor(60 * shade);
+                // Darker metallic border (themed)
+                const borderLight = levelTheme.doorLight * 0.4 * shade * sideDarken;
+                const [br, bg, bb] = hslToRgb(levelTheme.doorHue, levelTheme.doorSat * 0.5, borderLight);
+                r = br; g = bg; b = bb;
             } else {
-                // Main door panel - metallic grey with subtle variation
+                // Main door panel - themed metallic with subtle variation
                 const innerX = (wallX - 0.08) / 0.84;
                 const panelPos = (innerX * 2) % 1; // 2 panels
                 const edgeDist = Math.min(panelPos, 1 - panelPos);
                 const panelShade = 0.9 + edgeDist * 0.2;
 
-                r = Math.floor(baseColor * shade * 0.55 * panelShade);
-                g = Math.floor(baseColor * shade * 0.58 * panelShade);
-                b = Math.floor(baseColor * shade * 0.65 * panelShade);
+                const doorLight = levelTheme.doorLight * shade * panelShade * sideDarken;
+                const [dr, dg, db] = hslToRgb(levelTheme.doorHue, levelTheme.doorSat, doorLight);
+                r = dr; g = dg; b = db;
             }
 
             // Draw main door
             ctx.fillStyle = `rgb(${r},${g},${b})`;
             ctx.fillRect(i * SCALE, doorTop, SCALE + 1, doorHeight);
 
-            // Draw top border
+            // Draw top border (themed)
             const borderSize = doorHeight * 0.06;
-            ctx.fillStyle = `rgb(${Math.floor(50 * shade)},${Math.floor(55 * shade)},${Math.floor(60 * shade)})`;
+            const borderLight = levelTheme.doorLight * 0.4 * shade * sideDarken;
+            const [tbr, tbg, tbb] = hslToRgb(levelTheme.doorHue, levelTheme.doorSat * 0.5, borderLight);
+            ctx.fillStyle = `rgb(${tbr},${tbg},${tbb})`;
             ctx.fillRect(i * SCALE, doorTop, SCALE + 1, borderSize);
 
-            // Draw handle
+            // Draw handle (themed accent color)
             if (isHandle && doorHeight > 0) {
                 const handleTop = doorTop + doorHeight * 0.4;
                 const handleHeight = doorHeight * 0.2;
-                // Handle base - slightly lighter metal
-                ctx.fillStyle = `rgb(${Math.floor(100 * shade)},${Math.floor(105 * shade)},${Math.floor(115 * shade)})`;
+                // Handle base - accent colored
+                const handleLight = levelTheme.lightLight * 0.6 * shade;
+                const [hr, hg, hb] = hslToRgb(levelTheme.accentHue, levelTheme.lightSat * 0.5, handleLight);
+                ctx.fillStyle = `rgb(${hr},${hg},${hb})`;
                 ctx.fillRect(i * SCALE, handleTop, SCALE + 1, handleHeight);
                 // Handle highlight
                 if (wallX > 0.78 && wallX < 0.82) {
-                    ctx.fillStyle = `rgb(${Math.floor(140 * shade)},${Math.floor(145 * shade)},${Math.floor(155 * shade)})`;
+                    const highlightLight = levelTheme.lightLight * 0.8 * shade;
+                    const [hlr, hlg, hlb] = hslToRgb(levelTheme.accentHue, levelTheme.lightSat * 0.7, highlightLight);
+                    ctx.fillStyle = `rgb(${hlr},${hlg},${hlb})`;
                     ctx.fillRect(i * SCALE, handleTop + handleHeight * 0.2, SCALE + 1, handleHeight * 0.6);
                 }
             }
@@ -2203,8 +2374,8 @@ function render3D() {
                 }
             }
         } else {
-            // Spaceship wall (metallic blue-gray panels)
-            const baseColor = side === 0 ? 160 : 130;
+            // Spaceship wall (themed metallic panels)
+            const sideDarken = side === 0 ? 1.0 : 0.8;
 
             // Use wallX for perspective-correct panel pattern (soft gradient)
             const panelPos = (wallX * 2) % 1; // 2 panels per wall tile
@@ -2214,11 +2385,11 @@ function render3D() {
             // Subtle darkening near panel edges, highlight in center
             const panelShade = 0.85 + edgeFade * 0.15;
 
-            r = Math.floor(baseColor * shade * 0.4 * panelShade);
-            g = Math.floor(baseColor * shade * 0.5 * panelShade);
-            b = Math.floor(baseColor * shade * 0.7 * panelShade);
+            // Use themed wall color
+            const wallLightness = levelTheme.wallLight * shade * panelShade * sideDarken;
+            const [wr, wg, wb] = hslToRgb(levelTheme.wallHue, levelTheme.wallSat, wallLightness);
 
-            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillStyle = `rgb(${wr},${wg},${wb})`;
             ctx.fillRect(i * SCALE, wallTop, SCALE + 1, wallHeight);
         }
 
@@ -2664,6 +2835,11 @@ function renderLights() {
     // Sort by distance (far to near)
     lightData.sort((a, b) => b.dist - a.dist);
 
+    // Get themed light colors
+    const lr = levelTheme.lightR;
+    const lg = levelTheme.lightG;
+    const lb = levelTheme.lightB;
+
     for (const { light, dist, angle } of lightData) {
         let normAngle = angle;
         while (normAngle > Math.PI) normAngle -= 2 * Math.PI;
@@ -2683,20 +2859,24 @@ function renderLights() {
         const flicker = 0.7 + 0.3 * Math.sin(Date.now() * 0.008 + light.phase);
         const glowSize = spriteSize * (1.5 + 0.2 * Math.sin(Date.now() * 0.005 + light.phase));
 
-        // Outer glow
+        // Outer glow (themed)
         const gradient = ctx.createRadialGradient(screenX, spriteTop + spriteSize / 2, 0, screenX, spriteTop + spriteSize / 2, glowSize);
-        gradient.addColorStop(0, `rgba(0, 200, 255, ${0.4 * flicker})`);
-        gradient.addColorStop(0.4, `rgba(0, 150, 200, ${0.2 * flicker})`);
-        gradient.addColorStop(1, 'rgba(0, 100, 150, 0)');
+        gradient.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, ${0.4 * flicker})`);
+        gradient.addColorStop(0.4, `rgba(${Math.floor(lr * 0.7)}, ${Math.floor(lg * 0.7)}, ${Math.floor(lb * 0.7)}, ${0.2 * flicker})`);
+        gradient.addColorStop(1, `rgba(${Math.floor(lr * 0.4)}, ${Math.floor(lg * 0.4)}, ${Math.floor(lb * 0.4)}, 0)`);
         ctx.fillStyle = gradient;
         ctx.fillRect(screenX - glowSize, spriteTop + spriteSize / 2 - glowSize, glowSize * 2, glowSize * 2);
 
-        // Light fixture (small rectangle)
-        ctx.fillStyle = `rgba(40, 60, 80, ${flicker})`;
+        // Light fixture (small rectangle - themed)
+        const [fr, fg, fb] = hslToRgb(levelTheme.wallHue, levelTheme.wallSat * 0.8, levelTheme.wallLight * 1.5);
+        ctx.fillStyle = `rgba(${fr}, ${fg}, ${fb}, ${flicker})`;
         ctx.fillRect(screenX - spriteSize * 0.4, spriteTop, spriteSize * 0.8, spriteSize * 0.5);
 
-        // Bright center
-        ctx.fillStyle = `rgba(150, 230, 255, ${flicker})`;
+        // Bright center (themed)
+        const brightR = Math.min(255, lr + 100);
+        const brightG = Math.min(255, lg + 100);
+        const brightB = Math.min(255, lb + 100);
+        ctx.fillStyle = `rgba(${brightR}, ${brightG}, ${brightB}, ${flicker})`;
         ctx.fillRect(screenX - spriteSize * 0.25, spriteTop + spriteSize * 0.15, spriteSize * 0.5, spriteSize * 0.25);
     }
 }
@@ -3080,11 +3260,14 @@ function renderSprites() {
             // Draw enemy as alien creature
             const shade = Math.max(0.3, 1 - dist / MAX_DEPTH);
 
-            // Body color (purple/magenta alien, turns darker when dying)
+            // Body color (themed, turns darker when dying)
             const deathColor = enemy.dying ? collapse : 0;
-            const r = Math.floor((120 + 60 * Math.sin(colRatio * Math.PI)) * shade * (1 - deathColor * 0.5));
-            const g = Math.floor((40 - 20 * deathColor) * shade);
-            const b = Math.floor((160 + 40 * Math.sin(colRatio * Math.PI * 2)) * shade * (1 - deathColor * 0.3));
+
+            // Calculate body color using theme with variation across the sprite
+            const bodyVariation = Math.sin(colRatio * Math.PI) * 15;
+            const bodyLightness = levelTheme.enemyLight * shade * (1 - deathColor * 0.5) + bodyVariation * shade;
+            const bodySaturation = levelTheme.enemySat * (1 - deathColor * 0.3);
+            const [r, g, b] = hslToRgb(levelTheme.enemyHue, bodySaturation, bodyLightness);
 
             // Draw column of sprite with death deformation
             let colHeight = spriteHeight * getEnemyShape(colRatio);
@@ -3100,20 +3283,106 @@ function renderSprites() {
             ctx.fillStyle = `rgb(${r},${g},${b})`;
             ctx.fillRect(spriteX, colTop, SCALE + 1, colHeight);
 
-            // Glowing cyan eyes (in upper portion) - fade out when dying
-            if (!enemy.dying && (colRatio > 0.25 && colRatio < 0.4 || colRatio > 0.6 && colRatio < 0.75)) {
-                const eyeY = spriteTop + spriteHeight * 0.2;
-                const eyeSize = spriteHeight * 0.08;
-                ctx.fillStyle = `rgb(0, ${Math.floor(255 * shade)}, ${Math.floor(255 * shade)})`;
-                ctx.fillRect(spriteX, eyeY, SCALE + 1, eyeSize);
+            // Glowing eyes (themed, position varies by shape) - fade out when dying
+            if (!enemy.dying) {
+                let drawEyes = false;
+                let eyeYOffset = 0.2;
+                let eyeSize = spriteHeight * 0.08;
+
+                switch (levelTheme.enemyShape) {
+                    case 'humanoid':
+                        drawEyes = (colRatio > 0.25 && colRatio < 0.4) || (colRatio > 0.6 && colRatio < 0.75);
+                        eyeYOffset = 0.2;
+                        break;
+                    case 'blob':
+                        // Multiple small eyes scattered
+                        drawEyes = (colRatio > 0.3 && colRatio < 0.38) || (colRatio > 0.45 && colRatio < 0.55) || (colRatio > 0.62 && colRatio < 0.7);
+                        eyeYOffset = 0.25 + Math.sin(colRatio * Math.PI * 3) * 0.1;
+                        eyeSize = spriteHeight * 0.06;
+                        break;
+                    case 'insectoid':
+                        // Large compound eyes
+                        drawEyes = (colRatio > 0.35 && colRatio < 0.45) || (colRatio > 0.55 && colRatio < 0.65);
+                        eyeYOffset = 0.15;
+                        eyeSize = spriteHeight * 0.12;
+                        break;
+                    case 'tall':
+                        // Small, high-set eyes
+                        drawEyes = (colRatio > 0.4 && colRatio < 0.47) || (colRatio > 0.53 && colRatio < 0.6);
+                        eyeYOffset = 0.1;
+                        eyeSize = spriteHeight * 0.05;
+                        break;
+                    case 'squat':
+                        // Wide-set glowing eyes
+                        drawEyes = (colRatio > 0.2 && colRatio < 0.35) || (colRatio > 0.65 && colRatio < 0.8);
+                        eyeYOffset = 0.25;
+                        eyeSize = spriteHeight * 0.1;
+                        break;
+                    case 'spider':
+                        // Multiple eyes in a row
+                        drawEyes = (colRatio > 0.35 && colRatio < 0.4) || (colRatio > 0.43 && colRatio < 0.48) ||
+                                   (colRatio > 0.52 && colRatio < 0.57) || (colRatio > 0.6 && colRatio < 0.65);
+                        eyeYOffset = 0.18;
+                        eyeSize = spriteHeight * 0.055;
+                        break;
+                }
+
+                if (drawEyes) {
+                    const eyeY = spriteTop + spriteHeight * eyeYOffset;
+                    const [eyeR, eyeG, eyeB] = hslToRgb(levelTheme.enemyEyeHue, 100, 60 * shade);
+                    ctx.fillStyle = `rgb(${eyeR}, ${eyeG}, ${eyeB})`;
+                    ctx.fillRect(spriteX, eyeY, SCALE + 1, eyeSize);
+                }
             }
 
-            // Alien markings/patterns
-            if (!enemy.dying && colRatio > 0.3 && colRatio < 0.7 && (col % 4 === 0)) {
-                const markY = spriteTop + spriteHeight * 0.5;
-                const markSize = spriteHeight * 0.15;
-                ctx.fillStyle = `rgba(0, 255, 200, ${0.3 * shade})`;
-                ctx.fillRect(spriteX, markY, SCALE + 1, markSize);
+            // Alien markings/patterns (themed glow, varies by shape)
+            if (!enemy.dying && colRatio > 0.3 && colRatio < 0.7) {
+                let drawMarking = false;
+                let markYOffset = 0.5;
+                let markSize = spriteHeight * 0.15;
+
+                switch (levelTheme.enemyShape) {
+                    case 'humanoid':
+                        drawMarking = (col % 4 === 0);
+                        break;
+                    case 'blob':
+                        // Bioluminescent spots
+                        drawMarking = (col % 3 === 0);
+                        markYOffset = 0.4 + Math.sin(colRatio * Math.PI * 5) * 0.15;
+                        markSize = spriteHeight * 0.1;
+                        break;
+                    case 'insectoid':
+                        // Segmented markings
+                        drawMarking = (col % 2 === 0);
+                        markYOffset = 0.55;
+                        markSize = spriteHeight * 0.08;
+                        break;
+                    case 'tall':
+                        // Vertical stripe patterns
+                        drawMarking = (col % 5 === 0);
+                        markYOffset = 0.35;
+                        markSize = spriteHeight * 0.25;
+                        break;
+                    case 'squat':
+                        // Armor plate markings
+                        drawMarking = (col % 3 === 0);
+                        markYOffset = 0.45;
+                        markSize = spriteHeight * 0.2;
+                        break;
+                    case 'spider':
+                        // Carapace patterns
+                        drawMarking = (col % 4 === 0) && colRatio > 0.4 && colRatio < 0.6;
+                        markYOffset = 0.5;
+                        markSize = spriteHeight * 0.12;
+                        break;
+                }
+
+                if (drawMarking) {
+                    const markY = spriteTop + spriteHeight * markYOffset;
+                    const [markR, markG, markB] = hslToRgb(levelTheme.enemyEyeHue, 80, 50);
+                    ctx.fillStyle = `rgba(${markR}, ${markG}, ${markB}, ${0.3 * shade})`;
+                    ctx.fillRect(spriteX, markY, SCALE + 1, markSize);
+                }
             }
         }
 
@@ -3127,11 +3396,57 @@ function renderSprites() {
 
 // Enemy shape function (returns height multiplier based on column position)
 function getEnemyShape(t) {
-    // Creates an alien silhouette
-    if (t < 0.1 || t > 0.9) return 0.3; // Thin appendages
-    if (t < 0.2 || t > 0.8) return 0.5; // Arms
-    if (t < 0.3 || t > 0.7) return 0.75; // Shoulders
-    return 0.85 + Math.sin(t * Math.PI) * 0.15; // Body/head bulge
+    switch (levelTheme.enemyShape) {
+        case 'humanoid':
+            // Classic alien silhouette - shoulders, arms, thin legs
+            if (t < 0.1 || t > 0.9) return 0.3; // Thin appendages
+            if (t < 0.2 || t > 0.8) return 0.5; // Arms
+            if (t < 0.3 || t > 0.7) return 0.75; // Shoulders
+            return 0.85 + Math.sin(t * Math.PI) * 0.15; // Body/head bulge
+
+        case 'blob':
+            // Amorphous blob creature - round and wobbly
+            const blobBase = Math.sin(t * Math.PI);
+            const wobble = Math.sin(t * Math.PI * 6) * 0.08;
+            return 0.3 + blobBase * 0.65 + wobble;
+
+        case 'insectoid':
+            // Spiky insect-like creature with angular features
+            if (t < 0.05 || t > 0.95) return 0.6; // Antennae
+            if (t < 0.15 || t > 0.85) return 0.25; // Thin neck/joints
+            if (t < 0.25 || t > 0.75) return 0.7 + Math.abs(Math.sin(t * Math.PI * 4)) * 0.25; // Spiky limbs
+            if (t < 0.35 || t > 0.65) return 0.5; // Thorax joints
+            return 0.9 + Math.sin(t * Math.PI) * 0.1; // Central body
+
+        case 'tall':
+            // Tall, thin, elongated creature
+            if (t < 0.15 || t > 0.85) return 0.15; // Very thin extremities
+            if (t < 0.3 || t > 0.7) return 0.35; // Thin arms
+            if (t < 0.4 || t > 0.6) return 0.55; // Narrow shoulders
+            return 0.7 + Math.sin(t * Math.PI) * 0.25; // Elongated head/body
+
+        case 'squat':
+            // Short, wide, menacing creature
+            if (t < 0.08 || t > 0.92) return 0.5; // Stubby limbs
+            if (t < 0.2 || t > 0.8) return 0.75; // Wide arms
+            if (t < 0.3 || t > 0.7) return 0.95; // Broad shoulders
+            return 0.85 + Math.cos(t * Math.PI * 2) * 0.1; // Hulking body
+
+        case 'spider':
+            // Spider-like creature with multiple leg segments
+            if (t < 0.1 || t > 0.9) return 0.7; // Outer legs (raised)
+            if (t < 0.2 || t > 0.8) return 0.25; // Leg joints
+            if (t < 0.3 || t > 0.7) return 0.6; // Inner legs
+            if (t < 0.4 || t > 0.6) return 0.35; // Body connection
+            return 0.8 + Math.sin(t * Math.PI) * 0.15; // Central body/head
+
+        default:
+            // Fallback to humanoid
+            if (t < 0.1 || t > 0.9) return 0.3;
+            if (t < 0.2 || t > 0.8) return 0.5;
+            if (t < 0.3 || t > 0.7) return 0.75;
+            return 0.85 + Math.sin(t * Math.PI) * 0.15;
+    }
 }
 
 // Fire plasma ball (secondary fire - right click)
@@ -3405,23 +3720,24 @@ function updateUI() {
 // Render minimap
 function renderMinimap() {
     const scale = minimap.width / MAP_W;
-    minimapCtx.fillStyle = '#0a0a12';
+    // Themed background
+    const [bgR, bgG, bgB] = hslToRgb(levelTheme.wallHue, levelTheme.wallSat * 0.3, levelTheme.wallLight * 0.3);
+    minimapCtx.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
     minimapCtx.fillRect(0, 0, minimap.width, minimap.height);
 
     for (let y = 0; y < MAP_H; y++) {
         for (let x = 0; x < MAP_W; x++) {
             const tile = MAP[y][x];
             if (tile === 1) {
-                // Spaceship walls - blue-gray
-                minimapCtx.fillStyle = '#3a4555';
+                // Spaceship walls - themed
+                const [wr, wg, wb] = hslToRgb(levelTheme.wallHue, levelTheme.wallSat, levelTheme.wallLight * 1.5);
+                minimapCtx.fillStyle = `rgb(${wr}, ${wg}, ${wb})`;
             } else if (tile === 2) {
                 const door = getDoor(x, y);
-                // Metallic door: grey when closed, fades when open
+                // Metallic door: themed when closed, fades when open
                 const openness = door ? door.state : 0;
-                const r = Math.floor(120 * (1 - openness) + 20 * openness);
-                const g = Math.floor(125 * (1 - openness) + 20 * openness);
-                const b = Math.floor(135 * (1 - openness) + 20 * openness);
-                minimapCtx.fillStyle = `rgb(${r},${g},${b})`;
+                const [dr, dg, db] = hslToRgb(levelTheme.doorHue, levelTheme.doorSat, levelTheme.doorLight * (1 - openness * 0.7));
+                minimapCtx.fillStyle = `rgb(${dr},${dg},${db})`;
             } else if (tile === 3) {
                 // Locked door: red when locked, green when player has key
                 const door = getDoor(x, y);
@@ -3443,21 +3759,23 @@ function renderMinimap() {
                 const g = Math.floor(200 + 55 * pulse);
                 minimapCtx.fillStyle = `rgb(50, ${g}, 100)`;
             } else {
-                // Floor - dark blue
-                minimapCtx.fillStyle = '#151820';
+                // Floor - themed dark
+                const [fr, fg, fb] = hslToRgb(levelTheme.wallHue, levelTheme.wallSat * 0.4, levelTheme.wallLight * 0.5);
+                minimapCtx.fillStyle = `rgb(${fr}, ${fg}, ${fb})`;
             }
             minimapCtx.fillRect(x * scale, y * scale, scale - 1, scale - 1);
         }
     }
 
-    // Player - cyan
-    minimapCtx.fillStyle = '#0ff';
+    // Player - themed accent color
+    const playerColor = `rgb(${levelTheme.lightR}, ${levelTheme.lightG}, ${levelTheme.lightB})`;
+    minimapCtx.fillStyle = playerColor;
     minimapCtx.beginPath();
     minimapCtx.arc(player.x * scale, player.y * scale, 3, 0, Math.PI * 2);
     minimapCtx.fill();
 
-    // Direction - cyan
-    minimapCtx.strokeStyle = '#0ff';
+    // Direction - themed accent color
+    minimapCtx.strokeStyle = playerColor;
     minimapCtx.beginPath();
     minimapCtx.moveTo(player.x * scale, player.y * scale);
     minimapCtx.lineTo(
@@ -3466,12 +3784,13 @@ function renderMinimap() {
     );
     minimapCtx.stroke();
 
-    // Enemies - magenta/purple (aliens)
+    // Enemies - themed colors
     for (const enemy of enemies) {
         if (!enemy.alive && !enemy.dying) continue;
         // Fade out dying enemies
         const alpha = enemy.dying ? 1 - enemy.deathTimer / 30 : 1;
-        minimapCtx.fillStyle = enemy.dying ? `rgba(80, 40, 80, ${alpha})` : '#c4f';
+        const [er, eg, eb] = hslToRgb(levelTheme.enemyHue, levelTheme.enemySat, enemy.dying ? levelTheme.enemyLight * 0.5 : levelTheme.enemyLight * 1.5);
+        minimapCtx.fillStyle = `rgba(${er}, ${eg}, ${eb}, ${alpha})`;
         minimapCtx.beginPath();
         minimapCtx.arc(enemy.x * scale, enemy.y * scale, 3, 0, Math.PI * 2);
         minimapCtx.fill();
