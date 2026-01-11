@@ -39,9 +39,10 @@
             bottom: 0;
             left: 0;
             right: 0;
-            top: 0;
             pointer-events: none;
             z-index: 100;
+            background: rgba(5, 8, 16, 0.95);
+            border-top: 2px solid #2a4060;
         }
         .touch-btn {
             position: absolute;
@@ -64,10 +65,11 @@
         }
         #joystick-zone {
             position: absolute;
-            bottom: 80px;
-            left: 20px;
-            width: 140px;
-            height: 140px;
+            bottom: 10%;
+            left: 5%;
+            width: 35%;
+            max-width: 120px;
+            aspect-ratio: 1;
             background: rgba(0, 100, 150, 0.2);
             border: 2px solid rgba(0, 200, 255, 0.3);
             border-radius: 50%;
@@ -76,8 +78,8 @@
         }
         #joystick-knob {
             position: absolute;
-            width: 60px;
-            height: 60px;
+            width: 50%;
+            height: 50%;
             background: rgba(0, 200, 255, 0.4);
             border: 2px solid rgba(0, 255, 255, 0.6);
             border-radius: 50%;
@@ -87,39 +89,43 @@
             pointer-events: none;
         }
         #btn-attack {
-            bottom: 100px;
-            right: 30px;
-            width: 80px;
-            height: 80px;
-            font-size: 14px;
-        }
-        #btn-door {
-            bottom: 200px;
-            right: 30px;
-            width: 60px;
-            height: 60px;
+            bottom: 10%;
+            right: 5%;
+            width: 25%;
+            max-width: 80px;
+            aspect-ratio: 1;
             font-size: 12px;
         }
+        #btn-door {
+            bottom: 10%;
+            right: calc(5% + 90px);
+            width: 18%;
+            max-width: 55px;
+            aspect-ratio: 1;
+            font-size: 10px;
+        }
         #btn-weapon1 {
-            bottom: 200px;
-            right: 110px;
-            width: 50px;
-            height: 50px;
-            font-size: 11px;
+            bottom: 55%;
+            left: calc(50% - 60px);
+            width: 15%;
+            max-width: 45px;
+            aspect-ratio: 1;
+            font-size: 10px;
         }
         #btn-weapon2 {
-            bottom: 260px;
-            right: 110px;
-            width: 50px;
-            height: 50px;
-            font-size: 11px;
+            bottom: 55%;
+            left: calc(50% + 15px);
+            width: 15%;
+            max-width: 45px;
+            aspect-ratio: 1;
+            font-size: 10px;
         }
         #look-zone {
             position: absolute;
             top: 0;
-            right: 0;
-            width: 50%;
-            height: 60%;
+            left: 30%;
+            width: 40%;
+            height: 100%;
             pointer-events: auto;
             touch-action: none;
         }
@@ -130,8 +136,8 @@
             #minimap {
                 top: 5px;
                 right: 5px;
-                width: 100px;
-                height: 100px;
+                width: 80px;
+                height: 80px;
             }
         }
     </style>
@@ -169,22 +175,29 @@ const MAX_DEPTH = 20;
 let SCALE = SCREEN_W / NUM_RAYS;
 let depthBuffer = new Array(NUM_RAYS);
 
+// Check if touch device
+const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
 // Resize canvas to fit screen with 4:3 aspect ratio
 function resizeCanvas() {
     const windowWidth = window.innerWidth;
     const windowHeight = window.innerHeight;
 
-    // Calculate largest 4:3 rectangle that fits
+    // Reserve bottom quarter for controls on touch devices
+    const controlsHeight = isTouchDevice ? Math.floor(windowHeight * 0.25) : 0;
+    const availableHeight = windowHeight - controlsHeight;
+
+    // Calculate largest 4:3 rectangle that fits in available space
     const targetRatio = 4 / 3;
-    const windowRatio = windowWidth / windowHeight;
+    const availableRatio = windowWidth / availableHeight;
 
     let width, height;
-    if (windowRatio > targetRatio) {
-        // Window is wider than 4:3, constrain by height
-        height = windowHeight;
+    if (availableRatio > targetRatio) {
+        // Available area is wider than 4:3, constrain by height
+        height = availableHeight;
         width = height * targetRatio;
     } else {
-        // Window is taller than 4:3, constrain by width
+        // Available area is taller than 4:3, constrain by width
         width = windowWidth;
         height = width / targetRatio;
     }
@@ -196,10 +209,10 @@ function resizeCanvas() {
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
 
-    // Center the canvas
+    // Center the canvas horizontally, position at top of available area
     canvas.style.position = 'absolute';
     canvas.style.left = ((windowWidth - width) / 2) + 'px';
-    canvas.style.top = ((windowHeight - height) / 2) + 'px';
+    canvas.style.top = ((availableHeight - height) / 2) + 'px';
 
     SCREEN_W = width;
     SCREEN_H = height;
@@ -210,6 +223,14 @@ function resizeCanvas() {
 
     // Resize depth buffer
     depthBuffer = new Array(NUM_RAYS);
+
+    // Position touch controls in bottom quarter
+    if (isTouchDevice) {
+        const touchControls = document.getElementById('touch-controls');
+        touchControls.style.top = (windowHeight - controlsHeight) + 'px';
+        touchControls.style.height = controlsHeight + 'px';
+        touchControls.style.bottom = 'auto';
+    }
 }
 
 // Initial resize
@@ -362,11 +383,13 @@ function generateMap() {
 // Game state: 'playing', 'gameover', 'victory'
 let gameState = 'playing';
 let currentLevel = 1;
+let targetAngle = 0; // Target angle for smooth mouse look interpolation
 
 generateMap();
 
 // Player - start position set by map generator
 let player = { x: playerStart.x, y: playerStart.y, angle: 0, speed: 0.06, rotSpeed: 0.04, health: 100, ammo: 50, kills: 0 };
+targetAngle = player.angle; // Sync target angle with player
 
 // Restart the game with a fresh map (full reset)
 function restartGame() {
@@ -388,9 +411,7 @@ function nextLevel(fullReset = false) {
     healthPacks.length = 0;
     plasmaBalls.length = 0;
 
-    // Reset music state to ensure it restarts cleanly
-    stopMusic();
-    musicStarted = false;
+    // Reset victory state (music keeps playing independently)
     victoryPlayed = false;
 
     // Regenerate map, enemies, lights, ammo, health
@@ -403,6 +424,7 @@ function nextLevel(fullReset = false) {
     player.x = playerStart.x;
     player.y = playerStart.y;
     player.angle = 0;
+    targetAngle = 0; // Sync target angle with player
 
     // Reset other state
     shootCooldown = 0;
@@ -423,9 +445,6 @@ function nextLevel(fullReset = false) {
 
     // Reset game state
     gameState = 'playing';
-
-    // Start music if not already playing
-    startMusic();
 }
 
 // Light sprites - randomly generated along hallways
@@ -1171,7 +1190,7 @@ function playEnemyDeathSound() {
 function playVictoryMusic() {
     if (victoryPlayed) return;
     victoryPlayed = true;
-    stopMusic();
+    // Don't stop the background music - just play victory chime on top
 
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1210,6 +1229,9 @@ function playVictoryMusic() {
 
 // Input - use e.code for reliable key detection
 const keys = {};
+let pendingMouseMovement = 0; // Accumulate mouse movement between frames
+let lastFrameTime = performance.now();
+
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
     e.preventDefault();
@@ -1236,7 +1258,7 @@ canvas.addEventListener('click', () => {
 });
 document.addEventListener('mousemove', e => {
     if (document.pointerLockElement === canvas) {
-        player.angle += e.movementX * 0.002;
+        pendingMouseMovement += e.movementX; // Accumulate for smooth application in game loop
     }
 });
 document.addEventListener('mousedown', e => {
@@ -1337,7 +1359,7 @@ lookZone.addEventListener('touchmove', e => {
     for (const touch of e.changedTouches) {
         if (touch.identifier === touchState.look.id) {
             const deltaX = touch.clientX - touchState.look.lastX;
-            player.angle += deltaX * 0.008;
+            targetAngle += deltaX * 0.008;
             touchState.look.lastX = touch.clientX;
         }
     }
@@ -1802,23 +1824,27 @@ function renderHammer() {
     const centerX = SCREEN_W / 2;
     const baseY = SCREEN_H;
 
+    // Scale factor based on screen height (reference: 600px)
+    const s = SCREEN_H / 600;
+
     // Check if baton is cooling down
     const isCoolingDown = shootCooldown > 0 && currentWeapon === 0;
 
     // Idle bob animation (disabled while cooling down)
-    const bobX = isCoolingDown ? 0 : Math.sin(Date.now() * 0.004) * 10;
-    const bobY = isCoolingDown ? 0 : Math.abs(Math.cos(Date.now() * 0.008)) * 6;
+    const bobX = isCoolingDown ? 0 : Math.sin(Date.now() * 0.004) * 10 * s;
+    const bobY = isCoolingDown ? 0 : Math.abs(Math.cos(Date.now() * 0.008)) * 6 * s;
 
     // Swing animation (rotates the baton)
     const swingAngle = swingAnimation > 0 ? (1 - swingAnimation / 20) * Math.PI * 0.6 - 0.3 : 0;
-    const swingOffsetX = swingAnimation > 0 ? Math.sin(swingAngle) * 100 : 0;
-    const swingOffsetY = swingAnimation > 0 ? -Math.abs(Math.cos(swingAngle)) * 50 : 0;
+    const swingOffsetX = swingAnimation > 0 ? Math.sin(swingAngle) * 100 * s : 0;
+    const swingOffsetY = swingAnimation > 0 ? -Math.abs(Math.cos(swingAngle)) * 50 * s : 0;
 
-    const batonX = centerX + bobX + 50 + swingOffsetX;
-    const batonY = baseY + bobY - 100 + swingOffsetY;
+    const batonX = centerX + bobX + 50 * s + swingOffsetX;
+    const batonY = baseY + bobY - 100 * s + swingOffsetY;
 
     ctx.save();
     ctx.translate(batonX, batonY);
+    ctx.scale(s, s);
     ctx.rotate(-0.4 + swingAngle); // Slight tilt + swing
 
     // Handle (metallic grip)
@@ -1891,83 +1917,88 @@ function renderHammer() {
 // Render player's gun (sci-fi plasma rifle)
 function renderGun() {
     const centerX = SCREEN_W / 2;
-    const baseY = SCREEN_H;
+    const baseY = SCREEN_H + 80; // Lower position so gun doesn't cover as much view
+
+    // Scale factor based on screen height (reference: 600px)
+    const s = SCREEN_H / 600;
 
     // Gun recoil animation
-    const recoil = muzzleFlash > 0 ? muzzleFlash * 20 : 0;
-    const bobX = Math.sin(Date.now() * 0.004) * 12;
-    const bobY = Math.abs(Math.cos(Date.now() * 0.008)) * 8;
+    const recoil = muzzleFlash > 0 ? muzzleFlash * 20 * s : 0;
+    const bobX = Math.sin(Date.now() * 0.004) * 12 * s;
+    const bobY = Math.abs(Math.cos(Date.now() * 0.008)) * 8 * s;
 
     const gunX = centerX + bobX;
     const gunY = baseY + bobY - recoil;
 
     ctx.save();
+    ctx.translate(gunX, gunY);
+    ctx.scale(s, s);
 
     // Gun hand/grip (gloved hand)
     ctx.fillStyle = '#2a3040';
-    ctx.fillRect(gunX - 35, gunY - 70, 70, 80);
+    ctx.fillRect(-35, -70, 70, 80);
     ctx.fillStyle = '#1a2030';
-    ctx.fillRect(gunX - 30, gunY - 60, 60, 60);
+    ctx.fillRect(-30, -60, 60, 60);
 
     // Gun body (main frame - sleek sci-fi)
     ctx.fillStyle = '#3a4555';
-    ctx.fillRect(gunX - 40, gunY - 150, 80, 90);
+    ctx.fillRect(-40, -150, 80, 90);
 
     // Side panels
     ctx.fillStyle = '#2a3545';
-    ctx.fillRect(gunX - 42, gunY - 145, 10, 75);
-    ctx.fillRect(gunX + 32, gunY - 145, 10, 75);
+    ctx.fillRect(-42, -145, 10, 75);
+    ctx.fillRect(32, -145, 10, 75);
 
     // Gun barrel (elongated sci-fi)
     ctx.fillStyle = '#4a5565';
-    ctx.fillRect(gunX - 15, gunY - 220, 30, 80);
+    ctx.fillRect(-15, -220, 30, 80);
 
     // Barrel core (glowing)
     const glowIntensity = 0.5 + 0.3 * Math.sin(Date.now() * 0.01);
     ctx.fillStyle = `rgba(0, 200, 255, ${glowIntensity})`;
-    ctx.fillRect(gunX - 8, gunY - 215, 16, 70);
+    ctx.fillRect(-8, -215, 16, 70);
 
     // Barrel tip
     ctx.fillStyle = '#5a6575';
-    ctx.fillRect(gunX - 18, gunY - 225, 36, 12);
+    ctx.fillRect(-18, -225, 36, 12);
 
     // Energy coils on barrel
     ctx.fillStyle = '#0af';
     for (let i = 0; i < 3; i++) {
-        ctx.fillRect(gunX - 12, gunY - 200 + i * 25, 24, 3);
+        ctx.fillRect(-12, -200 + i * 25, 24, 3);
     }
 
     // Top rail
     ctx.fillStyle = '#4a5060';
-    ctx.fillRect(gunX - 10, gunY - 165, 20, 8);
+    ctx.fillRect(-10, -165, 20, 8);
 
     // Side lights
     ctx.fillStyle = muzzleFlash > 0 ? '#f80' : '#0a8';
-    ctx.fillRect(gunX - 38, gunY - 130, 6, 20);
-    ctx.fillRect(gunX + 32, gunY - 130, 6, 20);
+    ctx.fillRect(-38, -130, 6, 20);
+    ctx.fillRect(32, -130, 6, 20);
 
     // Muzzle flash (plasma burst)
     if (muzzleFlash > 0.5) {
         ctx.fillStyle = '#0ff';
         ctx.beginPath();
-        ctx.moveTo(gunX, gunY - 230);
-        ctx.lineTo(gunX - 25, gunY - 270);
-        ctx.lineTo(gunX - 6, gunY - 240);
-        ctx.lineTo(gunX, gunY - 300);
-        ctx.lineTo(gunX + 6, gunY - 240);
-        ctx.lineTo(gunX + 25, gunY - 270);
+        ctx.moveTo(0, -230);
+        ctx.lineTo(-25, -270);
+        ctx.lineTo(-6, -240);
+        ctx.lineTo(0, -300);
+        ctx.lineTo(6, -240);
+        ctx.lineTo(25, -270);
         ctx.closePath();
         ctx.fill();
 
         ctx.fillStyle = '#fff';
         ctx.beginPath();
-        ctx.arc(gunX, gunY - 230, 15, 0, Math.PI * 2);
+        ctx.arc(0, -230, 15, 0, Math.PI * 2);
         ctx.fill();
 
         // Plasma glow
         ctx.fillStyle = `rgba(0, 255, 255, ${muzzleFlash * 0.3})`;
         ctx.beginPath();
-        ctx.arc(gunX, gunY - 230, 40, 0, Math.PI * 2);
+        ctx.arc(0, -230, 40, 0, Math.PI * 2);
         ctx.fill();
     }
 
@@ -1976,7 +2007,9 @@ function renderGun() {
 
 // Render HUD at bottom of screen (Doom-style)
 function renderHUD() {
-    const hudHeight = 60;
+    // Scale factor based on screen height (reference: 600px)
+    const s = Math.min(1, SCREEN_H / 600);
+    const hudHeight = Math.floor(60 * s);
     const hudY = SCREEN_H - hudHeight;
 
     // HUD background (dark metallic panel)
@@ -1991,10 +2024,10 @@ function renderHUD() {
     ctx.fillStyle = '#4a6080';
     ctx.fillRect(0, hudY, SCREEN_W, 2);
 
-    // Panel dividers
+    // Panel dividers (scaled positions)
     ctx.fillStyle = '#3a4050';
-    ctx.fillRect(200, hudY + 5, 2, hudHeight - 10);
-    ctx.fillRect(598, hudY + 5, 2, hudHeight - 10);
+    ctx.fillRect(SCREEN_W * 0.25, hudY + 5 * s, 2, hudHeight - 10 * s);
+    ctx.fillRect(SCREEN_W * 0.75, hudY + 5 * s, 2, hudHeight - 10 * s);
 
     // Update head look direction based on player turning
     const angleDiff = player.angle - lastPlayerAngle;
@@ -2012,8 +2045,8 @@ function renderHUD() {
 
     // Draw space-man head (center of HUD)
     const headX = SCREEN_W / 2;
-    const headY = hudY + hudHeight / 2 + 2;
-    const headSize = 22;
+    const headY = hudY + hudHeight / 2 + 2 * s;
+    const headSize = 22 * s;
 
     ctx.save();
     ctx.translate(headX, headY);
@@ -2027,60 +2060,60 @@ function renderHUD() {
     // Helmet rim
     ctx.fillStyle = '#3a4555';
     ctx.beginPath();
-    ctx.arc(0, 0, headSize - 3, 0, Math.PI * 2);
+    ctx.arc(0, 0, headSize - 3 * s, 0, Math.PI * 2);
     ctx.fill();
 
     // Visor (dark)
     ctx.fillStyle = '#1a2535';
     ctx.beginPath();
-    ctx.ellipse(0, 2, headSize - 6, headSize - 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 2 * s, headSize - 6 * s, headSize - 8 * s, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Visor reflection
     ctx.fillStyle = 'rgba(100, 180, 220, 0.3)';
     ctx.beginPath();
-    ctx.ellipse(-5, -2, 6, 4, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(-5 * s, -2 * s, 6 * s, 4 * s, -0.3, 0, Math.PI * 2);
     ctx.fill();
 
     // Face inside visor
-    const faceOffsetX = headLookDir * 4;
+    const faceOffsetX = headLookDir * 4 * s;
     ctx.fillStyle = headDamageFlash > 0 ? '#ff8866' : '#e8c8a8';
     ctx.beginPath();
-    ctx.ellipse(faceOffsetX, 3, 10, 12, 0, 0, Math.PI * 2);
+    ctx.ellipse(faceOffsetX, 3 * s, 10 * s, 12 * s, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Eyes
-    const eyeOffsetX = headLookDir * 2;
+    const eyeOffsetX = headLookDir * 2 * s;
     ctx.fillStyle = '#222';
-    ctx.fillRect(faceOffsetX - 5 + eyeOffsetX, -1, 3, 4);
-    ctx.fillRect(faceOffsetX + 2 + eyeOffsetX, -1, 3, 4);
+    ctx.fillRect(faceOffsetX - 5 * s + eyeOffsetX, -1 * s, 3 * s, 4 * s);
+    ctx.fillRect(faceOffsetX + 2 * s + eyeOffsetX, -1 * s, 3 * s, 4 * s);
 
     // Eye whites/direction
     ctx.fillStyle = '#fff';
-    ctx.fillRect(faceOffsetX - 5 + eyeOffsetX + (headLookDir > 0 ? 1 : 0), 0, 2, 2);
-    ctx.fillRect(faceOffsetX + 2 + eyeOffsetX + (headLookDir > 0 ? 1 : 0), 0, 2, 2);
+    ctx.fillRect(faceOffsetX - 5 * s + eyeOffsetX + (headLookDir > 0 ? 1 * s : 0), 0, 2 * s, 2 * s);
+    ctx.fillRect(faceOffsetX + 2 * s + eyeOffsetX + (headLookDir > 0 ? 1 * s : 0), 0, 2 * s, 2 * s);
 
     // Mouth (changes with health)
     ctx.fillStyle = '#833';
     if (player.health > 60) {
         // Slight smile
         ctx.beginPath();
-        ctx.arc(faceOffsetX, 10, 4, 0.1 * Math.PI, 0.9 * Math.PI);
+        ctx.arc(faceOffsetX, 10 * s, 4 * s, 0.1 * Math.PI, 0.9 * Math.PI);
         ctx.stroke();
     } else if (player.health > 30) {
         // Neutral
-        ctx.fillRect(faceOffsetX - 3, 9, 6, 2);
+        ctx.fillRect(faceOffsetX - 3 * s, 9 * s, 6 * s, 2 * s);
     } else {
         // Grimace
         ctx.beginPath();
-        ctx.arc(faceOffsetX, 12, 4, 1.1 * Math.PI, 1.9 * Math.PI);
+        ctx.arc(faceOffsetX, 12 * s, 4 * s, 1.1 * Math.PI, 1.9 * Math.PI);
         ctx.stroke();
     }
 
     // Helmet lights
     ctx.fillStyle = player.health > 30 ? '#0f8' : '#f44';
-    ctx.fillRect(-headSize + 4, -8, 4, 4);
-    ctx.fillRect(headSize - 8, -8, 4, 4);
+    ctx.fillRect(-headSize + 4 * s, -8 * s, 4 * s, 4 * s);
+    ctx.fillRect(headSize - 8 * s, -8 * s, 4 * s, 4 * s);
 
     ctx.restore();
 
@@ -2089,44 +2122,44 @@ function renderHUD() {
 
     // Left panel - Health
     ctx.fillStyle = '#0cf';
-    ctx.font = 'bold 14px monospace';
+    ctx.font = `bold ${Math.floor(14 * s)}px monospace`;
     ctx.textAlign = 'left';
-    ctx.fillText('HEALTH', 15, hudY + 20);
+    ctx.fillText('HEALTH', 15 * s, hudY + 20 * s);
 
     const healthColor = player.health > 60 ? '#0f8' : player.health > 30 ? '#fa0' : '#f44';
     ctx.fillStyle = healthColor;
-    ctx.font = 'bold 28px monospace';
-    ctx.fillText(Math.floor(player.health), 15, hudY + 48);
+    ctx.font = `bold ${Math.floor(28 * s)}px monospace`;
+    ctx.fillText(Math.floor(player.health), 15 * s, hudY + 48 * s);
 
     // Health bar
     ctx.fillStyle = '#1a2030';
-    ctx.fillRect(90, hudY + 30, 100, 16);
+    ctx.fillRect(90 * s, hudY + 30 * s, 100 * s, 16 * s);
     ctx.fillStyle = healthColor;
-    ctx.fillRect(92, hudY + 32, Math.max(0, (player.health / 100) * 96), 12);
+    ctx.fillRect(92 * s, hudY + 32 * s, Math.max(0, (player.health / 100) * 96 * s), 12 * s);
 
     // Right panel - Ammo & Kills
     ctx.fillStyle = '#0cf';
-    ctx.font = 'bold 14px monospace';
+    ctx.font = `bold ${Math.floor(14 * s)}px monospace`;
     ctx.textAlign = 'right';
-    ctx.fillText('PLASMA', SCREEN_W - 15, hudY + 20);
-    ctx.fillText('KILLS', SCREEN_W - 100, hudY + 20);
+    ctx.fillText('PLASMA', SCREEN_W - 15 * s, hudY + 20 * s);
+    ctx.fillText('KILLS', SCREEN_W - 100 * s, hudY + 20 * s);
 
     ctx.fillStyle = currentWeapon === 1 ? '#0cf' : '#446';
-    ctx.font = 'bold 28px monospace';
-    ctx.fillText(player.ammo, SCREEN_W - 15, hudY + 48);
+    ctx.font = `bold ${Math.floor(28 * s)}px monospace`;
+    ctx.fillText(player.ammo, SCREEN_W - 15 * s, hudY + 48 * s);
 
     ctx.fillStyle = '#f4a';
-    ctx.fillText(player.kills, SCREEN_W - 100, hudY + 48);
+    ctx.fillText(player.kills, SCREEN_W - 100 * s, hudY + 48 * s);
 
     // Level indicator
     ctx.fillStyle = '#fa0';
-    ctx.font = 'bold 12px monospace';
+    ctx.font = `bold ${Math.floor(12 * s)}px monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText(`LEVEL ${currentLevel}`, SCREEN_W / 2, hudY + 15);
+    ctx.fillText(`LEVEL ${currentLevel}`, SCREEN_W / 2, hudY + 15 * s);
 
     // Weapon indicator
     ctx.fillStyle = '#5a6a7a';
-    ctx.fillText(currentWeapon === 0 ? '[ BATON ]' : '[ RIFLE ]', SCREEN_W / 2, hudY + 55);
+    ctx.fillText(currentWeapon === 0 ? '[ BATON ]' : '[ RIFLE ]', SCREEN_W / 2, hudY + 55 * s);
 }
 
 // Render light sprites
@@ -2771,6 +2804,21 @@ function renderMinimap() {
 
 // Handle input
 function handleInput() {
+    // Calculate delta time for frame-rate independent smoothing
+    const now = performance.now();
+    const deltaTime = Math.min((now - lastFrameTime) / 16.67, 3); // Normalize to ~60fps, cap at 3x
+    lastFrameTime = now;
+
+    // Apply accumulated mouse movement to target angle
+    if (pendingMouseMovement !== 0) {
+        targetAngle += pendingMouseMovement * 0.002;
+        pendingMouseMovement = 0;
+    }
+
+    // Smoothly interpolate current angle toward target (reduces jitter)
+    const smoothing = 0.5 * deltaTime; // Adjust for frame rate
+    player.angle += (targetAngle - player.angle) * Math.min(smoothing, 1);
+
     const cos = Math.cos(player.angle);
     const sin = Math.sin(player.angle);
 
@@ -2782,8 +2830,8 @@ function handleInput() {
     if (keys['KeyS']) { newX -= cos * player.speed; newY -= sin * player.speed; }
     if (keys['KeyA']) { newX += sin * player.speed; newY -= cos * player.speed; }
     if (keys['KeyD']) { newX -= sin * player.speed; newY += cos * player.speed; }
-    if (keys['ArrowLeft']) player.angle -= player.rotSpeed;
-    if (keys['ArrowRight']) player.angle += player.rotSpeed;
+    if (keys['ArrowLeft']) targetAngle -= player.rotSpeed;
+    if (keys['ArrowRight']) targetAngle += player.rotSpeed;
 
     // Touch joystick input (forward/back is -dy, strafe is dx)
     if (touchState.joystick.active) {
