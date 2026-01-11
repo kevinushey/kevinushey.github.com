@@ -6,18 +6,16 @@
     <title>Space Station Escape</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
+        html, body {
             background: #050810;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
             font-family: 'Courier New', monospace;
         }
         #game {
-            border: 2px solid #2a4060;
+            display: block;
             cursor: none;
-            box-shadow: 0 0 20px rgba(0, 150, 200, 0.3);
         }
         #minimap {
             position: absolute;
@@ -34,27 +32,191 @@
             font-size: 12px;
             text-shadow: 0 0 5px rgba(0, 150, 200, 0.3);
         }
+        /* Touch controls */
+        #touch-controls {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            top: 0;
+            pointer-events: none;
+            z-index: 100;
+        }
+        .touch-btn {
+            position: absolute;
+            background: rgba(0, 150, 200, 0.3);
+            border: 2px solid rgba(0, 200, 255, 0.5);
+            border-radius: 50%;
+            color: #0cf;
+            font-family: monospace;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        .touch-btn:active {
+            background: rgba(0, 200, 255, 0.5);
+        }
+        #joystick-zone {
+            position: absolute;
+            bottom: 80px;
+            left: 20px;
+            width: 140px;
+            height: 140px;
+            background: rgba(0, 100, 150, 0.2);
+            border: 2px solid rgba(0, 200, 255, 0.3);
+            border-radius: 50%;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        #joystick-knob {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background: rgba(0, 200, 255, 0.4);
+            border: 2px solid rgba(0, 255, 255, 0.6);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        #btn-attack {
+            bottom: 100px;
+            right: 30px;
+            width: 80px;
+            height: 80px;
+            font-size: 14px;
+        }
+        #btn-door {
+            bottom: 200px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            font-size: 12px;
+        }
+        #btn-weapon1 {
+            bottom: 200px;
+            right: 110px;
+            width: 50px;
+            height: 50px;
+            font-size: 11px;
+        }
+        #btn-weapon2 {
+            bottom: 260px;
+            right: 110px;
+            width: 50px;
+            height: 50px;
+            font-size: 11px;
+        }
+        #look-zone {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 50%;
+            height: 60%;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        @media (pointer: coarse), (max-width: 1024px) {
+            #touch-controls { display: block; }
+            #instructions { display: none; }
+            #crosshair { display: none; }
+            #minimap {
+                top: 5px;
+                right: 5px;
+                width: 100px;
+                height: 100px;
+            }
+        }
     </style>
 </head>
 <body>
-    <canvas id="game" width="800" height="600"></canvas>
+    <canvas id="game"></canvas>
     <canvas id="minimap" width="160" height="160"></canvas>
     <div id="ui" style="display:none;"><span id="health">Health: 100</span> | <span id="ammo">Ammo: 50</span> | <span id="kills">Kills: 0</span> | <span id="weapon">Weapon: Gun</span></div>
-    <div id="instructions">WASD: Move | Mouse/Arrows: Look | Space/Click: Attack | 1: Hammer | 2: Gun | E: Open Airlock</div>
+    <div id="instructions">WASD: Move | Mouse: Look | Click: Attack | Right-Click: Plasma Ball (10 ammo) | 1: Baton | 2: Rifle | E: Door</div>
     <div id="crosshair" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#0ff;font-size:24px;pointer-events:none;text-shadow:0 0 10px #0ff;">+</div>
+    <!-- Touch controls for mobile -->
+    <div id="touch-controls">
+        <div id="look-zone"></div>
+        <div id="joystick-zone">
+            <div id="joystick-knob"></div>
+        </div>
+        <div id="btn-attack" class="touch-btn">FIRE</div>
+        <div id="btn-door" class="touch-btn">DOOR</div>
+        <div id="btn-weapon1" class="touch-btn">1</div>
+        <div id="btn-weapon2" class="touch-btn">2</div>
+    </div>
     <script>
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const minimap = document.getElementById('minimap');
 const minimapCtx = minimap.getContext('2d');
 
-const SCREEN_W = canvas.width;
-const SCREEN_H = canvas.height;
+// Dynamic screen dimensions
+let SCREEN_W = 800;
+let SCREEN_H = 600;
 const FOV = Math.PI / 3;
 const HALF_FOV = FOV / 2;
-const NUM_RAYS = 320;
+let NUM_RAYS = 320;
 const MAX_DEPTH = 20;
-const SCALE = SCREEN_W / NUM_RAYS;
+let SCALE = SCREEN_W / NUM_RAYS;
+let depthBuffer = new Array(NUM_RAYS);
+
+// Resize canvas to fit screen with 4:3 aspect ratio
+function resizeCanvas() {
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+
+    // Calculate largest 4:3 rectangle that fits
+    const targetRatio = 4 / 3;
+    const windowRatio = windowWidth / windowHeight;
+
+    let width, height;
+    if (windowRatio > targetRatio) {
+        // Window is wider than 4:3, constrain by height
+        height = windowHeight;
+        width = height * targetRatio;
+    } else {
+        // Window is taller than 4:3, constrain by width
+        width = windowWidth;
+        height = width / targetRatio;
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+
+    // Set CSS size to match (prevents stretching)
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+
+    // Center the canvas
+    canvas.style.position = 'absolute';
+    canvas.style.left = ((windowWidth - width) / 2) + 'px';
+    canvas.style.top = ((windowHeight - height) / 2) + 'px';
+
+    SCREEN_W = width;
+    SCREEN_H = height;
+
+    // Adjust ray count based on width for performance
+    NUM_RAYS = Math.min(640, Math.max(200, Math.floor(width / 2)));
+    SCALE = SCREEN_W / NUM_RAYS;
+
+    // Resize depth buffer
+    depthBuffer = new Array(NUM_RAYS);
+}
+
+// Initial resize
+resizeCanvas();
+
+// Resize on window change
+window.addEventListener('resize', resizeCanvas);
 
 // Map: 1 = wall, 0 = empty, 2 = door, 3 = elevator door, 4 = elevator interior
 const MAP_W = 16;
@@ -187,7 +349,7 @@ function generateMap() {
         enemies.push({
             x: tile.x + 0.5,
             y: tile.y + 0.5,
-            health: 30,
+            health: 30 * currentLevel, // Enemies get stronger each level
             speed: 0.02,
             alive: true,
             dying: false,
@@ -197,42 +359,56 @@ function generateMap() {
     }
 }
 
+// Game state: 'playing', 'gameover', 'victory'
+let gameState = 'playing';
+let currentLevel = 1;
+
 generateMap();
 
 // Player - start position set by map generator
 let player = { x: playerStart.x, y: playerStart.y, angle: 0, speed: 0.06, rotSpeed: 0.04, health: 100, ammo: 50, kills: 0 };
 
-// Game state: 'playing', 'gameover', 'victory'
-let gameState = 'playing';
-
-// Restart the game with a fresh map
+// Restart the game with a fresh map (full reset)
 function restartGame() {
+    currentLevel = 1;
+    player.health = 100;
+    player.ammo = 50;
+    player.kills = 0;
+    nextLevel(true);
+}
+
+// Advance to next level (keeps health/ammo if not a full reset)
+function nextLevel(fullReset = false) {
     // Clear arrays
     MAP.length = 0;
     doors.length = 0;
     enemies.length = 0;
     lights.length = 0;
+    ammoBoxes.length = 0;
+    healthPacks.length = 0;
+    plasmaBalls.length = 0;
 
-    // Reset music state
-    musicPlaying = false;
+    // Reset music state to ensure it restarts cleanly
+    stopMusic();
     musicStarted = false;
     victoryPlayed = false;
 
-    // Regenerate map, enemies, lights
+    // Regenerate map, enemies, lights, ammo, health
     generateMap();
     generateLights();
+    generateAmmoBoxes();
+    generateHealthPacks();
 
-    // Reset player
+    // Reset player position (keep health/ammo unless full reset)
     player.x = playerStart.x;
     player.y = playerStart.y;
     player.angle = 0;
-    player.health = 100;
-    player.ammo = 50;
-    player.kills = 0;
 
     // Reset other state
     shootCooldown = 0;
     muzzleFlash = 0;
+    damageFlash = 0;
+    plasmaballCooldown = 0;
     headLookDir = 0;
     headLookTimer = 0;
     lastPlayerAngle = 0;
@@ -248,12 +424,9 @@ function restartGame() {
     // Reset game state
     gameState = 'playing';
 
-    // Restart music
+    // Start music if not already playing
     startMusic();
 }
-
-// Depth buffer for sprite occlusion
-let depthBuffer = new Array(NUM_RAYS);
 
 // Light sprites - randomly generated along hallways
 const lights = [];
@@ -285,9 +458,62 @@ function generateLights() {
 }
 generateLights();
 
+// Ammo boxes - randomly generated along hallways
+const ammoBoxes = [];
+function generateAmmoBoxes() {
+    const numBoxes = 3 + Math.floor(Math.random() * 4); // 3-6 ammo boxes
+    const walkable = [];
+    for (let y = 0; y < MAP_H; y++) {
+        for (let x = 0; x < MAP_W; x++) {
+            if (MAP[y][x] === 0) {
+                walkable.push({ x: x + 0.5, y: y + 0.5 });
+            }
+        }
+    }
+    for (let i = 0; i < numBoxes && walkable.length > 0; i++) {
+        const idx = Math.floor(Math.random() * walkable.length);
+        const pos = walkable.splice(idx, 1)[0];
+        ammoBoxes.push({
+            x: pos.x,
+            y: pos.y,
+            collected: false
+        });
+    }
+}
+generateAmmoBoxes();
+
+// Health packs - randomly generated along hallways
+const healthPacks = [];
+function generateHealthPacks() {
+    const numPacks = 2 + Math.floor(Math.random() * 3); // 2-4 health packs
+    const walkable = [];
+    for (let y = 0; y < MAP_H; y++) {
+        for (let x = 0; x < MAP_W; x++) {
+            if (MAP[y][x] === 0) {
+                walkable.push({ x: x + 0.5, y: y + 0.5 });
+            }
+        }
+    }
+    for (let i = 0; i < numPacks && walkable.length > 0; i++) {
+        const idx = Math.floor(Math.random() * walkable.length);
+        const pos = walkable.splice(idx, 1)[0];
+        healthPacks.push({
+            x: pos.x,
+            y: pos.y,
+            collected: false
+        });
+    }
+}
+generateHealthPacks();
+
 // Shooting state
 let shootCooldown = 0;
 let muzzleFlash = 0;
+let damageFlash = 0;
+
+// Plasma ball projectiles
+const plasmaBalls = [];
+let plasmaballCooldown = 0;
 
 // HUD space-man head state
 let headLookDir = 0; // -1 left, 0 center, 1 right
@@ -682,6 +908,218 @@ function playEnemyRoarSound() {
     noise.stop(now + 0.15);
 }
 
+function playDoorOpenSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // Hydraulic hiss
+    const bufferSize = ctx.sampleRate * 0.4;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        const env = Math.exp(-i / (bufferSize * 0.3));
+        data[i] = (Math.random() * 2 - 1) * env;
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(2000, now);
+    filter.frequency.exponentialRampToValueAtTime(500, now + 0.3);
+    filter.Q.value = 2;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    noise.start(now);
+    noise.stop(now + 0.4);
+
+    // Mechanical clunk
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(80, now);
+    osc.frequency.exponentialRampToValueAtTime(40, now + 0.1);
+    oscGain.gain.setValueAtTime(0.1, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+    osc.connect(oscGain);
+    oscGain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+}
+
+function playAmmoPickupSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // Quick ascending blip
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(400, now);
+    osc.frequency.exponentialRampToValueAtTime(800, now + 0.08);
+
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.1);
+
+    // Second higher blip
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+
+    osc2.type = 'square';
+    osc2.frequency.setValueAtTime(600, now + 0.05);
+    osc2.frequency.exponentialRampToValueAtTime(1200, now + 0.12);
+
+    gain2.gain.setValueAtTime(0.08, now + 0.05);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+
+    osc2.start(now + 0.05);
+    osc2.stop(now + 0.15);
+}
+
+function playPlayerHitSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // 8-bit "oof" sound - short low grunt
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(80, now + 0.1);
+
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.12);
+
+    // Add some noise for texture
+    const bufferSize = ctx.sampleRate * 0.08;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize) * 0.5;
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.value = 400;
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.08, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+
+    noise.start(now);
+    noise.stop(now + 0.08);
+}
+
+function playPlasmaBallSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // Mid thump
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(80, now + 0.2);
+
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.25);
+
+    // Mid rumble
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+
+    osc2.type = 'sawtooth';
+    osc2.frequency.setValueAtTime(120, now);
+    osc2.frequency.exponentialRampToValueAtTime(60, now + 0.25);
+
+    gain2.gain.setValueAtTime(0.1, now);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+
+    osc2.start(now);
+    osc2.stop(now + 0.25);
+}
+
+function playHealthPickupSound() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // Warm healing tone
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(440, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.2);
+
+    // Harmony note
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(554, now + 0.05);
+    osc2.frequency.exponentialRampToValueAtTime(1108, now + 0.18);
+
+    gain2.gain.setValueAtTime(0.08, now + 0.05);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+
+    osc2.start(now + 0.05);
+    osc2.stop(now + 0.22);
+}
+
 function playEnemyDeathSound() {
     const ctx = ensureAudioCtx();
     const now = ctx.currentTime;
@@ -740,74 +1178,34 @@ function playVictoryMusic() {
     }
 
     const masterGain = audioCtx.createGain();
-    masterGain.gain.value = 0.5;
+    masterGain.gain.value = 0.4;
     masterGain.connect(audioCtx.destination);
 
-    // Victory fanfare note
-    function playFanfare(time, freq, duration = 0.3) {
+    // Soft victory chime
+    function playChime(time, freq, duration = 0.4) {
         const osc = audioCtx.createOscillator();
-        const osc2 = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
 
-        osc.type = 'sawtooth';
+        osc.type = 'sine';
         osc.frequency.value = freq;
-        osc2.type = 'square';
-        osc2.frequency.value = freq * 1.002;
 
         gain.gain.setValueAtTime(0, time);
-        gain.gain.linearRampToValueAtTime(0.25, time + 0.05);
-        gain.gain.linearRampToValueAtTime(0.2, time + duration * 0.7);
-        gain.gain.linearRampToValueAtTime(0, time + duration);
+        gain.gain.linearRampToValueAtTime(0.12, time + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
 
         osc.connect(gain);
-        osc2.connect(gain);
         gain.connect(masterGain);
 
         osc.start(time);
-        osc2.start(time);
         osc.stop(time + duration);
-        osc2.stop(time + duration);
-    }
-
-    // Triumph chord
-    function playChord(time, freqs, duration = 1.5) {
-        freqs.forEach(freq => {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-
-            osc.type = 'sine';
-            osc.frequency.value = freq;
-
-            gain.gain.setValueAtTime(0, time);
-            gain.gain.linearRampToValueAtTime(0.15, time + 0.1);
-            gain.gain.linearRampToValueAtTime(0.1, time + duration * 0.8);
-            gain.gain.linearRampToValueAtTime(0, time + duration);
-
-            osc.connect(gain);
-            gain.connect(masterGain);
-
-            osc.start(time);
-            osc.stop(time + duration);
-        });
     }
 
     const now = audioCtx.currentTime;
 
-    // Fanfare melody (C major triumphant)
-    playFanfare(now, 523.25, 0.15);        // C5
-    playFanfare(now + 0.15, 659.25, 0.15); // E5
-    playFanfare(now + 0.3, 783.99, 0.15);  // G5
-    playFanfare(now + 0.45, 1046.5, 0.6);  // C6 (held)
-
-    // Rising arpeggio
-    playFanfare(now + 0.6, 523.25, 0.1);   // C5
-    playFanfare(now + 0.7, 659.25, 0.1);   // E5
-    playFanfare(now + 0.8, 783.99, 0.1);   // G5
-    playFanfare(now + 0.9, 1046.5, 0.1);   // C6
-    playFanfare(now + 1.0, 1318.5, 0.5);   // E6 (held)
-
-    // Final triumphant chord (C major)
-    playChord(now + 1.2, [261.63, 329.63, 392, 523.25], 2.5); // C4, E4, G4, C5
+    // Simple ascending chime (C-E-G)
+    playChime(now, 523.25, 0.5);        // C5
+    playChime(now + 0.15, 659.25, 0.5); // E5
+    playChime(now + 0.3, 783.99, 0.8);  // G5 (held slightly longer)
 }
 
 // Input - use e.code for reliable key detection
@@ -821,9 +1219,14 @@ window.addEventListener('keyup', e => {
 });
 
 canvas.addEventListener('click', () => {
-    // Handle restart on end screens
-    if (gameState === 'gameover' || gameState === 'victory') {
+    // Handle end screens
+    if (gameState === 'gameover') {
         restartGame();
+        return;
+    }
+    if (gameState === 'victory') {
+        currentLevel++;
+        nextLevel();
         return;
     }
     startMusic(); // Start music on first click
@@ -837,9 +1240,156 @@ document.addEventListener('mousemove', e => {
     }
 });
 document.addEventListener('mousedown', e => {
-    if (document.pointerLockElement === canvas && e.button === 0) {
+    if (document.pointerLockElement === canvas) {
+        if (e.button === 0) {
+            attack();
+        } else if (e.button === 2) {
+            firePlasmaBall();
+        }
+    }
+});
+
+// Prevent context menu on right click
+document.addEventListener('contextmenu', e => {
+    e.preventDefault();
+});
+
+// === TOUCH CONTROLS ===
+const touchState = {
+    joystick: { active: false, id: null, startX: 0, startY: 0, dx: 0, dy: 0 },
+    look: { active: false, id: null, lastX: 0 }
+};
+
+// Joystick for movement
+const joystickZone = document.getElementById('joystick-zone');
+const joystickKnob = document.getElementById('joystick-knob');
+
+joystickZone.addEventListener('touchstart', e => {
+    e.preventDefault();
+    startMusic();
+    const touch = e.changedTouches[0];
+    const rect = joystickZone.getBoundingClientRect();
+    touchState.joystick.active = true;
+    touchState.joystick.id = touch.identifier;
+    touchState.joystick.startX = rect.left + rect.width / 2;
+    touchState.joystick.startY = rect.top + rect.height / 2;
+    updateJoystick(touch.clientX, touch.clientY);
+});
+
+joystickZone.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const touch of e.changedTouches) {
+        if (touch.identifier === touchState.joystick.id) {
+            updateJoystick(touch.clientX, touch.clientY);
+        }
+    }
+});
+
+joystickZone.addEventListener('touchend', e => {
+    for (const touch of e.changedTouches) {
+        if (touch.identifier === touchState.joystick.id) {
+            touchState.joystick.active = false;
+            touchState.joystick.dx = 0;
+            touchState.joystick.dy = 0;
+            joystickKnob.style.transform = 'translate(-50%, -50%)';
+        }
+    }
+});
+
+joystickZone.addEventListener('touchcancel', e => {
+    touchState.joystick.active = false;
+    touchState.joystick.dx = 0;
+    touchState.joystick.dy = 0;
+    joystickKnob.style.transform = 'translate(-50%, -50%)';
+});
+
+function updateJoystick(x, y) {
+    const maxDist = 50;
+    let dx = x - touchState.joystick.startX;
+    let dy = y - touchState.joystick.startY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist > maxDist) {
+        dx = (dx / dist) * maxDist;
+        dy = (dy / dist) * maxDist;
+    }
+
+    touchState.joystick.dx = dx / maxDist;
+    touchState.joystick.dy = dy / maxDist;
+
+    joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+}
+
+// Look zone for camera rotation
+const lookZone = document.getElementById('look-zone');
+
+lookZone.addEventListener('touchstart', e => {
+    e.preventDefault();
+    startMusic();
+    const touch = e.changedTouches[0];
+    touchState.look.active = true;
+    touchState.look.id = touch.identifier;
+    touchState.look.lastX = touch.clientX;
+});
+
+lookZone.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const touch of e.changedTouches) {
+        if (touch.identifier === touchState.look.id) {
+            const deltaX = touch.clientX - touchState.look.lastX;
+            player.angle += deltaX * 0.008;
+            touchState.look.lastX = touch.clientX;
+        }
+    }
+});
+
+lookZone.addEventListener('touchend', e => {
+    for (const touch of e.changedTouches) {
+        if (touch.identifier === touchState.look.id) {
+            touchState.look.active = false;
+        }
+    }
+});
+
+lookZone.addEventListener('touchcancel', e => {
+    touchState.look.active = false;
+});
+
+// Attack button
+const btnAttack = document.getElementById('btn-attack');
+btnAttack.addEventListener('touchstart', e => {
+    e.preventDefault();
+    startMusic();
+    if (gameState === 'gameover') {
+        restartGame();
+    } else if (gameState === 'victory') {
+        currentLevel++;
+        nextLevel();
+    } else {
         attack();
     }
+});
+
+// Door button
+const btnDoor = document.getElementById('btn-door');
+btnDoor.addEventListener('touchstart', e => {
+    e.preventDefault();
+    startMusic();
+    tryOpenDoor();
+});
+
+// Weapon buttons
+const btnWeapon1 = document.getElementById('btn-weapon1');
+const btnWeapon2 = document.getElementById('btn-weapon2');
+
+btnWeapon1.addEventListener('touchstart', e => {
+    e.preventDefault();
+    currentWeapon = 0;
+});
+
+btnWeapon2.addEventListener('touchstart', e => {
+    e.preventDefault();
+    currentWeapon = 1;
 });
 
 // Weapon switching and restart
@@ -847,9 +1397,13 @@ window.addEventListener('keydown', e => {
     if (e.code === 'Digit1') currentWeapon = 0; // Hammer
     if (e.code === 'Digit2') currentWeapon = 1; // Gun
 
-    // Handle restart on end screens
-    if (e.code === 'Space' && (gameState === 'gameover' || gameState === 'victory')) {
+    // Handle end screens
+    if (e.code === 'Space' && gameState === 'gameover') {
         restartGame();
+    }
+    if (e.code === 'Space' && gameState === 'victory') {
+        currentLevel++;
+        nextLevel();
     }
 });
 
@@ -891,8 +1445,9 @@ function tryOpenDoor() {
         const dy = (door.y + 0.5) - player.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist < 2 && door.state < 0.5) {
+        if (dist < 2 && door.state < 0.5 && !door.opening) {
             door.opening = true;
+            playDoorOpenSound();
         }
     }
 }
@@ -1201,14 +1756,34 @@ function render3D() {
     // Render light sprites
     renderLights();
 
+    // Render ammo boxes
+    renderAmmoBoxes();
+
+    // Render health packs
+    renderHealthPacks();
+
     // Render enemies as sprites
     renderSprites();
+
+    // Render plasma balls
+    renderPlasmaBalls();
 
     // Muzzle flash effect
     if (muzzleFlash > 0) {
         ctx.fillStyle = `rgba(255, 200, 50, ${muzzleFlash * 0.3})`;
         ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
         muzzleFlash -= 0.2;
+    }
+
+    // Damage flash effect (red radial gradient)
+    if (damageFlash > 0) {
+        const gradient = ctx.createRadialGradient(SCREEN_W / 2, SCREEN_H / 2, 0, SCREEN_W / 2, SCREEN_H / 2, SCREEN_W * 0.7);
+        gradient.addColorStop(0, 'rgba(255, 0, 0, 0)');
+        gradient.addColorStop(0.5, `rgba(255, 0, 0, ${damageFlash * 0.15})`);
+        gradient.addColorStop(1, `rgba(200, 0, 0, ${damageFlash * 0.4})`);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+        damageFlash -= 0.05;
     }
 
     // Render weapon
@@ -1227,9 +1802,12 @@ function renderHammer() {
     const centerX = SCREEN_W / 2;
     const baseY = SCREEN_H;
 
-    // Idle bob animation
-    const bobX = Math.sin(Date.now() * 0.004) * 10;
-    const bobY = Math.abs(Math.cos(Date.now() * 0.008)) * 6;
+    // Check if baton is cooling down
+    const isCoolingDown = shootCooldown > 0 && currentWeapon === 0;
+
+    // Idle bob animation (disabled while cooling down)
+    const bobX = isCoolingDown ? 0 : Math.sin(Date.now() * 0.004) * 10;
+    const bobY = isCoolingDown ? 0 : Math.abs(Math.cos(Date.now() * 0.008)) * 6;
 
     // Swing animation (rotates the baton)
     const swingAngle = swingAnimation > 0 ? (1 - swingAnimation / 20) * Math.PI * 0.6 - 0.3 : 0;
@@ -1267,8 +1845,8 @@ function renderHammer() {
     ctx.fillRect(-20, -110, 12, 35);
     ctx.fillRect(8, -110, 12, 35);
 
-    // Glowing energy core
-    const glowPulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.015);
+    // Glowing energy core (dimmed and static while cooling down)
+    const glowPulse = isCoolingDown ? 0.3 : 0.6 + 0.4 * Math.sin(Date.now() * 0.015);
     ctx.fillStyle = `rgba(0, 200, 255, ${glowPulse})`;
     ctx.fillRect(-8, -100, 16, 50);
 
@@ -1276,8 +1854,8 @@ function renderHammer() {
     ctx.fillStyle = `rgba(0, 255, 255, ${glowPulse * 0.8})`;
     ctx.fillRect(-16, -115, 32, 8);
 
-    // Status light
-    ctx.fillStyle = swingAnimation > 0 ? '#f80' : '#0f8';
+    // Status light (orange while cooling down, green when ready)
+    ctx.fillStyle = isCoolingDown ? '#f80' : '#0f8';
     ctx.fillRect(-4, 10, 8, 8);
 
     // Electric arc effect when swinging
@@ -1540,10 +2118,14 @@ function renderHUD() {
     ctx.fillStyle = '#f4a';
     ctx.fillText(player.kills, SCREEN_W - 100, hudY + 48);
 
-    // Weapon indicator
-    ctx.fillStyle = '#5a6a7a';
+    // Level indicator
+    ctx.fillStyle = '#fa0';
     ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'center';
+    ctx.fillText(`LEVEL ${currentLevel}`, SCREEN_W / 2, hudY + 15);
+
+    // Weapon indicator
+    ctx.fillStyle = '#5a6a7a';
     ctx.fillText(currentWeapon === 0 ? '[ BATON ]' : '[ RIFLE ]', SCREEN_W / 2, hudY + 55);
 }
 
@@ -1594,6 +2176,160 @@ function renderLights() {
         // Bright center
         ctx.fillStyle = `rgba(150, 230, 255, ${flicker})`;
         ctx.fillRect(screenX - spriteSize * 0.25, spriteTop + spriteSize * 0.15, spriteSize * 0.5, spriteSize * 0.25);
+    }
+}
+
+// Render ammo box sprites
+function renderAmmoBoxes() {
+    const boxData = ammoBoxes.filter(b => !b.collected).map(box => {
+        const dx = box.x - player.x;
+        const dy = box.y - player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) - player.angle;
+        return { box, dist, angle };
+    });
+
+    // Sort by distance (far to near)
+    boxData.sort((a, b) => b.dist - a.dist);
+
+    for (const { box, dist, angle } of boxData) {
+        let normAngle = angle;
+        while (normAngle > Math.PI) normAngle -= 2 * Math.PI;
+        while (normAngle < -Math.PI) normAngle += 2 * Math.PI;
+
+        if (Math.abs(normAngle) > HALF_FOV + 0.2) continue;
+
+        const screenX = (0.5 + normAngle / FOV) * SCREEN_W;
+        const spriteSize = Math.min(SCREEN_H * 0.4, (SCREEN_H * 0.2) / dist);
+        const spriteTop = SCREEN_H / 2 + spriteSize * 0.3; // On the floor
+
+        // Check depth - only draw if not behind wall
+        const col = Math.floor(screenX / SCALE);
+        if (col >= 0 && col < NUM_RAYS && depthBuffer[col] < dist) continue;
+
+        const shade = Math.max(0.3, 1 - dist / MAX_DEPTH);
+        const bob = Math.sin(Date.now() * 0.005) * spriteSize * 0.1;
+
+        // Box body (green ammo crate)
+        ctx.fillStyle = `rgb(${Math.floor(40 * shade)}, ${Math.floor(120 * shade)}, ${Math.floor(50 * shade)})`;
+        ctx.fillRect(screenX - spriteSize * 0.4, spriteTop - spriteSize * 0.6 + bob, spriteSize * 0.8, spriteSize * 0.6);
+
+        // Box highlight
+        ctx.fillStyle = `rgb(${Math.floor(60 * shade)}, ${Math.floor(180 * shade)}, ${Math.floor(80 * shade)})`;
+        ctx.fillRect(screenX - spriteSize * 0.35, spriteTop - spriteSize * 0.55 + bob, spriteSize * 0.3, spriteSize * 0.15);
+
+        // Ammo symbol (yellow rectangle)
+        ctx.fillStyle = `rgb(${Math.floor(220 * shade)}, ${Math.floor(200 * shade)}, ${Math.floor(50 * shade)})`;
+        ctx.fillRect(screenX - spriteSize * 0.15, spriteTop - spriteSize * 0.45 + bob, spriteSize * 0.3, spriteSize * 0.25);
+
+        // Glow effect
+        const glowSize = spriteSize * 0.8;
+        const gradient = ctx.createRadialGradient(screenX, spriteTop - spriteSize * 0.3 + bob, 0, screenX, spriteTop - spriteSize * 0.3 + bob, glowSize);
+        gradient.addColorStop(0, `rgba(100, 255, 100, ${0.2 * shade})`);
+        gradient.addColorStop(1, 'rgba(50, 200, 50, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(screenX - glowSize, spriteTop - spriteSize * 0.3 - glowSize + bob, glowSize * 2, glowSize * 2);
+    }
+}
+
+// Render health pack sprites
+function renderHealthPacks() {
+    const packData = healthPacks.filter(p => !p.collected).map(pack => {
+        const dx = pack.x - player.x;
+        const dy = pack.y - player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) - player.angle;
+        return { pack, dist, angle };
+    });
+
+    // Sort by distance (far to near)
+    packData.sort((a, b) => b.dist - a.dist);
+
+    for (const { pack, dist, angle } of packData) {
+        let normAngle = angle;
+        while (normAngle > Math.PI) normAngle -= 2 * Math.PI;
+        while (normAngle < -Math.PI) normAngle += 2 * Math.PI;
+
+        if (Math.abs(normAngle) > HALF_FOV + 0.2) continue;
+
+        const screenX = (0.5 + normAngle / FOV) * SCREEN_W;
+        const spriteSize = Math.min(SCREEN_H * 0.4, (SCREEN_H * 0.2) / dist);
+        const spriteTop = SCREEN_H / 2 + spriteSize * 0.3; // On the floor
+
+        // Check depth - only draw if not behind wall
+        const col = Math.floor(screenX / SCALE);
+        if (col >= 0 && col < NUM_RAYS && depthBuffer[col] < dist) continue;
+
+        const shade = Math.max(0.3, 1 - dist / MAX_DEPTH);
+        const bob = Math.sin(Date.now() * 0.006 + 1) * spriteSize * 0.1;
+
+        // Box body (red/white medical crate)
+        ctx.fillStyle = `rgb(${Math.floor(200 * shade)}, ${Math.floor(50 * shade)}, ${Math.floor(50 * shade)})`;
+        ctx.fillRect(screenX - spriteSize * 0.4, spriteTop - spriteSize * 0.6 + bob, spriteSize * 0.8, spriteSize * 0.6);
+
+        // White cross (horizontal)
+        ctx.fillStyle = `rgb(${Math.floor(255 * shade)}, ${Math.floor(255 * shade)}, ${Math.floor(255 * shade)})`;
+        ctx.fillRect(screenX - spriteSize * 0.25, spriteTop - spriteSize * 0.38 + bob, spriteSize * 0.5, spriteSize * 0.15);
+
+        // White cross (vertical)
+        ctx.fillRect(screenX - spriteSize * 0.1, spriteTop - spriteSize * 0.52 + bob, spriteSize * 0.2, spriteSize * 0.42);
+
+        // Glow effect
+        const glowSize = spriteSize * 0.8;
+        const gradient = ctx.createRadialGradient(screenX, spriteTop - spriteSize * 0.3 + bob, 0, screenX, spriteTop - spriteSize * 0.3 + bob, glowSize);
+        gradient.addColorStop(0, `rgba(255, 100, 100, ${0.2 * shade})`);
+        gradient.addColorStop(1, 'rgba(200, 50, 50, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(screenX - glowSize, spriteTop - spriteSize * 0.3 - glowSize + bob, glowSize * 2, glowSize * 2);
+    }
+}
+
+// Render plasma ball projectiles
+function renderPlasmaBalls() {
+    for (const ball of plasmaBalls) {
+        if (!ball.alive) continue;
+
+        const dx = ball.x - player.x;
+        const dy = ball.y - player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        let angle = Math.atan2(dy, dx) - player.angle;
+
+        while (angle > Math.PI) angle -= 2 * Math.PI;
+        while (angle < -Math.PI) angle += 2 * Math.PI;
+
+        if (Math.abs(angle) > HALF_FOV + 0.3) continue;
+
+        const screenX = (0.5 + angle / FOV) * SCREEN_W;
+        const spriteSize = Math.min(SCREEN_H * 0.5, (SCREEN_H * 0.15) / dist);
+
+        // Check depth
+        const col = Math.floor(screenX / SCALE);
+        if (col >= 0 && col < NUM_RAYS && depthBuffer[col] < dist) continue;
+
+        const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.02);
+
+        // Outer glow
+        const glowSize = spriteSize * 2;
+        const gradient = ctx.createRadialGradient(screenX, SCREEN_H / 2, 0, screenX, SCREEN_H / 2, glowSize);
+        gradient.addColorStop(0, `rgba(100, 200, 255, ${0.8 * pulse})`);
+        gradient.addColorStop(0.3, `rgba(50, 150, 255, ${0.4 * pulse})`);
+        gradient.addColorStop(1, 'rgba(0, 100, 200, 0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(screenX, SCREEN_H / 2, glowSize, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Core
+        ctx.fillStyle = `rgba(200, 240, 255, ${pulse})`;
+        ctx.beginPath();
+        ctx.arc(screenX, SCREEN_H / 2, spriteSize * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Bright center
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(screenX, SCREEN_H / 2, spriteSize * 0.2, 0, Math.PI * 2);
+        ctx.fill();
     }
 }
 
@@ -1708,13 +2444,92 @@ function getEnemyShape(t) {
     return 0.85 + Math.sin(t * Math.PI) * 0.15; // Body/head bulge
 }
 
+// Fire plasma ball (secondary fire - right click)
+function firePlasmaBall() {
+    if (plasmaballCooldown > 0) return;
+    if (player.ammo < 10) return;
+
+    player.ammo -= 10;
+    plasmaballCooldown = 60; // 1 second cooldown
+    playPlasmaBallSound();
+    muzzleFlash = 1;
+
+    plasmaBalls.push({
+        x: player.x,
+        y: player.y,
+        angle: player.angle,
+        speed: 0.15,
+        radius: 0.4, // Collision radius for damaging enemies
+        alive: true
+    });
+}
+
+// Update plasma balls
+function updatePlasmaBalls() {
+    if (plasmaballCooldown > 0) plasmaballCooldown--;
+
+    for (const ball of plasmaBalls) {
+        if (!ball.alive) continue;
+
+        // Move the ball
+        ball.x += Math.cos(ball.angle) * ball.speed;
+        ball.y += Math.sin(ball.angle) * ball.speed;
+
+        // Check wall collision
+        if (isWall(ball.x, ball.y)) {
+            ball.alive = false;
+            continue;
+        }
+
+        // Check enemy collisions
+        let centerHit = false;
+        for (const enemy of enemies) {
+            if (!enemy.alive) continue;
+
+            const dx = enemy.x - ball.x;
+            const dy = enemy.y - ball.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            // Damage enemies within radius
+            if (dist < ball.radius + 0.3) {
+                enemy.health -= 30;
+                if (enemy.health <= 0 && !enemy.dying) {
+                    enemy.alive = false;
+                    enemy.dying = true;
+                    enemy.deathTimer = 0;
+                    player.kills++;
+                    playEnemyDeathSound();
+                } else if (enemy.alive) {
+                    playEnemyHitSound();
+                }
+
+                // Center hit - destroy the ball
+                if (dist < 0.3) {
+                    centerHit = true;
+                }
+            }
+        }
+
+        if (centerHit) {
+            ball.alive = false;
+        }
+    }
+
+    // Remove dead plasma balls
+    for (let i = plasmaBalls.length - 1; i >= 0; i--) {
+        if (!plasmaBalls[i].alive) {
+            plasmaBalls.splice(i, 1);
+        }
+    }
+}
+
 // Attack function (handles both melee and ranged)
 function attack() {
     if (shootCooldown > 0) return;
 
     if (currentWeapon === 0) {
-        // Hammer (melee) - no ammo needed, more damage, short range
-        shootCooldown = 25;
+        // Baton (melee) - one-hit kill, 3 second cooldown, short range
+        shootCooldown = 180; // 3 seconds at 60fps
         swingAnimation = 20;
         playHammerSound();
 
@@ -1735,16 +2550,13 @@ function attack() {
         });
 
         if (hitEnemy) {
-            hitEnemy.health -= 30; // Hammer does more damage
-            if (hitEnemy.health <= 0 && !hitEnemy.dying) {
-                hitEnemy.alive = false;
-                hitEnemy.dying = true;
-                hitEnemy.deathTimer = 0;
-                player.kills++;
-                playEnemyDeathSound();
-            } else {
-                playEnemyHitSound();
-            }
+            // Baton always one-hit kills regardless of enemy health
+            hitEnemy.health = 0;
+            hitEnemy.alive = false;
+            hitEnemy.dying = true;
+            hitEnemy.deathTimer = 0;
+            player.kills++;
+            playEnemyDeathSound();
         }
     } else {
         // Gun (ranged) - uses ammo
@@ -1821,10 +2633,53 @@ function updateEnemies() {
             if (!isWall(enemy.x, newY)) enemy.y = newY;
         }
 
-        // Damage player if very close (disabled - player is invulnerable)
-        // if (dist < 0.6) {
-        //     player.health -= 0.5;
-        // }
+        // Damage player if very close (max once per second per enemy)
+        // Damage scales with level: 5 * currentLevel
+        if (dist < 0.6) {
+            const now = Date.now();
+            if (!enemy.lastHitTime || now - enemy.lastHitTime >= 1000) {
+                player.health -= 5 * currentLevel;
+                headDamageFlash = 10;
+                damageFlash = 1;
+                playPlayerHitSound();
+                enemy.lastHitTime = now;
+            }
+        }
+    }
+}
+
+// Check for ammo box pickups
+function checkAmmoPickups() {
+    for (const box of ammoBoxes) {
+        if (box.collected) continue;
+
+        const dx = box.x - player.x;
+        const dy = box.y - player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 0.5) {
+            box.collected = true;
+            player.ammo += 15;
+            playAmmoPickupSound();
+        }
+    }
+}
+
+// Check for health pack pickups
+function checkHealthPickups() {
+    for (const pack of healthPacks) {
+        if (pack.collected) continue;
+        if (player.health >= 100) continue; // Only pick up if damaged
+
+        const dx = pack.x - player.x;
+        const dy = pack.y - player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 0.5) {
+            pack.collected = true;
+            player.health = Math.min(100, player.health + 25);
+            playHealthPickupSound();
+        }
     }
 }
 
@@ -1898,6 +2753,20 @@ function renderMinimap() {
         minimapCtx.arc(enemy.x * scale, enemy.y * scale, 3, 0, Math.PI * 2);
         minimapCtx.fill();
     }
+
+    // Ammo boxes - green
+    for (const box of ammoBoxes) {
+        if (box.collected) continue;
+        minimapCtx.fillStyle = '#4f4';
+        minimapCtx.fillRect(box.x * scale - 2, box.y * scale - 2, 4, 4);
+    }
+
+    // Health packs - red
+    for (const pack of healthPacks) {
+        if (pack.collected) continue;
+        minimapCtx.fillStyle = '#f44';
+        minimapCtx.fillRect(pack.x * scale - 2, pack.y * scale - 2, 4, 4);
+    }
 }
 
 // Handle input
@@ -1908,12 +2777,25 @@ function handleInput() {
     let newX = player.x;
     let newY = player.y;
 
+    // Keyboard input
     if (keys['KeyW']) { newX += cos * player.speed; newY += sin * player.speed; }
     if (keys['KeyS']) { newX -= cos * player.speed; newY -= sin * player.speed; }
     if (keys['KeyA']) { newX += sin * player.speed; newY -= cos * player.speed; }
     if (keys['KeyD']) { newX -= sin * player.speed; newY += cos * player.speed; }
     if (keys['ArrowLeft']) player.angle -= player.rotSpeed;
     if (keys['ArrowRight']) player.angle += player.rotSpeed;
+
+    // Touch joystick input (forward/back is -dy, strafe is dx)
+    if (touchState.joystick.active) {
+        const jx = touchState.joystick.dx;
+        const jy = -touchState.joystick.dy; // Invert Y so up = forward
+        // Forward/backward
+        newX += cos * player.speed * jy;
+        newY += sin * player.speed * jy;
+        // Strafe left/right
+        newX -= sin * player.speed * jx;
+        newY += cos * player.speed * jx;
+    }
 
     // Collision detection with sliding
     const margin = 0.2;
@@ -1960,13 +2842,15 @@ function gameLoop() {
         ctx.fillStyle = '#0ff';
         ctx.font = '48px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('LEVEL COMPLETE!', SCREEN_W / 2, SCREEN_H / 2 - 20);
+        ctx.fillText(`LEVEL ${currentLevel} COMPLETE!`, SCREEN_W / 2, SCREEN_H / 2 - 40);
         ctx.fillStyle = '#0f0';
         ctx.font = '24px monospace';
-        ctx.fillText('You reached the elevator!', SCREEN_W / 2, SCREEN_H / 2 + 20);
-        ctx.fillText(`Kills: ${player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 50);
+        ctx.fillText('You reached the elevator!', SCREEN_W / 2, SCREEN_H / 2);
+        ctx.fillText(`Kills: ${player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 35);
+        ctx.fillStyle = '#fa0';
+        ctx.fillText(`Health: ${Math.floor(player.health)} | Ammo: ${player.ammo}`, SCREEN_W / 2, SCREEN_H / 2 + 70);
         ctx.fillStyle = '#888';
-        ctx.fillText('Press SPACE or click to restart', SCREEN_W / 2, SCREEN_H / 2 + 90);
+        ctx.fillText('Press SPACE or click for next level', SCREEN_W / 2, SCREEN_H / 2 + 110);
         requestAnimationFrame(gameLoop);
         return;
     }
@@ -1985,6 +2869,9 @@ function gameLoop() {
 
     updateDoors();
     updateEnemies();
+    updatePlasmaBalls();
+    checkAmmoPickups();
+    checkHealthPickups();
     render3D();
     renderMinimap();
     updateUI();
