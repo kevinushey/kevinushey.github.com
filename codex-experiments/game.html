@@ -1634,11 +1634,53 @@
             ? amount * 0.45
             : amount;
         }
-        function stationProps(rooms, random) {
+        function stationProps(map, rooms, random) {
           const props = [];
           for (const room of rooms) {
+            // Reserve each full doorway and one tile of its room-side approach.
+            // The extra shoulder space keeps bodies from snagging the jambs.
+            const entrances = [],
+              shoulder = 0.4;
+            const entrance = (x, z, dx, dz) => {
+              if (map[z + dz]?.[x + dx] === 0)
+                entrances.push({
+                  left: x * CELL - shoulder,
+                  right: (x + 1) * CELL + shoulder,
+                  top: z * CELL - shoulder,
+                  bottom: (z + 1) * CELL + shoulder,
+                });
+            };
+            for (let x = room.x; x < room.x + room.w; x++) {
+              entrance(x, room.z, 0, -1);
+              entrance(x, room.z + room.h - 1, 0, 1);
+            }
+            for (let z = room.z; z < room.z + room.h; z++) {
+              entrance(room.x, z, -1, 0);
+              entrance(room.x + room.w - 1, z, 1, 0);
+            }
+            const place = (prop) => {
+              const left = prop.x - prop.w / 2,
+                right = prop.x + prop.w / 2,
+                top = prop.z - prop.d / 2,
+                bottom = prop.z + prop.d / 2;
+              // Furniture must stay wholly inside a room, outside every entrance.
+              if (
+                left >= room.x * CELL &&
+                right <= (room.x + room.w) * CELL &&
+                top >= room.z * CELL &&
+                bottom <= (room.z + room.h) * CELL &&
+                !entrances.some(
+                  (e) =>
+                    left < e.right &&
+                    right > e.left &&
+                    top < e.bottom &&
+                    bottom > e.top,
+                )
+              )
+                props.push(prop);
+            };
             for (let i = 0; i < 2; i++)
-              props.push({
+              place({
                 type: "case",
                 x: (room.x + 0.18) * CELL,
                 y: 0.4,
@@ -1648,7 +1690,7 @@
                 d: 1.2,
               });
             if (random() < 0.65)
-              props.push({
+              place({
                 type: "cabinet",
                 x: (room.x + room.w - 0.18) * CELL,
                 y: 1.18,
@@ -1777,7 +1819,7 @@
             card,
             enemies,
             pickups,
-            props: stationProps(rooms, rng(seed + deck * 123 + 8)),
+            props: stationProps(map, rooms, rng(seed + deck * 123 + 8)),
             seed,
             deck,
           };

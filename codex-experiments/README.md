@@ -10,6 +10,8 @@ decks. Collect supplies, scrap hostile machines, and choose permanent upgrades
 between decks. The Storm Cutlass chains three cuts into a heavy finisher, ignores
 frontal armor, and reflects incoming bolts. Cabinets and equipment cases block
 movement and attacks, with height-aware projectile collision.
+Furniture stays inside rooms and leaves full-width doorways, room-side
+approaches, and hallways clear.
 
 Six enemy classes have distinct silhouettes and behavior: patrol drones, heavy
 sentries, melee stalkers, strafing skimmers, spread-shot prism casters, and
@@ -45,7 +47,8 @@ Run the dependency-free tests with Node.js:
 node --test codex-experiments/game.test.cjs
 ```
 
-Tests cover 300 generated decks and furnished routes, cabinet collision and
+Tests cover 300 generated decks and furnished routes, full-width passage
+clearance for players and enemies, cabinet collision and
 cover, ammo, shields, EMP, cutlass combos and parries, enemy traits and attacks,
 finite model geometry, music scheduling and voice cleanup, pause, death/retry,
 and all three campaign transitions. The

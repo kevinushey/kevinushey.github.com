@@ -505,6 +505,96 @@ test("a connected route through cell centers still fits the player after furnish
     }
 });
 
+function checkPassageClearance(level, label) {
+  const { map, rooms, props } = level;
+  const roomAt = (x, z) =>
+    rooms.find((r) => x >= r.x && x < r.x + r.w && z >= r.z && z < r.z + r.h);
+  const directions = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  let crossings = 0;
+  for (let z = 0; z < C.SIZE; z++)
+    for (let x = 0; x < C.SIZE; x++) {
+      if (map[z][x] !== 0) continue;
+      const room = roomAt(x, z);
+      const passage =
+        !room ||
+        directions.some(
+          ([dx, dz]) =>
+            map[z + dz]?.[x + dx] === 0 && roomAt(x + dx, z + dz) !== room,
+        );
+      if (!passage) continue;
+      for (const p of props)
+        assert.ok(
+          p.x + p.w / 2 <= x * C.CELL ||
+            p.x - p.w / 2 >= (x + 1) * C.CELL ||
+            p.z + p.d / 2 <= z * C.CELL ||
+            p.z - p.d / 2 >= (z + 1) * C.CELL,
+          `${label}: furniture intrudes into passage ${x},${z}`,
+        );
+      for (const [dx, dz] of directions) {
+        if (map[z + dz]?.[x + dx] !== 0) continue;
+        if (room && roomAt(x + dx, z + dz) === room) continue;
+        // Walk both edges and the center with the largest enemy's body radius.
+        for (const lane of [-0.8, 0, 0.8]) {
+          const body = {
+            x: (x + 0.5) * C.CELL - dz * lane,
+            z: (z + 0.5) * C.CELL + dx * lane,
+          };
+          const target = { x: body.x + dx * C.CELL, z: body.z + dz * C.CELL };
+          assert.ok(
+            C.fits(map, body.x, body.z, 0.44, props),
+            `${label}: blocked approach`,
+          );
+          C.move(map, body, dx * C.CELL, dz * C.CELL, 0.44, props);
+          assert.ok(
+            Math.hypot(body.x - target.x, body.z - target.z) < 1e-8,
+            `${label}: snag at ${x},${z} toward ${dx},${dz}, lane ${lane}`,
+          );
+          crossings++;
+        }
+      }
+    }
+  return crossings;
+}
+
+test("furniture leaves entrances clear on every room edge, including corner openings", () => {
+  const room = { x: 4, z: 4, w: 4, h: 4 };
+  for (const side of ["west", "east", "north", "south"])
+    for (let slot = 0; slot < 4; slot++) {
+      const map = Array.from({ length: C.SIZE }, () => Array(C.SIZE).fill(1));
+      for (let z = 4; z < 8; z++) for (let x = 4; x < 8; x++) map[z][x] = 0;
+      if (side === "west") map[4 + slot][3] = 0;
+      if (side === "east") map[4 + slot][8] = 0;
+      if (side === "north") map[3][4 + slot] = 0;
+      if (side === "south") map[8][4 + slot] = 0;
+      const props = C.stationProps(map, [room], () => 0);
+      assert.ok(
+        props.length > 0,
+        "safe wall positions still receive furniture",
+      );
+      assert.ok(
+        checkPassageClearance(
+          { map, rooms: [room], props },
+          `${side}/${slot}`,
+        ) > 0,
+      );
+    }
+});
+
+test("300 furnished decks retain the full width of every hallway and doorway", () => {
+  for (let seed = 0; seed < 100; seed++)
+    for (let deck = 0; deck < 3; deck++)
+      assert.ok(
+        checkPassageClearance(C.generateDeck(seed, deck), `${seed}/${deck}`) >
+          0,
+        `exercise passages on deck ${seed}/${deck}`,
+      );
+});
+
 test("enemy classes and traits are varied, bounded and deterministic", () => {
   const types = new Set(),
     traits = new Set(),
