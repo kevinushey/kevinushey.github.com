@@ -30,6 +30,12 @@ Public details verified on September 7, 2026:
 - [rmarkdown authors](https://pkgs.rstudio.com/rmarkdown/authors.html) and
   [Kevin’s commit history](https://github.com/rstudio/rmarkdown/commits?author=kevinushey):
   co-author credit and contributions to rendering and website resources.
+- [RcppParallel package metadata](https://github.com/RcppCore/RcppParallel/blob/master/DESCRIPTION)
+  and [Kevin’s commit history](https://github.com/RcppCore/RcppParallel/commits?author=kevinushey):
+  author and maintainer credit, including recent release work.
+- [RcppRoll’s removal of its Rcpp dependency](https://github.com/kevinushey/RcppRoll/commit/5e0ed9d949465706062a09eb432be169c51ee9d9):
+  the description reflects the current implementation while keeping the
+  Rcpp-named packages together.
 - [Bluesky](https://bsky.app/profile/kevinushey.bsky.social): current social handle.
 - [LinkedIn](https://www.linkedin.com/in/kevin-ushey-33a35542): profile URL.
 - [Thesis DOI](https://dx.doi.org/10.14288/1.0072188): Kevin’s preferred
