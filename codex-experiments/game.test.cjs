@@ -206,6 +206,87 @@ test("300 generated decks have fully reachable rooms, enemies, supplies and dist
     }
 });
 
+test("every floor mixes connected room silhouettes, proportions and ceiling heights", () => {
+  for (let seed = 0; seed < 100; seed++) {
+    const level = C.generateDeck(seed, seed % 11),
+      silhouettes = new Set();
+    for (const room of level.rooms) {
+      const rows = level.map
+        .slice(room.z, room.z + room.h)
+        .map((row) => row.slice(room.x, room.x + room.w));
+      silhouettes.add(rows.map((row) => row.join("")).join("/"));
+      const reached = new Set(),
+        queue = [[room.cx - room.x, room.cz - room.z]];
+      for (let i = 0; i < queue.length; i++) {
+        const [x, z] = queue[i],
+          key = `${x}/${z}`;
+        if (rows[z]?.[x] !== 0 || reached.has(key)) continue;
+        reached.add(key);
+        queue.push([x - 1, z], [x + 1, z], [x, z - 1], [x, z + 1]);
+      }
+      assert.equal(
+        reached.size,
+        rows.flat().filter((cell) => cell === 0).length,
+        `room ${seed}/${room.index} has an isolated alcove`,
+      );
+    }
+    assert.ok(
+      silhouettes.size >= 5,
+      "at least five actual floor shapes on every deck",
+    );
+    assert.ok(new Set(level.rooms.map((room) => room.ceiling)).size >= 3);
+    assert.ok(
+      level.rooms.some(
+        (room) => Math.max(room.w / room.h, room.h / room.w) >= 2,
+      ),
+      "a long gallery breaks up the square rooms",
+    );
+  }
+});
+
+test("shaped rooms keep spawns separate and furniture out of walls and interior aisles", () => {
+  for (let seed = 0; seed < 100; seed++) {
+    const level = C.generateDeck(seed, 99);
+    const positions = [
+      level.start,
+      level.card,
+      level.exit,
+      ...level.enemies,
+      ...level.pickups,
+    ];
+    assert.equal(
+      new Set(positions.map((p) => `${p.x}/${p.z}`)).size,
+      positions.length,
+      "spawns never share a floor tile with each other or objectives",
+    );
+    for (const prop of level.props)
+      for (
+        let z = Math.floor((prop.z - prop.d / 2) / C.CELL);
+        z <= Math.floor((prop.z + prop.d / 2) / C.CELL);
+        z++
+      )
+        for (
+          let x = Math.floor((prop.x - prop.w / 2) / C.CELL);
+          x <= Math.floor((prop.x + prop.w / 2) / C.CELL);
+          x++
+        ) {
+          assert.equal(
+            level.map[z][x],
+            0,
+            "no furniture inside cutaway corners or columns",
+          );
+          assert.ok(
+            level.map[z][x - 1] === 0 || level.map[z][x + 1] === 0,
+            "one-tile vertical aisles stay clear",
+          );
+          assert.ok(
+            level.map[z - 1][x] === 0 || level.map[z + 1][x] === 0,
+            "one-tile horizontal aisles stay clear",
+          );
+        }
+  }
+});
+
 test("map seeds reproduce a run and later decks change layout", () => {
   assert.equal(
     JSON.stringify(C.generateDeck(77)),

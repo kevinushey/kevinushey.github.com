@@ -25,6 +25,13 @@ projectile speed increase within bounds to keep simulation costs predictable.
 Rifle fire rate and EMP/dash cooldowns have minimums. Six station themes repeat
 with new layouts, increasing difficulty, and continued floor numbering.
 
+Every floor mixes long galleries, tall hangars, rooms with stepped corners,
+L-shaped chambers, cross-shaped junctions, and halls with solid columns.
+Room orientations and connections vary by seed. Ceilings range from 3.6 to
+6 meters, with overhead beams and bulkheads at height transitions. New walls
+provide cover and flanking routes; enemies, supplies, and objectives occupy
+separate clear floor tiles. Furniture also keeps narrow interior aisles clear.
+
 Collect supplies and scrap hostile machines. The Storm Cutlass chains three cuts into a heavy finisher, ignores
 frontal armor, and reflects incoming bolts. Cabinets and equipment cases block
 movement and attacks, with height-aware projectile collision.
@@ -69,7 +76,8 @@ Run the dependency-free tests with Node.js:
 node --test codex-experiments/game.test.cjs
 ```
 
-Tests cover 300 generated decks and furnished routes, full-width passage
+Tests cover varied room silhouettes and heights, clear and separate spawns,
+300 generated decks and furnished routes, full-width passage
 clearance for players and enemies, cabinet collision and
 cover, ammo, shields, EMP, cutlass combos and parries, enemy traits and attacks,
 finite model geometry, music scheduling and voice cleanup, pause, death/retry,

@@ -1733,6 +1733,23 @@
                 right = prop.x + prop.w / 2,
                 top = prop.z - prop.d / 2,
                 bottom = prop.z + prop.d / 2;
+              // Shaped rooms can have solid corners and narrow interior aisles.
+              for (
+                let z = Math.floor(top / CELL);
+                z <= Math.floor(bottom / CELL);
+                z++
+              )
+                for (
+                  let x = Math.floor(left / CELL);
+                  x <= Math.floor(right / CELL);
+                  x++
+                )
+                  if (
+                    map[z]?.[x] !== 0 ||
+                    (map[z]?.[x - 1] !== 0 && map[z]?.[x + 1] !== 0) ||
+                    (map[z - 1]?.[x] !== 0 && map[z + 1]?.[x] !== 0)
+                  )
+                    return;
               // Furniture must stay wholly inside a room, outside every entrance.
               if (
                 left >= room.x * CELL &&
@@ -1779,24 +1796,68 @@
           const carve = (x, z) => {
             map[z][x] = 0;
           };
+          // Deal from a shuffled set so every floor has several distinct silhouettes.
+          const shapes = [
+            "hangar",
+            "gallery",
+            "chamfered",
+            "elbow",
+            "cross",
+            "columned",
+          ];
+          for (let i = shapes.length - 1; i > 0; i--) {
+            const j = Math.floor(random() * (i + 1));
+            [shapes[i], shapes[j]] = [shapes[j], shapes[i]];
+          }
           for (let row = 0; row < 3; row++)
             for (let col = 0; col < 3; col++) {
+              const index = rooms.length,
+                shape =
+                  index === 0 ? "docking" : shapes[(index - 1) % shapes.length],
+                turn = Math.floor(random() * 4);
+              let w = shape === "gallery" ? 3 : shape === "docking" ? 5 : 6,
+                h = shape === "docking" ? 5 : shape === "hangar" ? 5 : 6;
+              if (turn % 2) [w, h] = [h, w];
               const x = 2 + col * 7,
-                z = 2 + row * 7,
-                w = 4 + Math.floor(random() * 2),
-                h = 4 + Math.floor(random() * 2);
+                z = 2 + row * 7;
               const room = {
                 x,
                 z,
                 w,
                 h,
-                cx: x + 2,
-                cz: z + 2,
-                index: rooms.length,
+                cx: x + Math.floor(w / 2),
+                cz: z + Math.floor(h / 2),
+                index,
+                shape,
+                turn,
+                ceiling: {
+                  docking: 3.6,
+                  gallery: 3.6,
+                  chamfered: 4.8,
+                  elbow: 3.6,
+                  cross: 4.8,
+                  hangar: 6,
+                  columned: 6,
+                }[shape],
               };
               rooms.push(room);
-              for (let zz = z; zz < z + h; zz++)
-                for (let xx = x; xx < x + w; xx++) carve(xx, zz);
+              for (let dz = 0; dz < h; dz++)
+                for (let dx = 0; dx < w; dx++) {
+                  const edgeX = Math.min(dx, w - 1 - dx),
+                    edgeZ = Math.min(dz, h - 1 - dz);
+                  let solid = false;
+                  if (shape === "chamfered") solid = edgeX + edgeZ < 2;
+                  if (shape === "cross") solid = edgeX < 2 && edgeZ < 2;
+                  if (shape === "elbow") {
+                    const cutX = turn < 2 ? dx < 2 : dx >= w - 2,
+                      cutZ = turn % 2 ? dz < 3 : dz >= h - 3;
+                    solid = cutX && cutZ;
+                  }
+                  if (shape === "columned")
+                    solid =
+                      (dx === 1 || dx === w - 2) && (dz === 1 || dz === h - 2);
+                  if (!solid) carve(x + dx, z + dz);
+                }
             }
           // A randomized spanning tree guarantees connectivity. Extra links create flanking routes.
           const joined = new Set([0]),
@@ -1844,7 +1905,8 @@
             );
           const exit = { ...center(far[0]), room: far[0].index };
           const card = { ...center(far[1]), room: far[1].index };
-          const enemies = [],
+          const props = stationProps(map, rooms, rng(seed + deck * 123 + 8)),
+            enemies = [],
             pickups = [];
           // Two half-magazine stashes per floor, independently seeded from enemies.
           const supplies = rng(seed ^ Math.imul(deck + 1, 0x27d4eb2d)),
@@ -1863,6 +1925,22 @@
             [types[i], types[j]] = [types[j], types[i]];
           }
           for (const room of rooms.slice(1)) {
+            const spawnTiles = [];
+            for (let z = room.z; z < room.z + room.h; z++)
+              for (let x = room.x; x < room.x + room.w; x++) {
+                const point = { x: (x + 0.5) * CELL, z: (z + 0.5) * CELL };
+                if (
+                  (x !== room.cx || z !== room.cz) &&
+                  fits(map, point.x, point.z, 0.75, props)
+                )
+                  spawnTiles.push(point);
+              }
+            for (let i = spawnTiles.length - 1; i > 0; i--) {
+              const j = Math.floor(random() * (i + 1));
+              [spawnTiles[i], spawnTiles[j]] = [spawnTiles[j], spawnTiles[i]];
+            }
+            // Unique, clear floor tiles keep actors and supplies out of walls and objectives.
+            const spawn = () => spawnTiles.pop();
             const count = Math.min(
               6,
               floorPressure(deck).squadSize +
@@ -1871,8 +1949,7 @@
             );
             for (let i = 0; i < count; i++)
               enemies.push({
-                x: (room.x + 1.1 + (i % 3) * 1.05) * CELL,
-                z: (room.z + 1.2 + Math.floor(i / 3) * 1.45) * CELL,
+                ...spawn(),
                 ...makeEnemy(
                   random,
                   types[enemies.length % types.length],
@@ -1881,15 +1958,13 @@
               });
             if (room.index % 3 === 0 || stockedRooms.has(room))
               pickups.push({
-                x: (room.x + room.w - 1) * CELL,
-                z: (room.z + room.h - 1) * CELL,
+                ...spawn(),
                 type: room.index % 3 === 0 ? "health" : "ammo",
                 amount: room.index % 3 === 0 ? 35 : AMMO.stash,
               });
             if (room.index % 2 === 0)
               pickups.push({
-                x: (room.x + 1) * CELL,
-                z: (room.z + room.h - 1) * CELL,
+                ...spawn(),
                 type: "cache",
               });
           }
@@ -1901,7 +1976,7 @@
             card,
             enemies,
             pickups,
-            props: stationProps(map, rooms, rng(seed + deck * 123 + 8)),
+            props,
             seed,
             deck,
           };
@@ -3079,6 +3154,14 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           const out = [],
             random = C.rng(level.seed + deck * 123 + 8),
             lightRandom = C.rng(level.seed ^ Math.imul(deck + 1, 0x45d9f3b));
+          const roomGrid = Array.from({ length: SIZE }, () =>
+            Array(SIZE).fill(null),
+          );
+          for (const room of level.rooms)
+            for (let z = room.z; z < room.z + room.h; z++)
+              for (let x = room.x; x < room.x + room.w; x++)
+                roomGrid[z][x] = room;
+          const ceilingAt = (x, z) => roomGrid[z]?.[x]?.ceiling ?? 3.6;
           lights = [];
           makeAtlas(deck);
           const accent = [
@@ -3092,7 +3175,9 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           for (let z = 0; z < SIZE; z++)
             for (let x = 0; x < SIZE; x++) {
               const wx = (x + 0.5) * CELL,
-                wz = (z + 0.5) * CELL;
+                wz = (z + 0.5) * CELL,
+                room = roomGrid[z][x],
+                ceiling = ceilingAt(x, z);
               if (level.map[z][x] === 0) {
                 box(
                   out,
@@ -3107,7 +3192,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                 box(
                   out,
                   wx,
-                  3.65,
+                  ceiling + 0.05,
                   wz,
                   CELL - 0.018,
                   0.15,
@@ -3158,6 +3243,62 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                   [1, 0],
                 ].filter(([dx, dz]) => level.map[z + dz]?.[x + dx] !== 0);
                 const narrow = neighbors.length >= 2;
+                // Seal the upper wall where a tall chamber meets a low corridor.
+                for (const [dx, dz] of [
+                  [0, -1],
+                  [0, 1],
+                  [-1, 0],
+                  [1, 0],
+                ]) {
+                  const lower = ceilingAt(x + dx, z + dz);
+                  if (level.map[z + dz]?.[x + dx] !== 0 || lower >= ceiling)
+                    continue;
+                  const px = wx + (dx * CELL) / 2,
+                    pz = wz + (dz * CELL) / 2;
+                  box(
+                    out,
+                    px,
+                    (lower + ceiling) / 2,
+                    pz,
+                    dx ? 0.16 : CELL,
+                    ceiling - lower,
+                    dx ? CELL : 0.16,
+                    palette.dark,
+                  );
+                  box(
+                    out,
+                    px - dx * 0.09,
+                    lower + 0.12,
+                    pz - dz * 0.09,
+                    dx ? 0.04 : CELL - 0.3,
+                    0.07,
+                    dx ? CELL - 0.3 : 0.04,
+                    accent,
+                    0.6,
+                  );
+                }
+                if (room && ceiling > 4 && (z - room.z) % 2 === 0) {
+                  box(
+                    out,
+                    wx,
+                    ceiling - 0.32,
+                    wz + CELL * 0.42,
+                    CELL,
+                    0.24,
+                    0.18,
+                    palette.dark,
+                  );
+                  box(
+                    out,
+                    wx,
+                    ceiling - 0.455,
+                    wz + CELL * 0.42,
+                    CELL - 0.15,
+                    0.025,
+                    0.055,
+                    palette.trim,
+                  );
+                }
                 if ((x + z) % 3 === 0) {
                   const flicker =
                     lightRandom() < 0.07
@@ -3167,12 +3308,21 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                           period: 8 + lightRandom() * 10,
                         }
                       : null;
-                  box(out, wx, 3.49, wz, 1.42, 0.15, 0.4, palette.dark);
+                  box(
+                    out,
+                    wx,
+                    ceiling - 0.11,
+                    wz,
+                    1.42,
+                    0.15,
+                    0.4,
+                    palette.dark,
+                  );
                   if (!flicker)
                     box(
                       out,
                       wx,
-                      3.405,
+                      ceiling - 0.195,
                       wz,
                       1.15,
                       0.025,
@@ -3182,24 +3332,34 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                     );
                   lights.push({
                     x: wx,
-                    y: 3.1,
+                    y: ceiling - 0.5,
+                    tubeY: ceiling - 0.195,
                     z: wz,
                     color:
                       deck % deckNames.length === 2
                         ? [1, 0.57, 0.35]
                         : [0.48, 0.75, 0.81],
-                    power: 1.9,
+                    power: 1.9 * (ceiling / 3.6),
                     flicker,
                     intensity: 1,
                   });
                 }
                 // Overhead ducts, ribs and cable runs.
                 if (narrow) {
-                  box(out, wx - 0.64, 3.27, wz, 0.2, 0.22, CELL, palette.trim);
+                  box(
+                    out,
+                    wx - 0.64,
+                    ceiling - 0.33,
+                    wz,
+                    0.2,
+                    0.22,
+                    CELL,
+                    palette.trim,
+                  );
                   box(
                     out,
                     wx + 0.58,
-                    3.31,
+                    ceiling - 0.29,
                     wz,
                     0.12,
                     0.12,
@@ -3207,13 +3367,33 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                     [0.38, 0.24, 0.13],
                   );
                   if ((x + z) % 2 === 0)
-                    box(out, wx, 3.15, wz, CELL, 0.14, 0.15, palette.dark);
+                    box(
+                      out,
+                      wx,
+                      ceiling - 0.45,
+                      wz,
+                      CELL,
+                      0.14,
+                      0.15,
+                      palette.dark,
+                    );
                 }
                 for (const [dx, dz] of neighbors) {
                   if (z === 2 && dz === -1 && x >= 3 && x <= 5) continue;
                   const angle = dx ? Math.PI / 2 : 0,
                     px = wx + dx * 1.2,
                     pz = wz + dz * 1.2;
+                  if (ceiling > 3.6)
+                    box(
+                      out,
+                      px,
+                      (3.2 + ceiling) / 2,
+                      pz,
+                      dx ? 0.12 : 2.38,
+                      ceiling - 3.2,
+                      dx ? 2.38 : 0.12,
+                      [0.17, 0.235, 0.27],
+                    );
                   box(
                     out,
                     px,
@@ -3258,7 +3438,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                   box(
                     out,
                     px - dx * 0.09,
-                    3.01,
+                    ceiling - 0.59,
                     pz - dz * 0.09,
                     dx ? 0.14 : 2.48,
                     0.19,
@@ -3270,10 +3450,10 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                     box(
                       out,
                       px + (dx ? 0 : s * 1.11) - dx * 0.13,
-                      1.7,
+                      (ceiling - 0.2) / 2,
                       pz + (dx ? s * 1.11 : 0) - dz * 0.13,
                       dx ? 0.2 : 0.09,
-                      2.8,
+                      ceiling - 0.8,
                       dx ? 0.09 : 0.2,
                       palette.dark,
                     );
@@ -3329,8 +3509,27 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                   [-1, 0],
                   [1, 0],
                 ].some(([dx, dz]) => level.map[z + dz]?.[x + dx] === 0)
-              )
-                box(out, wx, 1.8, wz, CELL, 3.6, CELL, [0.13, 0.2, 0.23]);
+              ) {
+                const wallHeight = Math.max(
+                  3.6,
+                  ...[
+                    [0, -1],
+                    [0, 1],
+                    [-1, 0],
+                    [1, 0],
+                  ].map(([dx, dz]) => ceilingAt(x + dx, z + dz)),
+                );
+                box(
+                  out,
+                  wx,
+                  wallHeight / 2,
+                  wz,
+                  CELL,
+                  wallHeight,
+                  CELL,
+                  [0.13, 0.2, 0.23],
+                );
+              }
             }
           for (const room of level.rooms) {
             const x = (room.cx + 0.5) * CELL,
@@ -4903,7 +5102,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               box(
                 out,
                 lamp.x,
-                3.405,
+                lamp.tubeY,
                 lamp.z,
                 1.15,
                 0.025,
