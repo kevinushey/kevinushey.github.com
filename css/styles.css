@@ -29,7 +29,7 @@ p, h1, h2 { margin: 0; }
 .site-header { display: flex; align-items: center; justify-content: space-between; gap: 2rem; margin-bottom: 1.75rem; }
 h1 { font-family: Georgia, "Times New Roman", serif; font-size: 2.25rem; font-weight: 400; letter-spacing: -.025em; line-height: 1.2; }
 .profile-links { display: flex; flex-wrap: wrap; gap: .35rem 1.1rem; margin-top: .85rem; font-size: .9375rem; }
-.portrait { flex: 0 0 8rem; position: relative; width: 8rem; aspect-ratio: 1; overflow: hidden; border-radius: 3px; }
+.portrait { flex: 0 0 8rem; position: relative; width: 8rem; aspect-ratio: 1; overflow: hidden; border-radius: 50%; }
 /* Crop the original photograph around Kevin's full head and upper shoulders. */
 .portrait img { position: absolute; display: block; width: 152%; max-width: none; height: auto; left: -29.4%; top: -22.2%; }
 section { margin-top: 2rem; }

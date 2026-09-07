@@ -15,9 +15,6 @@ private Sites preview, `python3 scripts/build.py` stages the static public files
 in `dist/`. The build does not change the source files. `.openai/hosting.json`
 identifies that preview and its static output directory.
 
-The blog is a separate GitHub Pages project, so its links are absolute to keep
-them working both on GitHub Pages and in the private preview.
-
 ## Content and image sources
 
 Public details verified on September 7, 2026:
@@ -36,7 +33,7 @@ The research and education background is retained from the original homepage.
 
 `img/kevin-ushey.jpg` is the personal photo Kevin supplied on September 7, 2026,
 resized to 1350 × 1800 and JPEG-compressed for the web, without retouching or
-generative edits. It replaces the earlier Posit headshot. CSS applies a square
+generative edits. It replaces the earlier Posit headshot. CSS applies a circular
 head-and-shoulders crop while keeping the original photograph intact. The crop
 keeps his full head and some autumn background visible at every screen size;
 adjust `.portrait img` in `css/styles.css` to change the framing.
