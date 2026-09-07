@@ -619,6 +619,16 @@
         background: #f78678;
         display: block;
       }
+      #target-name {
+        position: absolute;
+        left: 50%;
+        top: calc(50% + 44px);
+        transform: translateX(-50%);
+        font-size: 9px;
+        color: #ffb7a0;
+        text-shadow: 0 2px 8px #000;
+        white-space: nowrap;
+      }
       #interact {
         position: absolute;
         top: 61%;
@@ -854,6 +864,24 @@
       .settings input {
         accent-color: var(--orange);
         max-width: 125px;
+      }
+      .music-credit {
+        border: 1px solid #42616b66;
+        background: #14272d77;
+        padding: 14px 16px;
+        border-radius: 4px;
+        line-height: 1.6;
+      }
+      .music-credit strong {
+        color: var(--mint);
+        letter-spacing: 2px;
+      }
+      .music-credit small {
+        font-size: 11px;
+      }
+      .music-credit .mono {
+        font-size: 8px;
+        color: var(--orange);
       }
       .guide-tip {
         border-left: 2px solid var(--orange);
@@ -1215,6 +1243,7 @@
       <div id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div id="hitmarker" aria-hidden="true">×</div>
       <div id="target-health" hidden><span></span></div>
+      <div id="target-name" class="mono" hidden></div>
       <div id="waypoint">
         <span class="diamond">◇</span><span id="waypoint-label"></span>
       </div>
@@ -1367,7 +1396,23 @@
           <span>Touch controls</span><span>Move left · Look right</span>
         </div>
       </div>
+      <p class="music-credit">
+        <span class="mono">NOW TRANSMITTING</span><br /><strong
+          >ION RUNNER</strong
+        >
+        · Original 8-bit space score<br /><small
+          >Pulse leads, triangle bass, noise drums. More layers when trouble
+          finds you.</small
+        >
+      </p>
       <div class="settings">
+        <label
+          ><input id="music-enabled" type="checkbox" checked /> Music</label
+        >
+        <label
+          >Music volume
+          <input id="music-volume" type="range" min="0" max="100" value="55"
+        /></label>
         <label
           >Look sensitivity
           <input
@@ -1383,8 +1428,12 @@
       </div>
       <p class="guide-tip">
         Your shield regenerates after five seconds without damage. EMP stuns
-        nearby machines and clears incoming bolts. The arc blade never needs
-        ammo. Red eyes mean a shot is coming—keep moving.
+        nearby machines and clears incoming bolts. Chain three blade swings for
+        a heavy finisher; swing at incoming bolts to send them back. The blade
+        ignores frontal armor. Bulwarks resist rifle shots from the front—flank
+        them or use EMP. Swift, reinforced, and overclocked machines trade
+        speed, durability, and firing rate. Red eyes mean a shot is coming—keep
+        moving.
       </p>
     </dialog>
     <script id="orbit-core">
@@ -1433,6 +1482,183 @@
             }
           }
           return out;
+        }
+        const enemyTypes = {
+          drone: {
+            name: "Patrol drone",
+            health: 66,
+            speed: 1.45,
+            range: 7,
+            damage: 15,
+            interval: 2.3,
+            windup: 0.85,
+            scale: 1,
+            color: [0.26, 0.35, 0.39],
+            accent: [0.3, 0.9, 0.74],
+            reward: 100,
+          },
+          sentry: {
+            name: "Heavy sentry",
+            health: 108,
+            speed: 0.85,
+            range: 10,
+            damage: 22,
+            interval: 2.8,
+            windup: 1.05,
+            scale: 1.1,
+            color: [0.4, 0.3, 0.2],
+            accent: [1, 0.56, 0.18],
+            reward: 140,
+          },
+          stalker: {
+            name: "Stalker",
+            health: 64,
+            speed: 2.65,
+            range: 1.35,
+            damage: 18,
+            interval: 1.15,
+            windup: 0,
+            scale: 0.92,
+            color: [0.28, 0.32, 0.23],
+            accent: [0.65, 1, 0.3],
+            reward: 110,
+          },
+          skimmer: {
+            name: "Skimmer",
+            health: 46,
+            speed: 2.1,
+            range: 7.5,
+            damage: 11,
+            interval: 1.9,
+            windup: 0.8,
+            scale: 0.84,
+            color: [0.28, 0.43, 0.49],
+            accent: [0.28, 0.8, 1],
+            reward: 120,
+          },
+          prism: {
+            name: "Prism caster",
+            health: 82,
+            speed: 1.1,
+            range: 11,
+            damage: 10,
+            interval: 3.1,
+            windup: 1.2,
+            scale: 0.98,
+            color: [0.39, 0.24, 0.46],
+            accent: [0.85, 0.38, 1],
+            reward: 150,
+          },
+          bulwark: {
+            name: "Bulwark",
+            health: 156,
+            speed: 0.72,
+            range: 9,
+            damage: 25,
+            interval: 3.2,
+            windup: 1.3,
+            scale: 1.18,
+            color: [0.34, 0.37, 0.3],
+            accent: [1, 0.72, 0.26],
+            reward: 220,
+          },
+        };
+        function makeEnemy(random, type, deck = 0) {
+          const base = enemyTypes[type],
+            roll = random(),
+            trait =
+              roll < 0.5
+                ? "standard"
+                : roll < 0.68
+                  ? "swift"
+                  : roll < 0.84
+                    ? "reinforced"
+                    : "overclocked";
+          const scale = base.scale * (0.92 + random() * 0.16);
+          const health = Math.round(
+            base.health *
+              (0.9 + random() * 0.2) *
+              (trait === "reinforced"
+                ? 1.32
+                : trait === "swift"
+                  ? 0.84
+                  : trait === "overclocked"
+                    ? 0.86
+                    : 1),
+          );
+          return {
+            ...base,
+            type,
+            trait,
+            scale,
+            health,
+            maxHealth: health,
+            speed:
+              base.speed *
+              (0.9 + random() * 0.2) *
+              (trait === "swift" ? 1.3 : trait === "reinforced" ? 0.8 : 1),
+            damage: Math.round(base.damage * (0.9 + random() * 0.2)),
+            interval:
+              base.interval *
+              (0.9 + random() * 0.2) *
+              (trait === "overclocked" ? 0.72 : 1),
+            windup: base.windup * (0.94 + random() * 0.12),
+            boltSpeed: (8.4 + deck * 0.8) * (0.92 + random() * 0.16),
+            hoverPhase: random() * Math.PI * 2,
+            strafeDirection: random() < 0.5 ? -1 : 1,
+            accent:
+              trait === "swift"
+                ? [0.25, 0.85, 1]
+                : trait === "reinforced"
+                  ? [1, 0.64, 0.25]
+                  : trait === "overclocked"
+                    ? [1, 0.35, 0.75]
+                    : base.accent,
+            collisionRadius: 0.34 * scale,
+            hitRadius:
+              (type === "sentry" || type === "bulwark"
+                ? 0.64
+                : type === "stalker"
+                  ? 0.5
+                  : 0.54) * scale,
+          };
+        }
+        function enemyDamage(enemy, amount, from, bypass = false) {
+          if (bypass || enemy.type !== "bulwark" || enemy.stun > 0)
+            return amount;
+          const dx = from.x - enemy.x,
+            dz = from.z - enemy.z,
+            d = Math.hypot(dx, dz);
+          return d > 0 &&
+            (dx * Math.sin(enemy.angle) + dz * Math.cos(enemy.angle)) / d > 0.4
+            ? amount * 0.45
+            : amount;
+        }
+        function stationProps(rooms, random) {
+          const props = [];
+          for (const room of rooms) {
+            for (let i = 0; i < 2; i++)
+              props.push({
+                type: "case",
+                x: (room.x + 0.18) * CELL,
+                y: 0.4,
+                z: (room.z + 1.5 + i) * CELL,
+                w: 0.48,
+                h: 0.8,
+                d: 1.2,
+              });
+            if (random() < 0.65)
+              props.push({
+                type: "cabinet",
+                x: (room.x + room.w - 0.18) * CELL,
+                y: 1.18,
+                z: (room.z + 1.5) * CELL,
+                w: 0.52,
+                h: 2.35,
+                d: 0.9,
+              });
+          }
+          return props;
         }
         function generateDeck(seed, deck = 0) {
           const random = rng(seed + deck * 7919),
@@ -1508,6 +1734,14 @@
           const card = { ...center(far[1]), room: far[1].index };
           const enemies = [],
             pickups = [];
+          const types =
+            deck === 0
+              ? ["drone", "skimmer", "sentry", "stalker"]
+              : Object.keys(enemyTypes);
+          for (let i = types.length - 1; i > 0; i--) {
+            const j = Math.floor(random() * (i + 1));
+            [types[i], types[j]] = [types[j], types[i]];
+          }
           for (const room of rooms.slice(1)) {
             const count =
               1 +
@@ -1517,12 +1751,11 @@
               enemies.push({
                 x: (room.x + 1.25 + (i % 2) * 1.35) * CELL,
                 z: (room.z + 1.35 + Math.floor(i / 2) * 1.35) * CELL,
-                type:
-                  deck > 0 && random() < 0.3
-                    ? "stalker"
-                    : random() < 0.25
-                      ? "sentry"
-                      : "drone",
+                ...makeEnemy(
+                  random,
+                  types[enemies.length % types.length],
+                  deck,
+                ),
               });
             pickups.push({
               x: (room.x + room.w - 1) * CELL,
@@ -1544,13 +1777,14 @@
             card,
             enemies,
             pickups,
+            props: stationProps(rooms, rng(seed + deck * 123 + 8)),
             seed,
             deck,
           };
         }
         const wall = (map, x, z) =>
           map[Math.floor(z / CELL)]?.[Math.floor(x / CELL)] !== 0;
-        function fits(map, x, z, r = 0.28) {
+        function fits(map, x, z, r = 0.28, props = []) {
           for (const [dx, dz] of [
             [-r, -r],
             [-r, r],
@@ -1558,13 +1792,20 @@
             [r, r],
           ])
             if (wall(map, x + dx, z + dz)) return false;
+          for (const p of props) {
+            const dx = x - clamp(x, p.x - p.w / 2, p.x + p.w / 2),
+              dz = z - clamp(z, p.z - p.d / 2, p.z + p.d / 2);
+            if (dx * dx + dz * dz < r * r) return false;
+          }
           return true;
         }
-        function move(map, body, dx, dz, r = 0.28) {
+        function move(map, body, dx, dz, r = 0.28, props = []) {
           const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.18));
           for (let i = 0; i < steps; i++) {
-            if (fits(map, body.x + dx / steps, body.z, r)) body.x += dx / steps;
-            if (fits(map, body.x, body.z + dz / steps, r)) body.z += dz / steps;
+            if (fits(map, body.x + dx / steps, body.z, r, props))
+              body.x += dx / steps;
+            if (fits(map, body.x, body.z + dz / steps, r, props))
+              body.z += dz / steps;
           }
         }
         // Exact grid traversal prevents thin walls leaking shots, even for axis-aligned rays.
@@ -1600,12 +1841,57 @@
           }
           return max;
         }
-        function visible(map, a, b) {
-          const dx = b.x - a.x,
+        // Three-axis slab intersection: low cases block low shots, not shots above them.
+        function rayBox(origin, dir, prop, max = Infinity) {
+          let near = 0,
+            far = max;
+          for (const [axis, size] of [
+            ["x", "w"],
+            ["y", "h"],
+            ["z", "d"],
+          ]) {
+            const lo = prop[axis] - prop[size] / 2,
+              hi = prop[axis] + prop[size] / 2;
+            if (Math.abs(dir[axis]) < 1e-9) {
+              if (origin[axis] < lo || origin[axis] > hi) return null;
+              continue;
+            }
+            let a = (lo - origin[axis]) / dir[axis],
+              b = (hi - origin[axis]) / dir[axis];
+            if (a > b) [a, b] = [b, a];
+            near = Math.max(near, a);
+            far = Math.min(far, b);
+            if (near > far) return null;
+          }
+          return near;
+        }
+        function rayScene(map, props, origin, dir, max = 80) {
+          let distance = rayWall(map, origin.x, origin.z, dir.x, dir.z, max);
+          if (dir.y > 0.0001)
+            distance = Math.min(distance, (3.6 - origin.y) / dir.y);
+          if (dir.y < -0.0001) distance = Math.min(distance, -origin.y / dir.y);
+          for (const prop of props) {
+            const hit = rayBox(origin, dir, prop, distance);
+            if (hit !== null) distance = Math.min(distance, hit);
+          }
+          return Math.max(0, distance);
+        }
+        function visible(map, a, b, props = []) {
+          const origin = { x: a.x, y: a.y ?? 1.3, z: a.z },
+            dx = b.x - a.x,
+            dy = (b.y ?? 1.3) - origin.y,
             dz = b.z - a.z,
-            d = Math.hypot(dx, dz);
+            d = Math.hypot(dx, dy, dz);
           return (
-            d < 0.001 || rayWall(map, a.x, a.z, dx / d, dz / d, d) >= d - 0.02
+            d < 0.001 ||
+            rayScene(
+              map,
+              props,
+              origin,
+              { x: dx / d, y: dy / d, z: dz / d },
+              d,
+            ) >=
+              d - 0.02
           );
         }
         function segmentSphere(origin, dir, center, radius, max = Infinity) {
@@ -1684,6 +1970,12 @@
           rng,
           distances,
           generateDeck,
+          enemyTypes,
+          makeEnemy,
+          enemyDamage,
+          stationProps,
+          rayBox,
+          rayScene,
           wall,
           fits,
           move,
@@ -1696,6 +1988,302 @@
           upgrade,
           resupply,
         };
+      })();
+    </script>
+    <script id="orbit-music">
+      "use strict";
+      // ION RUNNER: an original 32-bar chip score. Notes are authored as sixteenth-note events.
+      const OrbitMusic = (() => {
+        const lead = [
+          [
+            24,
+            null,
+            31,
+            36,
+            null,
+            34,
+            31,
+            null,
+            27,
+            null,
+            31,
+            34,
+            31,
+            null,
+            27,
+            24,
+          ],
+          [
+            null,
+            24,
+            27,
+            31,
+            null,
+            36,
+            34,
+            31,
+            27,
+            null,
+            24,
+            null,
+            22,
+            24,
+            27,
+            null,
+          ],
+          [
+            24,
+            null,
+            28,
+            31,
+            36,
+            null,
+            35,
+            31,
+            28,
+            null,
+            31,
+            35,
+            null,
+            31,
+            28,
+            null,
+          ],
+          [
+            31,
+            29,
+            26,
+            null,
+            24,
+            null,
+            26,
+            29,
+            31,
+            null,
+            36,
+            34,
+            31,
+            29,
+            26,
+            null,
+          ],
+        ];
+        const bridge = [
+          36,
+          null,
+          null,
+          31,
+          null,
+          34,
+          null,
+          null,
+          29,
+          null,
+          31,
+          null,
+          27,
+          null,
+          24,
+          null,
+        ];
+        const roots = [45, 41, 48, 43];
+        function score(step, deck = 0, combat = false) {
+          const bar = Math.floor(step / 16) % 32,
+            tick = step % 16,
+            chord = Math.floor(bar / 2) % 4,
+            root = roots[chord],
+            events = [];
+          const add = (voice, note, length, volume, pan = 0) =>
+            events.push({ voice, note, length, volume, pan });
+          const triad = chord === 0 ? [0, 3, 7] : [0, 4, 7];
+          const middle = bar >= 16 && bar < 24,
+            full = bar >= 4 || deck > 0 || combat;
+          if ([0, 3, 6, 8, 11, 14].includes(tick))
+            add(
+              "bass",
+              root + (tick === 6 || tick === 14 ? 12 : 0),
+              tick === 0 ? 2.7 : 1.7,
+              0.2,
+            );
+          if (tick % 2 === 0 || combat) {
+            const arp =
+              root + 24 + triad[(tick + bar) % 3] + (tick >= 8 ? 12 : 0);
+            add("arp", arp, 0.72, 0.043, tick % 4 < 2 ? -0.45 : 0.45);
+          }
+          const melody = middle ? bridge : lead[chord];
+          if (full && melody[tick] !== null)
+            add(
+              "lead",
+              root + melody[tick] + (bar >= 24 && tick >= 12 ? 12 : 0),
+              middle ? 2.8 : 1.45,
+              middle ? 0.083 : 0.095,
+              -0.12,
+            );
+          if (
+            tick === 0 ||
+            tick === 8 ||
+            (combat && (tick === 6 || tick === 11))
+          )
+            add("kick", 36, 0.75, 0.45);
+          if (tick === 4 || tick === 12)
+            add("snare", 0, 0.85, full ? 0.22 : 0.13);
+          if (tick % 2 === 0)
+            add(
+              "hat",
+              0,
+              tick === 14 ? 1.15 : 0.28,
+              tick % 4 === 0 ? 0.07 : 0.045,
+              0.3,
+            );
+          if (bar % 8 === 7 && tick >= 12) {
+            add("fill", root + 36 + [7, 5, 3, 0][tick - 12], 0.55, 0.067, 0.3);
+            if (tick % 2 === 1) add("snare", 0, 0.5, 0.12);
+          }
+          if (deck === 2 && tick === 0) add("lead", root + 19, 4, 0.035, 0.2);
+          return events;
+        }
+        class Player {
+          constructor(context, output) {
+            this.context = context;
+            this.voices = new Set();
+            this.step = 0;
+            this.next = 0;
+            this.active = false;
+            this.volume = -1;
+            this.gain = context.createGain();
+            this.gain.gain.value = 0;
+            this.gain.connect(output);
+            this.echo = context.createDelay(0.8);
+            this.echo.delayTime.value = 0.234375;
+            this.feedback = context.createGain();
+            this.feedback.gain.value = 0.22;
+            this.wet = context.createGain();
+            this.wet.gain.value = 0.2;
+            this.echo.connect(this.feedback);
+            this.feedback.connect(this.echo);
+            this.echo.connect(this.wet);
+            this.wet.connect(this.gain);
+            this.pulses = [0.25, 0.125].map((duty) => {
+              const real = new Float32Array(33),
+                imag = new Float32Array(33);
+              for (let n = 1; n < 33; n++) {
+                real[n] = Math.sin(2 * Math.PI * n * duty) / (n * Math.PI);
+                imag[n] =
+                  (1 - Math.cos(2 * Math.PI * n * duty)) / (n * Math.PI);
+              }
+              return context.createPeriodicWave(real, imag);
+            });
+            this.noise = context.createBuffer(
+              1,
+              Math.ceil(context.sampleRate * 0.3),
+              context.sampleRate,
+            );
+            const data = this.noise.getChannelData(0);
+            let register = 0x4a35,
+              value = 0;
+            for (let i = 0; i < data.length; i++) {
+              if (i % 3 === 0) {
+                register =
+                  (register >> 1) | (((register ^ (register >> 1)) & 1) << 14);
+                value = register & 1 ? 1 : -1;
+              }
+              data[i] = value;
+            }
+          }
+          stop() {
+            if (!this.active) return;
+            const t = this.context.currentTime;
+            this.active = false;
+            this.volume = -1;
+            this.gain.gain.cancelScheduledValues(t);
+            this.gain.gain.setTargetAtTime(0, t, 0.018);
+            for (const voice of this.voices) {
+              try {
+                voice.stop(t + 0.025);
+              } catch {}
+            }
+            // No accumulated notes are played on resume after a hidden tab or pause.
+            this.next = 0;
+          }
+          tick({ enabled, deck = 0, combat = false, volume = 0.55 }) {
+            if (!enabled || this.context.state !== "running") {
+              this.stop();
+              return;
+            }
+            const now = this.context.currentTime,
+              stepLength = 60 / (128 + deck * 6) / 4;
+            if (!this.active) {
+              this.active = true;
+              this.next = now + 0.04;
+            }
+            if (volume !== this.volume) {
+              this.volume = volume;
+              this.gain.gain.cancelScheduledValues(now);
+              this.gain.gain.setTargetAtTime(volume * 0.68, now, 0.05);
+            }
+            if (this.next < now - 0.15) this.next = now + 0.03;
+            let budget = 0;
+            while (this.next < now + 0.13 && budget++ < 4) {
+              for (const event of score(this.step, deck, combat))
+                this.note(event, this.next, stepLength);
+              this.next += stepLength;
+              this.step = (this.step + 1) % 512;
+            }
+          }
+          note(event, time, stepLength) {
+            const c = this.context,
+              { voice, note, length, volume, pan } = event,
+              duration = length * stepLength;
+            const gain = c.createGain();
+            gain.gain.setValueAtTime(0.0001, time);
+            gain.gain.linearRampToValueAtTime(volume, time + 0.004);
+            gain.gain.exponentialRampToValueAtTime(
+              0.0001,
+              time + Math.max(0.02, duration),
+            );
+            const panner = c.createStereoPanner();
+            panner.pan.value = pan;
+            gain.connect(panner);
+            panner.connect(this.gain);
+            if (voice === "lead" || voice === "fill") gain.connect(this.echo);
+            let source,
+              filter = null;
+            if (voice === "hat" || voice === "snare") {
+              source = c.createBufferSource();
+              source.buffer = this.noise;
+              filter = c.createBiquadFilter();
+              filter.type = voice === "hat" ? "highpass" : "bandpass";
+              filter.frequency.value = voice === "hat" ? 6500 : 1700;
+              filter.Q.value = 0.65;
+              source.connect(filter);
+              filter.connect(gain);
+            } else {
+              source = c.createOscillator();
+              const hz = 440 * 2 ** ((note - 69) / 12);
+              if (voice === "bass") source.type = "triangle";
+              else if (voice === "kick") source.type = "sine";
+              else source.setPeriodicWave(this.pulses[voice === "arp" ? 1 : 0]);
+              source.frequency.setValueAtTime(
+                voice === "kick" ? 135 : hz,
+                time,
+              );
+              if (voice === "kick")
+                source.frequency.exponentialRampToValueAtTime(36, time + 0.085);
+              source.connect(gain);
+            }
+            this.voices.add(source);
+            source.onended = () => {
+              this.voices.delete(source);
+              source.disconnect();
+              filter?.disconnect();
+              gain.disconnect();
+              panner.disconnect();
+            };
+            source.start(time);
+            source.stop(time + Math.max(0.025, duration) + 0.015);
+          }
+        }
+        return { score, Player };
       })();
     </script>
     <script id="orbit-game">
@@ -2130,28 +2718,50 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               ? saved.reduced
               : matchMedia("(prefers-reduced-motion: reduce)").matches,
           sensitivity = clamp(Number(saved.sensitivity) || 1, 0.5, 2),
-          best = Number(saved.best) || 0;
+          best = Number(saved.best) || 0,
+          musicEnabled = saved.musicEnabled !== false,
+          musicVolume = clamp(
+            Number.isFinite(saved.musicVolume) ? saved.musicVolume : 0.55,
+            0,
+            1,
+          );
         function save() {
           try {
             localStorage.setItem(
               "dead-orbit-v1",
-              JSON.stringify({ muted, reduced, sensitivity, best }),
+              JSON.stringify({
+                muted,
+                reduced,
+                sensitivity,
+                best,
+                musicEnabled,
+                musicVolume,
+              }),
             );
           } catch {}
         }
         // All audio is synthesized locally and starts only after a user gesture.
         let audio = null,
           master = null,
-          ambience = null;
+          ambience = null,
+          music = null,
+          musicTimer = null;
         function soundInit() {
           try {
             if (!audio) {
               audio = new (window.AudioContext || window.webkitAudioContext)();
               master = audio.createGain();
               master.gain.value = muted ? 0 : 0.42;
-              master.connect(audio.destination);
+              const compressor = audio.createDynamicsCompressor();
+              compressor.threshold.value = -8;
+              compressor.knee.value = 12;
+              compressor.ratio.value = 4;
+              master.connect(compressor);
+              compressor.connect(audio.destination);
+              music = new OrbitMusic.Player(audio, master);
+              musicTimer = setInterval(syncMusic, 25);
               ambience = audio.createGain();
-              ambience.gain.value = 0.12;
+              ambience.gain.value = 0.05;
               ambience.connect(master);
               for (const f of [43, 64.6, 86.1]) {
                 const o = audio.createOscillator(),
@@ -2166,6 +2776,27 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             }
             if (audio.state === "suspended") audio.resume().catch(() => {});
           } catch {}
+        }
+        function syncMusic() {
+          music?.tick({
+            enabled:
+              musicEnabled &&
+              !muted &&
+              !document.hidden &&
+              mode !== "paused" &&
+              mode !== "dead" &&
+              !mapOpen,
+            deck,
+            combat:
+              mode === "playing" &&
+              enemies.some(
+                (e) =>
+                  e.health > 0 &&
+                  e.alert &&
+                  Math.hypot(e.x - player.x, e.z - player.z) < 16,
+              ),
+            volume: musicVolume * (mode === "title" ? 0.65 : 1),
+          });
         }
         function tone(
           freq,
@@ -2249,6 +2880,11 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           bob = 0,
           walkAmount = 0,
           stepTimer = 0;
+        let bladeStep = 0,
+          bladeTimer = 0,
+          bladeDuration = 0.36,
+          lastSwing = -20,
+          slashes = [];
         let radioTimer = 0,
           toastTimer = 0,
           flow = null,
@@ -2530,24 +3166,6 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               0,
               0,
             );
-            // Low, wall-side equipment cases are decorative and stay outside the movement corridor.
-            for (let i = 0; i < 2; i++) {
-              const px = (room.x + 0.18) * CELL,
-                pz = (room.z + 1.5 + i) * CELL;
-              box(out, px, 0.4, pz, 0.35, 0.8, 1.2, palette.dark);
-              box(out, px + 0.2, 0.52, pz, 0.05, 0.42, 0.86, palette.trim);
-              box(
-                out,
-                px + 0.24,
-                0.64,
-                pz,
-                0.035,
-                0.04,
-                0.5,
-                palette.mint,
-                1.2,
-              );
-            }
             box(
               out,
               x,
@@ -2559,34 +3177,46 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               accent,
               0.35,
             );
-            if (random() < 0.65) {
-              const px = (room.x + room.w - 0.18) * CELL,
-                pz = (room.z + 1.5) * CELL;
-              box(out, px, 1.18, pz, 0.33, 2.35, 0.9, palette.dark);
+          }
+          for (const prop of level.props) {
+            const { x, y, z, w, h, d, type } = prop;
+            box(out, x, y, z, w, h, d, palette.dark);
+            if (type === "case") {
+              box(
+                out,
+                x + w / 2 - 0.01,
+                0.52,
+                z,
+                0.02,
+                0.42,
+                0.86,
+                palette.trim,
+              );
+              box(out, x + w / 2, 0.64, z, 0.008, 0.04, 0.5, palette.mint, 1.2);
+            } else
               for (let i = 0; i < 6; i++) {
                 box(
                   out,
-                  px - 0.18,
+                  x - w / 2 + 0.01,
                   0.4 + i * 0.3,
-                  pz,
-                  0.035,
+                  z,
+                  0.02,
                   0.12,
                   0.68,
                   palette.trim,
                 );
                 box(
                   out,
-                  px - 0.21,
+                  x - w / 2,
                   0.42 + i * 0.3,
-                  pz - 0.2,
-                  0.03,
+                  z - 0.2,
+                  0.008,
                   0.045,
                   0.06,
                   palette.mint,
                   1.5,
                 );
               }
-            }
           }
           // The docking observation port looks out onto an entirely procedural starfield.
           for (let x = 3; x <= 5; x++) {
@@ -2668,6 +3298,10 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             flashTimer =
             pulseTimer =
               0;
+          bladeStep = 0;
+          bladeTimer = 0;
+          lastSwing = -20;
+          slashes = [];
           lastHurt = gameTime - 20;
           player.x = level.start.x;
           player.z = level.start.z;
@@ -2676,12 +3310,9 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           enemies = level.enemies.map((e, i) => ({
             ...e,
             id: i,
-            health: e.type === "sentry" ? 100 : e.type === "stalker" ? 64 : 66,
-            maxHealth:
-              e.type === "sentry" ? 100 : e.type === "stalker" ? 64 : 66,
-            y: 1.15,
+            y: e.type === "stalker" ? 0.65 * e.scale : 1.2,
             angle: 0,
-            phase: i * 2.4,
+            phase: e.hoverPhase,
             alert: false,
             cooldown: 1 + i * 0.15,
             charge: 0,
@@ -2729,6 +3360,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           clearInput();
           canvas.focus();
           soundInit();
+          syncMusic();
           requestLock();
         }
         function startRun() {
@@ -2755,6 +3387,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
         let difficulty = "standard";
         function menuScreen(type) {
           mode = type;
+          syncMusic();
           clearInput();
           unlock();
           $("menu").hidden = false;
@@ -2853,6 +3486,20 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           reduced = e.target.checked;
           save();
         };
+        $("music-enabled").checked = musicEnabled;
+        $("music-volume").value = Math.round(musicVolume * 100);
+        $("music-enabled").onchange = (e) => {
+          musicEnabled = e.target.checked;
+          soundInit();
+          syncMusic();
+          save();
+        };
+        $("music-volume").oninput = (e) => {
+          musicVolume = clamp(Number(e.target.value) / 100, 0, 1);
+          soundInit();
+          syncMusic();
+          save();
+        };
         function updateSound() {
           const b = $("sound");
           b.setAttribute("aria-pressed", String(muted));
@@ -2869,6 +3516,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           muted = !muted;
           soundInit();
           updateSound();
+          syncMusic();
           save();
         };
         updateSound();
@@ -2891,6 +3539,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
         function toggleMap() {
           if (mode !== "playing") return;
           mapOpen = !mapOpen;
+          syncMusic();
           $("map-panel").hidden = !mapOpen;
           clearInput();
           if (mapOpen) {
@@ -2904,6 +3553,15 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
         }
         $("close-map").onclick = toggleMap;
         $("open-map").onclick = toggleMap;
+        function moveBody(body, dx, dz, r = 0.28) {
+          C.move(level.map, body, dx, dz, r, level.props);
+        }
+        function lineClear(a, b) {
+          return C.visible(level.map, a, b, level.props);
+        }
+        function sceneHit(origin, dir, max = 80) {
+          return C.rayScene(level.map, level.props, origin, dir, max);
+        }
         function sparks(x, y, z, color, count = 12, force = 3) {
           for (let i = 0; i < count; i++)
             particles.push({
@@ -2935,8 +3593,9 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           reloadTimer = player.reloadDuration;
           tone(260, 0.12, "triangle", 0.12, 110);
         }
-        function enemyHit(e, damage) {
-          e.health -= damage;
+        function enemyHit(e, damage, bypass = false) {
+          if (e.health <= 0) return;
+          e.health -= C.enemyDamage(e, damage, player, bypass);
           e.hit = 0.16;
           e.alert = true;
           hitTimer = 0.16;
@@ -2945,12 +3604,13 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           if (e.health <= 0) {
             combo = gameTime - lastKill < 4 ? Math.min(4, combo + 1) : 1;
             lastKill = gameTime;
-            player.score += 100 * combo;
+            const award = e.reward * combo;
+            player.score += award;
             player.kills++;
             toast(
               combo > 1
-                ? `+${100 * combo} / ${combo}× SCRAP CHAIN`
-                : "+100 / MACHINE SCRAPPED",
+                ? `+${award} / ${combo}× SCRAP CHAIN`
+                : `+${award} / ${e.name.toUpperCase()} SCRAPPED`,
               1.5,
             );
             sparks(e.x, e.y, e.z, palette.orange, 24, 5);
@@ -2969,39 +3629,90 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           if (mode !== "playing" || mapOpen || fireTimer > 0 || reloadTimer > 0)
             return;
           if (player.weapon === 1) {
-            fireTimer = 0.42;
-            flashTimer = 0.12;
-            tone(180, 0.16, "sawtooth", 0.09, 50);
-            noise(0.1, 0.08, 1800);
-            let hit = false;
+            bladeStep = gameTime - lastSwing < 0.95 ? (bladeStep + 1) % 3 : 0;
+            lastSwing = gameTime;
+            const heavy = bladeStep === 2,
+              reach = heavy ? 3.25 : 2.85;
+            fireTimer = heavy ? 0.56 : 0.34;
+            bladeDuration = fireTimer;
+            bladeTimer = fireTimer;
+            tone(heavy ? 110 : 230, 0.22, "sawtooth", 0.12, heavy ? 45 : 70);
+            tone(880, 0.16, "triangle", 0.06, 220);
+            noise(0.14, 0.13, 2600);
+            slashes.push({
+              x: player.x,
+              y: 1.3,
+              z: player.z,
+              yaw: player.yaw,
+              step: bladeStep,
+              life: 0.24,
+              max: 0.24,
+            });
+            const f = forward(player.yaw);
             for (const e of enemies) {
-              const d = Math.hypot(e.x - player.x, e.z - player.z),
-                f = forward(player.yaw);
+              const dx = e.x - player.x,
+                dz = e.z - player.z,
+                d = Math.hypot(dx, dz);
               if (
                 e.health > 0 &&
-                d < 2.65 &&
-                ((e.x - player.x) * f.x + (e.z - player.z) * f.z) /
-                  Math.max(d, 0.01) >
-                  0.4 &&
-                C.visible(level.map, player, e)
+                d < reach &&
+                (dx * f.x + dz * f.z) / Math.max(d, 0.01) > 0.18 &&
+                lineClear(player, e)
               ) {
-                enemyHit(e, 46);
-                e.stun = 0.55;
-                hit = true;
+                enemyHit(e, [46, 52, 78][bladeStep], true);
+                e.stun = heavy ? 1.2 : 0.45;
+                e.charge = 0;
+                if (d > 0.01)
+                  moveBody(
+                    e,
+                    (dx / d) * (heavy ? 0.85 : 0.25),
+                    (dz / d) * (heavy ? 0.85 : 0.25),
+                    e.collisionRadius,
+                  );
               }
             }
-            if (
-              !hit &&
-              C.rayWall(
-                level.map,
-                player.x,
-                player.z,
-                Math.sin(player.yaw),
-                -Math.cos(player.yaw),
-                2,
-              ) < 1.8
-            )
-              tone(700, 0.1, "triangle", 0.12, 80);
+            let reflected = 0;
+            for (const b of bullets) {
+              const dx = b.x - player.x,
+                dz = b.z - player.z,
+                d = Math.hypot(dx, dz);
+              if (
+                !b.friendly &&
+                d < 3.25 &&
+                (dx * f.x + dz * f.z) / Math.max(d, 0.01) > 0.1 &&
+                lineClear(player, b)
+              ) {
+                b.friendly = true;
+                b.dx = -b.dx;
+                b.dy = -b.dy;
+                b.dz = -b.dz;
+                b.speed *= 1.45;
+                b.damage = 64;
+                b.life = 3;
+                reflected++;
+                sparks(b.x, b.y, b.z, palette.mint, 12, 4);
+              }
+            }
+            if (reflected) {
+              toast("RETURN TO SENDER / BOLT DEFLECTED", 1.6);
+              tone(1200, 0.18, "square", 0.07, 600);
+            } else if (heavy) toast("ARC FINISHER", 0.8);
+            const contact = sceneHit(
+              { x: player.x, y: 1.3, z: player.z },
+              forward(player.yaw),
+              reach,
+            );
+            if (contact < reach) {
+              sparks(
+                player.x + f.x * contact,
+                1.3,
+                player.z + f.z * contact,
+                palette.mint,
+                10,
+                3,
+              );
+              tone(700, 0.1, "triangle", 0.1, 80);
+            }
             return;
           }
           if (player.ammo <= 0) {
@@ -3017,17 +3728,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           tone(170, 0.12, "sawtooth", 0.17, 38);
           const dir = forward(player.yaw, player.pitch),
             origin = { x: player.x, y: 1.55, z: player.z };
-          let distance = C.rayWall(
-            level.map,
-            origin.x,
-            origin.z,
-            dir.x,
-            dir.z,
-            60,
-          );
-          if (dir.y > 0.001)
-            distance = Math.min(distance, (3.6 - origin.y) / dir.y);
-          if (dir.y < -0.001) distance = Math.min(distance, -origin.y / dir.y);
+          let distance = sceneHit(origin, dir, 60);
           let target = null;
           for (const e of enemies) {
             if (e.health <= 0) continue;
@@ -3035,7 +3736,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               origin,
               dir,
               { x: e.x, y: e.y, z: e.z },
-              e.type === "sentry" ? 0.66 : isTouch ? 0.69 : 0.54,
+              e.hitRadius + (isTouch ? 0.11 : 0),
               distance,
             );
             if (t !== null && t < distance) {
@@ -3072,11 +3773,11 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             if (
               e.health > 0 &&
               Math.hypot(e.x - player.x, e.z - player.z) < 9 &&
-              C.visible(level.map, player, e)
+              lineClear(player, e)
             ) {
               e.stun = 3.2;
               e.charge = 0;
-              enemyHit(e, 34);
+              enemyHit(e, 34, true);
             }
           bullets = bullets.filter(
             (b) => Math.hypot(b.x - player.x, b.z - player.z) > 11,
@@ -3264,6 +3965,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             pause();
           }
           lastTime = 0;
+          syncMusic();
         });
         const stick = $("stick");
         function joystick(e) {
@@ -3313,6 +4015,9 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
         function update(dt) {
           gameTime += dt;
           player.elapsed += dt;
+          bladeTimer = Math.max(0, bladeTimer - dt);
+          for (const slash of slashes) slash.life -= dt;
+          slashes = slashes.filter((s) => s.life > 0);
           fireTimer = Math.max(0, fireTimer - dt);
           empTimer = Math.max(0, empTimer - dt);
           dashTimer = Math.max(0, dashTimer - dt);
@@ -3348,8 +4053,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             dashActive -= dt;
             if (!mx && !mz) mz = 1;
           }
-          C.move(
-            level.map,
+          moveBody(
             player,
             (Math.sin(player.yaw) * mz + Math.cos(player.yaw) * mx) *
               speed *
@@ -3390,21 +4094,23 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             if (e.health <= 0) continue;
             e.y =
               e.type === "stalker"
-                ? 0.65
-                : 1.2 + Math.sin(gameTime * 2 + e.phase) * 0.12;
+                ? 0.65 * e.scale
+                : (e.type === "prism" ? 1.45 : 1.2) +
+                  Math.sin(gameTime * 2 + e.phase) *
+                    (e.type === "skimmer" ? 0.23 : 0.12);
             e.hit = Math.max(0, e.hit - dt);
             e.stun = Math.max(0, e.stun - dt);
             if (e.stun > 0) continue;
             const dx = player.x - e.x,
               dz = player.z - e.z,
               dist = Math.hypot(dx, dz),
-              sight = dist < 24 && C.visible(level.map, e, player);
+              sight = dist < 24 && lineClear(e, player);
             e.angle = Math.atan2(dx, dz);
             if (sight && dist < 19) e.alert = true;
             if (!e.alert) continue;
             e.cooldown -= dt;
             const stalk = e.type === "stalker",
-              desired = stalk ? 1.35 : e.type === "sentry" ? 10 : 7;
+              desired = e.range;
             if (dist > desired || !sight) {
               let tx = player.x,
                 tz = player.z;
@@ -3429,15 +4135,33 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               const vx = tx - e.x,
                 vz = tz - e.z,
                 l = Math.hypot(vx, vz),
-                speed = stalk ? 2.65 : e.type === "sentry" ? 0.85 : 1.45;
+                speed = e.speed;
               if (l > 0.05)
-                C.move(
-                  level.map,
+                moveBody(
                   e,
                   (vx / l) * speed * dt,
                   (vz / l) * speed * dt,
-                  0.34,
+                  e.collisionRadius,
                 );
+            }
+            if (
+              e.type === "skimmer" &&
+              sight &&
+              dist < 14 &&
+              dist > 3 &&
+              e.charge === 0
+            ) {
+              const strafe =
+                e.speed *
+                0.7 *
+                e.strafeDirection *
+                Math.sin(gameTime * 0.8 + e.phase);
+              moveBody(
+                e,
+                (-dz / Math.max(dist, 0.01)) * strafe * dt,
+                (dx / Math.max(dist, 0.01)) * strafe * dt,
+                e.collisionRadius,
+              );
             }
             // Separation keeps squads legible and avoids a stack of overlapping targets.
             for (const other of enemies) {
@@ -3446,31 +4170,29 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                 oz = e.z - other.z,
                 d = Math.hypot(ox, oz);
               if (d > 0 && d < 1.05) {
-                C.move(
-                  level.map,
+                moveBody(
                   e,
                   (ox / d) * dt * 0.6,
                   (oz / d) * dt * 0.6,
-                  0.34,
+                  e.collisionRadius,
                 );
-                C.move(
-                  level.map,
+                moveBody(
                   other,
                   (-ox / d) * dt * 0.6,
                   (-oz / d) * dt * 0.6,
-                  0.34,
+                  other.collisionRadius,
                 );
               }
             }
             if (stalk) {
               if (dist < 1.65 && sight && e.cooldown <= 0) {
-                e.cooldown = 1;
-                damage(20);
+                e.cooldown = e.interval;
+                damage(e.damage);
                 if (mode !== "playing") return;
               }
             } else if (sight && dist < 21) {
               if (e.cooldown <= 0 && e.charge === 0) {
-                e.charge = 0.85;
+                e.charge = e.windup;
                 e.aim = { x: player.x, y: 1.35, z: player.z };
               }
               if (e.charge > 0) {
@@ -3479,21 +4201,27 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                   const ax = e.aim.x - e.x,
                     ay = e.aim.y - e.y,
                     az = e.aim.z - e.z,
-                    l = Math.hypot(ax, ay, az),
-                    speed = deck === 2 ? 11 : 9;
-                  bullets.push({
-                    x: e.x,
-                    y: e.y,
-                    z: e.z,
-                    dx: ax / l,
-                    dy: ay / l,
-                    dz: az / l,
-                    speed,
-                    life: 4,
-                    damage: e.type === "sentry" ? 24 : 15,
-                  });
+                    l = Math.hypot(ax, ay, az) || 1;
+                  for (const spread of e.type === "prism"
+                    ? [-0.17, 0, 0.17]
+                    : [0]) {
+                    const c = Math.cos(spread),
+                      s = Math.sin(spread);
+                    bullets.push({
+                      x: e.x,
+                      y: e.y,
+                      z: e.z,
+                      dx: (ax * c + az * s) / l,
+                      dy: ay / l,
+                      dz: (az * c - ax * s) / l,
+                      speed: e.boltSpeed,
+                      life: 5,
+                      damage: e.damage,
+                      color: e.accent,
+                    });
+                  }
                   e.charge = 0;
-                  e.cooldown = 2.2 - deck * 0.25 + Math.random() * 0.6;
+                  e.cooldown = e.interval;
                   tone(
                     230,
                     0.15,
@@ -3507,25 +4235,45 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           }
           for (const b of bullets) {
             const distance = b.speed * dt,
-              wall = C.rayWall(level.map, b.x, b.z, b.dx, b.dz, distance),
-              t = C.segmentSphere(
+              dir = { x: b.dx, y: b.dy, z: b.dz },
+              wall = sceneHit(b, dir, distance);
+            let target = null,
+              nearest = Math.min(wall, distance);
+            if (b.friendly) {
+              for (const e of enemies) {
+                if (e.health <= 0) continue;
+                const t = C.segmentSphere(b, dir, e, e.hitRadius, nearest);
+                if (t !== null && t < nearest) {
+                  nearest = t;
+                  target = e;
+                }
+              }
+            } else {
+              const t = C.segmentSphere(
                 b,
-                { x: b.dx, y: b.dy, z: b.dz },
+                dir,
                 { x: player.x, y: 1.2, z: player.z },
                 0.48,
-                Math.min(wall, distance),
+                nearest,
               );
-            if (t !== null) {
+              if (t !== null) {
+                nearest = t;
+                target = player;
+              }
+            }
+            if (target) {
               b.life = 0;
-              damage(b.damage);
-              if (mode !== "playing") return;
+              if (target === player) {
+                damage(b.damage);
+                if (mode !== "playing") return;
+              } else enemyHit(target, b.damage, true);
             } else if (wall < distance) {
               b.life = 0;
               sparks(
                 b.x + b.dx * wall,
                 b.y + b.dy * wall,
                 b.z + b.dz * wall,
-                palette.red,
+                b.friendly ? palette.mint : palette.red,
                 4,
                 2,
               );
@@ -3625,6 +4373,8 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           );
         }
         function robot(out, e, time, scale = 1) {
+          scale *= e.scale ?? 1;
+          const accent = e.accent ?? palette.orange;
           const c = Math.cos(e.angle),
             s = Math.sin(e.angle),
             B = (x, y, z, w, h, d, color, glow = 0, angle = 0) =>
@@ -3641,12 +4391,9 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                 e.angle + angle,
               );
           const armor =
-              e.hit > 0
-                ? [0.8, 0.85, 0.78]
-                : e.type === "sentry"
-                  ? [0.37, 0.29, 0.2]
-                  : [0.26, 0.35, 0.39],
-            eye = e.stun > 0 ? palette.mint : palette.red;
+              e.hit > 0 ? [0.8, 0.85, 0.78] : (e.color ?? [0.26, 0.35, 0.39]),
+            eye =
+              e.stun > 0 ? palette.mint : e.charge > 0 ? palette.red : accent;
           box(
             out,
             e.x,
@@ -3657,7 +4404,90 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             0.8 * scale,
             [0.035, 0.055, 0.06],
           );
-          if (e.type === "stalker") {
+          if (e.type === "skimmer") {
+            B(0, 0, 0, 0.48, 0.28, 0.7, armor);
+            B(0, 0.16, 0.12, 0.34, 0.09, 0.35, palette.dark);
+            for (const side of [-1, 1]) {
+              B(
+                side * 0.47,
+                0.02,
+                -0.06,
+                0.66,
+                0.065,
+                0.23,
+                armor,
+                0,
+                side * 0.4,
+              );
+              B(
+                side * 0.61,
+                0.075,
+                -0.12,
+                0.39,
+                0.025,
+                0.08,
+                accent,
+                1.7,
+                side * 0.4,
+              );
+              B(side * 0.26, -0.09, -0.37, 0.13, 0.17, 0.32, palette.dark);
+              B(side * 0.26, -0.09, -0.55, 0.11, 0.12, 0.035, accent, 3);
+            }
+            B(0, 0.02, 0.37, 0.3, 0.105, 0.04, eye, e.charge > 0 ? 4 : 1.8);
+            B(0, 0.2, -0.26, 0.04, 0.27, 0.15, palette.trim);
+          } else if (e.type === "prism") {
+            sphere(out, e.x, e.y, e.z, 0.27 * scale, eye, 1.3);
+            for (let i = 0; i < 4; i++) {
+              const a = time * 0.65 + (i * Math.PI) / 2;
+              B(
+                Math.sin(a) * 0.51,
+                Math.sin(time * 1.5 + i) * 0.1,
+                Math.cos(a) * 0.51,
+                0.25,
+                0.62,
+                0.18,
+                armor,
+                0,
+                a,
+              );
+              B(
+                Math.sin(a) * 0.52,
+                Math.sin(time * 1.5 + i) * 0.1,
+                Math.cos(a) * 0.52,
+                0.035,
+                0.45,
+                0.23,
+                accent,
+                2,
+                a,
+              );
+            }
+            B(0, 0.53, 0, 0.24, 0.2, 0.24, palette.trim, 0, time);
+            B(0, -0.53, 0, 0.2, 0.18, 0.2, accent, 1.5, -time);
+          } else if (e.type === "bulwark") {
+            B(0, 0.08, 0, 0.85, 0.83, 0.57, armor);
+            B(0, 0.58, -0.03, 0.52, 0.28, 0.4, palette.dark);
+            B(0, 0.6, 0.19, 0.38, 0.075, 0.045, eye, 2.6);
+            for (const side of [-1, 1]) {
+              B(side * 0.5, 0.04, 0.27, 0.28, 0.93, 0.29, armor);
+              B(
+                side * 0.5,
+                0.06,
+                0.425,
+                0.18,
+                0.77,
+                0.025,
+                accent,
+                e.stun > 0 ? 0.15 : 1.1,
+              );
+              B(side * 0.49, -0.58, -0.08, 0.32, 0.3, 0.37, palette.dark);
+              B(side * 0.49, -0.76, -0.08, 0.23, 0.06, 0.27, accent, 2);
+              B(side * 0.45, 0.55, -0.23, 0.26, 0.19, 0.47, palette.trim);
+            }
+            B(0, 0.06, 0.305, 0.22, 0.38, 0.05, palette.dark);
+            B(0, 0.06, 0.34, 0.07, 0.22, 0.03, accent, 1.4);
+            B(0, -0.43, 0.11, 0.78, 0.09, 0.3, palette.trim);
+          } else if (e.type === "stalker") {
             B(0, 0, 0, 0.65, 0.36, 0.88, armor);
             B(0, 0.05, 0.46, 0.45, 0.075, 0.03, eye, 2);
             B(0, 0.22, -0.1, 0.42, 0.13, 0.5, palette.dark);
@@ -3693,71 +4523,80 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                   palette.trim,
                 );
               }
-            return;
-          }
-          sphere(out, e.x, e.y, e.z, 0.4 * scale, [0.13, 0.2, 0.23]);
-          B(0, 0.14, 0, 0.65, 0.56, 0.5, armor);
-          B(0, -0.23, 0, 0.44, 0.18, 0.42, palette.trim);
-          B(0, 0.13, 0.3, 0.5, 0.22, 0.16, palette.dark);
-          B(0, 0.13, 0.39, 0.34, 0.085, 0.035, eye, e.charge > 0 ? 5 : 2.5);
-          B(0, 0.14, 0.414, 0.065, 0.045, 0.03, [1, 0.8, 0.54], 3);
-          B(0, 0.47, -0.06, 0.11, 0.23, 0.11, palette.trim);
-          B(0, 0.6, -0.06, 0.17, 0.06, 0.13, palette.orange, 1.8);
-          for (const side of [-1, 1]) {
-            B(side * 0.43, 0.02, -0.05, 0.32, 0.11, 0.17, palette.trim);
-            B(side * 0.64, 0, 0, 0.25, 0.44, 0.57, armor);
-            B(side * 0.65, 0.255, 0, 0.38, 0.065, 0.74, palette.dark);
-            B(side * 0.65, 0.295, -0.05, 0.27, 0.025, 0.52, palette.trim);
-            B(
-              side * 0.65,
-              0.17,
-              0.3,
-              0.17,
-              0.16,
-              0.04,
-              e.type === "sentry" ? palette.orange : palette.white,
-              0.2,
-            );
-            B(side * 0.65, -0.27, -0.03, 0.16, 0.1, 0.24, palette.mint, 2.7);
-            B(
-              side * 0.65,
-              -0.36,
-              -0.03,
-              0.09,
-              0.12 + Math.sin(time * 27) * 0.025,
-              0.13,
-              palette.mint,
-              1.2,
-            );
-            B(side * 0.36, -0.21, 0.28, 0.1, 0.11, 0.42, palette.dark);
-            B(
-              side * 0.36,
-              -0.21,
-              0.5,
-              0.07,
-              0.06,
-              0.035,
-              palette.orange,
-              e.charge > 0 ? 3 : 0.6,
-            );
-          }
-          B(0, 0.32, -0.29, 0.45, 0.09, 0.07, palette.orange, 0.2);
-          B(0, -0.14, 0.38, 0.4, 0.035, 0.045, palette.trim);
-          B(0, -0.25, 0.33, 0.22, 0.06, 0.05, palette.dark);
-          if (e.type === "sentry") {
-            B(0, 0.27, -0.15, 0.85, 0.22, 0.52, armor);
-            for (const side of [-1, 1])
+          } else {
+            sphere(out, e.x, e.y, e.z, 0.4 * scale, [0.13, 0.2, 0.23]);
+            B(0, 0.14, 0, 0.65, 0.56, 0.5, armor);
+            B(0, -0.23, 0, 0.44, 0.18, 0.42, palette.trim);
+            B(0, 0.13, 0.3, 0.5, 0.22, 0.16, palette.dark);
+            B(0, 0.13, 0.39, 0.34, 0.085, 0.035, eye, e.charge > 0 ? 5 : 2.5);
+            B(0, 0.14, 0.414, 0.065, 0.045, 0.03, [1, 0.8, 0.54], 3);
+            B(0, 0.47, -0.06, 0.11, 0.23, 0.11, palette.trim);
+            B(0, 0.6, -0.06, 0.17, 0.06, 0.13, palette.orange, 1.8);
+            for (const side of [-1, 1]) {
+              B(side * 0.43, 0.02, -0.05, 0.32, 0.11, 0.17, palette.trim);
+              B(side * 0.64, 0, 0, 0.25, 0.44, 0.57, armor);
+              B(side * 0.65, 0.255, 0, 0.38, 0.065, 0.74, palette.dark);
+              B(side * 0.65, 0.295, -0.05, 0.27, 0.025, 0.52, palette.trim);
               B(
-                side * 0.4,
-                0.31,
-                0.15,
-                0.14,
-                0.055,
-                0.025,
-                palette.orange,
-                1.5,
+                side * 0.65,
+                0.17,
+                0.3,
+                0.17,
+                0.16,
+                0.04,
+                e.type === "sentry" ? palette.orange : palette.white,
+                0.2,
               );
+              B(side * 0.65, -0.27, -0.03, 0.16, 0.1, 0.24, palette.mint, 2.7);
+              B(
+                side * 0.65,
+                -0.36,
+                -0.03,
+                0.09,
+                0.12 + Math.sin(time * 27) * 0.025,
+                0.13,
+                palette.mint,
+                1.2,
+              );
+              B(side * 0.36, -0.21, 0.28, 0.1, 0.11, 0.42, palette.dark);
+              B(
+                side * 0.36,
+                -0.21,
+                0.5,
+                0.07,
+                0.06,
+                0.035,
+                palette.orange,
+                e.charge > 0 ? 3 : 0.6,
+              );
+            }
+            B(0, 0.32, -0.29, 0.45, 0.09, 0.07, palette.orange, 0.2);
+            B(0, -0.14, 0.38, 0.4, 0.035, 0.045, palette.trim);
+            B(0, -0.25, 0.33, 0.22, 0.06, 0.05, palette.dark);
+            if (e.type === "sentry") {
+              B(0, 0.27, -0.15, 0.85, 0.22, 0.52, armor);
+              for (const side of [-1, 1])
+                B(
+                  side * 0.4,
+                  0.31,
+                  0.15,
+                  0.14,
+                  0.055,
+                  0.025,
+                  palette.orange,
+                  1.5,
+                );
+            }
           }
+          // Extra armor rails and paired pink antennae make randomized traits readable.
+          if (e.trait === "reinforced")
+            for (const side of [-1, 1])
+              B(side * 0.28, 0.35, 0.29, 0.12, 0.32, 0.08, accent, 0.4);
+          if (e.trait === "overclocked")
+            for (const side of [-1, 1]) {
+              B(side * 0.23, 0.6, -0.12, 0.045, 0.28, 0.045, palette.trim);
+              B(side * 0.23, 0.76, -0.12, 0.075, 0.065, 0.075, accent, 2);
+            }
           if (e.stun > 0)
             for (let i = 0; i < 3; i++) {
               const a = time * 8 + i * 2.1;
@@ -3923,12 +4762,22 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               cardTaken ? 1.6 : 0.3,
             );
           for (const b of bullets) {
-            box(out, b.x, b.y, b.z, 0.13, 0.13, 0.13, palette.red, 4);
+            box(
+              out,
+              b.x,
+              b.y,
+              b.z,
+              0.13,
+              0.13,
+              0.13,
+              b.friendly ? palette.mint : (b.color ?? palette.red),
+              4,
+            );
             beam(
               out,
               { x: b.x - b.dx * 0.5, y: b.y - b.dy * 0.5, z: b.z - b.dz * 0.5 },
               b,
-              palette.orange,
+              b.friendly ? palette.mint : (b.color ?? palette.orange),
               0.035,
               2,
             );
@@ -3936,6 +4785,42 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           for (const p of particles)
             box(out, p.x, p.y, p.z, p.size, p.size, p.size, p.color, 2);
           for (const t of traces) beam(out, t.a, t.b, palette.orange, 0.013, 3);
+          if (!reduced)
+            for (const slash of slashes) {
+              const progress = 1 - slash.life / slash.max,
+                heavy = slash.step === 2;
+              for (let i = 0; i < 14; i++) {
+                const a = slash.yaw - 0.95 + i * 0.14 + progress * 0.22,
+                  b = a + 0.14,
+                  r = heavy ? 2.6 : 2.1;
+                const one = {
+                  x: slash.x + Math.sin(a) * r,
+                  y:
+                    slash.y +
+                    Math.sin(a - slash.yaw) * (slash.step === 1 ? -0.45 : 0.45),
+                  z: slash.z - Math.cos(a) * r,
+                };
+                const two = {
+                  x: slash.x + Math.sin(b) * r,
+                  y:
+                    slash.y +
+                    Math.sin(b - slash.yaw) * (slash.step === 1 ? -0.45 : 0.45),
+                  z: slash.z - Math.cos(b) * r,
+                };
+                if (
+                  lineClear({ x: slash.x, y: slash.y, z: slash.z }, one) &&
+                  lineClear({ x: slash.x, y: slash.y, z: slash.z }, two)
+                )
+                  beam(
+                    out,
+                    one,
+                    two,
+                    heavy ? [0.7, 0.4, 1] : palette.mint,
+                    (1 - progress) * 0.028,
+                    2,
+                  );
+              }
+            }
           // Slow drifting motes give the pressurized air a little depth.
           for (let i = 0; i < 32; i++) {
             const x = player.x + Math.sin(i * 13.4) * 8,
@@ -3945,6 +4830,136 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               box(out, x, y, z, 0.012, 0.012, 0.012, [0.28, 0.46, 0.48], 0.5);
           }
           return out;
+        }
+        function bladeMesh(time) {
+          const mesh = [],
+            active = bladeTimer > 0,
+            progress = active ? 1 - bladeTimer / bladeDuration : 0,
+            heavy = bladeStep === 2;
+          const energy = active && heavy ? [0.68, 0.38, 1] : [0.18, 0.95, 0.8];
+          const B = (x, y, z, w, h, d, col, glow = 0) =>
+            box(mesh, x, y, z, w, h, d, col, glow);
+          B(0, -0.12, 0, 0.115, 0.3, 0.13, palette.dark);
+          for (let i = 0; i < 6; i++)
+            B(0, -0.245 + i * 0.045, 0.015, 0.13, 0.016, 0.14, palette.trim);
+          B(0, -0.3, 0, 0.16, 0.075, 0.17, palette.trim);
+          B(0, -0.345, 0.01, 0.075, 0.03, 0.075, energy, 1.6);
+          B(0, 0.045, 0, 0.24, 0.09, 0.19, palette.trim);
+          B(0, 0.12, 0, 0.17, 0.11, 0.135, palette.dark);
+          for (const side of [-1, 1]) {
+            B(side * 0.14, 0.05, 0, 0.08, 0.13, 0.16, [0.42, 0.31, 0.17]);
+            B(side * 0.15, 0.125, 0, 0.07, 0.025, 0.1, palette.orange, 1.2);
+          }
+          B(0.14, -0.13, -0.015, 0.045, 0.34, 0.065, palette.trim);
+          B(0.08, -0.285, -0.015, 0.15, 0.045, 0.065, palette.trim);
+          const outline = [
+            [-0.055, 0.17],
+            [0.065, 0.17],
+            [0.145, 0.49],
+            [0.19, 0.85],
+            [0.08, 1.04],
+            [-0.05, 0.76],
+            [-0.09, 0.4],
+          ];
+          function solid(points, depth, color, glow) {
+            for (const side of [-1, 1])
+              for (let i = 1; i < points.length - 1; i++)
+                quad(
+                  mesh,
+                  [
+                    [...points[0], (side * depth) / 2],
+                    [...points[i], (side * depth) / 2],
+                    [...points[i + 1], (side * depth) / 2],
+                    [...points[0], (side * depth) / 2],
+                  ],
+                  [0, 0, side],
+                  color,
+                  glow,
+                );
+            for (let i = 0; i < points.length; i++) {
+              const a = points[i],
+                b = points[(i + 1) % points.length],
+                dx = b[0] - a[0],
+                dy = b[1] - a[1],
+                l = Math.hypot(dx, dy);
+              quad(
+                mesh,
+                [
+                  [...a, -depth / 2],
+                  [...b, -depth / 2],
+                  [...b, depth / 2],
+                  [...a, depth / 2],
+                ],
+                [dy / l, -dx / l, 0],
+                color,
+                glow,
+              );
+            }
+          }
+          solid(outline, 0.035, [0.035, 0.24, 0.25], 0.5);
+          solid(
+            outline.map(([x, y]) => [x * 0.7, y * 0.96]),
+            0.045,
+            energy,
+            1.25,
+          );
+          // The cutting edge is white-hot; the interior stays transparent-looking teal.
+          for (let i = 1; i < 4; i++)
+            beam(
+              mesh,
+              { x: outline[i][0], y: outline[i][1], z: 0.023 },
+              { x: outline[i + 1][0], y: outline[i + 1][1], z: 0.023 },
+              [0.8, 1, 0.94],
+              0.011,
+              2.1,
+            );
+          for (let i = 0; i < 9; i++) {
+            const y = 0.19 + i * 0.078,
+              x =
+                Math.sin(time * (reduced ? 0 : 15) + i * 1.7) * 0.019 +
+                (y > 0.5 ? (y - 0.5) * 0.14 : 0);
+            beam(
+              mesh,
+              { x, y, z: 0.03 },
+              { x: x + 0.018, y: y + 0.06, z: 0.03 },
+              [0.68, 1, 0.94],
+              0.003,
+              2.2,
+            );
+          }
+          for (let i = 0; i < 3; i++)
+            B(-0.058, 0.23 + i * 0.07, 0, 0.026, 0.038, 0.064, palette.trim);
+          let roll = -0.28,
+            tx = 0.23,
+            ty = -0.4,
+            tz = -0.9;
+          if (active && !reduced) {
+            const sweep = Math.sin(Math.min(1, progress / 0.7) * Math.PI),
+              sign = bladeStep === 1 ? -1 : 1;
+            roll +=
+              sign * (1.15 - 2.7 * progress) * Math.sin(progress * Math.PI);
+            tx -= sweep * (heavy ? 0.5 : 0.36);
+            ty += sweep * 0.14;
+            tz -= sweep * 0.1;
+          }
+          tx += bxForBlade();
+          const ca = Math.cos(roll),
+            sa = Math.sin(roll);
+          for (let i = 0; i < mesh.length; i += 12) {
+            const x = mesh[i] * 0.8,
+              y = mesh[i + 1] * 0.8,
+              nx = mesh[i + 3],
+              ny = mesh[i + 4];
+            mesh[i] = tx + x * ca - y * sa;
+            mesh[i + 1] = ty + x * sa + y * ca;
+            mesh[i + 2] = mesh[i + 2] * 0.8 + tz;
+            mesh[i + 3] = nx * ca - ny * sa;
+            mesh[i + 4] = nx * sa + ny * ca;
+          }
+          return mesh;
+        }
+        function bxForBlade() {
+          return reduced ? 0 : Math.sin(bob) * 0.008 * walkAmount;
         }
         function weaponMesh(time) {
           const out = [],
@@ -3969,31 +4984,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               glow,
               angle,
             );
-          if (player.weapon === 1) {
-            const swing = flashTimer / 0.12;
-            B(
-              0.29 - swing * 0.2,
-              -0.39 + swing * 0.1,
-              -0.5,
-              0.11,
-              0.32,
-              0.12,
-              [0.2, 0.25, 0.23],
-            );
-            B(0.3 - swing * 0.3, -0.12, -0.56, 0.07, 0.47, 0.07, palette.trim);
-            B(
-              0.3 - swing * 0.3,
-              -0.1,
-              -0.58,
-              0.025,
-              0.44,
-              0.085,
-              palette.mint,
-              2,
-            );
-            B(0.29, -0.37, -0.44, 0.22, 0.16, 0.16, [0.16, 0.22, 0.22]);
-            return out;
-          }
+          if (player.weapon === 1) return bladeMesh(time);
           B(0.31, -0.32, -0.63, 0.2, 0.19, 0.52, [0.13, 0.18, 0.21]);
           B(0.31, -0.23, -0.69, 0.23, 0.065, 0.58, [0.33, 0.41, 0.43]);
           B(0.31, -0.31, -0.93, 0.14, 0.12, 0.27, palette.dark);
@@ -4287,7 +5278,9 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             $("shield-meter").style.width =
               (player.shield / player.maxShield) * 100 + "%";
             $("weapon-name").textContent =
-              player.weapon === 2 ? "P–24 / PULSE RIFLE" : "A–01 / ARC BLADE";
+              player.weapon === 2
+                ? "P–24 / PULSE RIFLE"
+                : "A–03 / STORM CUTLASS";
             $("ammo").innerHTML =
               player.weapon === 2
                 ? `${String(player.ammo).padStart(2, "0")}<small>/ ${player.reserve}</small>`
@@ -4300,8 +5293,8 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                     ? "TAP RLD TO RELOAD"
                     : "[R] RELOAD · [1] ARC BLADE"
                   : isTouch
-                    ? "CLOSE RANGE · NO AMMO NEEDED"
-                    : "CLOSE RANGE · [2] PULSE RIFLE";
+                    ? "3-HIT COMBO · DEFLECT BOLTS"
+                    : "3-HIT COMBO · DEFLECT · [2] RIFLE";
             $("dash-status").innerHTML =
               `<kbd>${isTouch ? "↗" : "SPACE"}</kbd>${dashTimer > 0 ? Math.ceil(dashTimer) + "s" : "DASH"}`;
             $("emp-status").innerHTML =
@@ -4321,14 +5314,14 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             nearest = 40;
           const dir = forward(player.yaw, player.pitch),
             origin = { x: player.x, y: 1.55, z: player.z },
-            wall = C.rayWall(level.map, player.x, player.z, dir.x, dir.z, 40);
+            wall = sceneHit(origin, dir, 40);
           for (const e of enemies) {
             if (e.health <= 0) continue;
             const hit = C.segmentSphere(
               origin,
               dir,
               { x: e.x, y: e.y, z: e.z },
-              0.7,
+              e.hitRadius + 0.1,
               wall,
             );
             if (hit !== null && hit < nearest) {
@@ -4337,6 +5330,10 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             }
           }
           $("target-health").hidden = !target;
+          $("target-name").hidden = !target;
+          if (target)
+            $("target-name").textContent =
+              `${target.trait === "standard" ? "" : target.trait + " · "}${target.name}${target.type === "bulwark" && target.stun <= 0 ? " / FRONTAL ARMOR" : ""}`;
           if (target)
             $("target-health").firstElementChild.style.width =
               (target.health / target.maxHealth) * 100 + "%";

@@ -7,6 +7,10 @@ const html = fs.readFileSync(`${__dirname}/game.html`, "utf8");
 const coreSource = html.match(
   /<script id="orbit-core">([\s\S]*?)<\/script>/,
 )[1];
+const musicSource = html.match(
+  /<script id="orbit-music">([\s\S]*?)<\/script>/,
+)[1];
+const M = vm.runInNewContext(`${musicSource}\nOrbitMusic;`);
 const gameSource = html.match(
   /<script id="orbit-game">([\s\S]*?)<\/script>/,
 )[1];
@@ -80,6 +84,7 @@ function campaign() {
   };
   const sandbox = {
     console,
+    Math: Object.assign(Object.create(Math), { random: C.rng(12345) }),
     document,
     innerWidth: 1280,
     innerHeight: 720,
@@ -90,14 +95,14 @@ function campaign() {
     addEventListener() {},
   };
   sandbox.window = sandbox;
-  const exposed = `\nwindow.testGame = { startRun, update, fire, reloadWeapon, emp, damage, interact, pause, setPlaying,
+  const exposed = `\nwindow.testGame = { startRun, update, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, robot, bladeMesh,
     get player() { return player; }, get level() { return level; }, get enemies() { return enemies; },
     get pickups() { return pickups; }, get bullets() { return bullets; },
-    get state() { return { mode, deck, cardTaken, reloadTimer, empTimer, dashTimer, mapOpen, runSeed }; },
+    get state() { return { mode, deck, cardTaken, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer }; },
     get interaction() { return interaction; }, set interaction(v) { interaction = v; },
     get keys() { return keys; }, toggleMap };\n})();`;
   vm.runInNewContext(
-    `${coreSource}\n${gameSource.replace(/\}\)\(\);\s*$/, exposed)}`,
+    `${coreSource}\n${musicSource}\n${gameSource.replace(/\}\)\(\);\s*$/, exposed)}`,
     sandbox,
   );
   return {
@@ -140,7 +145,7 @@ test("300 generated decks have fully reachable rooms, enemies, supplies and dist
         ...level.pickups,
       ]) {
         assert.ok(
-          C.fits(level.map, p.x, p.z),
+          C.fits(level.map, p.x, p.z, p.collisionRadius ?? 0.28, level.props),
           `blocked object: ${seed}/${deck}`,
         );
         assert.ok(
@@ -374,4 +379,434 @@ test("Explorer damage reduction survives retry without a difficulty selector", (
   g.startRun();
   g.damage(20);
   assert.equal(g.player.shield, 50);
+});
+
+test("cabinets block walking, sprinting and dashing without trapping the player", () => {
+  const { game: g, tick } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const start = { x: g.player.x, z: g.player.z },
+    cabinet = {
+      type: "cabinet",
+      x: start.x + 1.5,
+      y: 1.18,
+      z: start.z,
+      w: 0.52,
+      h: 2.35,
+      d: 0.9,
+    };
+  g.level.props = [cabinet];
+  g.player.yaw = Math.PI / 2;
+  g.keys.add("KeyW");
+  tick(1);
+  assert.ok(g.player.x <= cabinet.x - cabinet.w / 2 - 0.28 + 0.001);
+  g.keys.add("ShiftLeft");
+  g.dash();
+  tick(0.4);
+  assert.ok(g.player.x <= cabinet.x - cabinet.w / 2 - 0.28 + 0.001);
+  g.keys.clear();
+  g.keys.add("KeyD");
+  tick(0.5);
+  g.keys.clear();
+  g.keys.add("KeyW");
+  tick(1);
+  assert.ok(g.player.x > cabinet.x + 1, "can walk around the cabinet");
+  assert.ok(C.fits(g.level.map, g.player.x, g.player.z, 0.28, g.level.props));
+});
+
+test("all cabinets and cases share blocking bounds with height-aware rays", () => {
+  const level = C.generateDeck(72);
+  const map = level.map;
+  for (const p of level.props) {
+    assert.equal(C.fits(map, p.x, p.z, 0.28, level.props), false);
+    const origin = { x: p.x - 2, y: p.y, z: p.z },
+      dir = { x: 1, y: 0, z: 0 };
+    assert.ok(Math.abs(C.rayBox(origin, dir, p, 5) - (2 - p.w / 2)) < 1e-8);
+    assert.equal(
+      C.rayBox({ ...origin, y: p.y + p.h / 2 + 0.1 }, dir, p, 5),
+      null,
+    );
+    assert.equal(C.rayBox(origin, { x: 0, y: 1, z: 0 }, p, 5), null);
+    assert.equal(C.rayBox(p, dir, p, 5), 0);
+  }
+});
+
+test("furniture blocks the rifle, blade, EMP and incoming enemy bolts", () => {
+  const { game: g, tick } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const p = g.player,
+    x = p.x,
+    z = p.z;
+  g.level.props = [{ x: x + 1, y: 1.18, z, w: 0.52, h: 2.35, d: 1.4 }];
+  const e = g.enemies[0];
+  e.x = x + 2;
+  e.z = z;
+  e.y = 1.2;
+  e.health = 200;
+  e.stun = 100;
+  p.yaw = Math.PI / 2;
+  g.fire();
+  assert.equal(e.health, 200);
+  tick(0.2);
+  p.weapon = 1;
+  g.fire();
+  assert.equal(e.health, 200);
+  g.emp();
+  assert.equal(e.health, 200);
+  const shield = p.shield;
+  g.bullets.push({
+    x: x + 2,
+    y: 1.2,
+    z,
+    dx: -1,
+    dy: 0,
+    dz: 0,
+    speed: 9,
+    life: 3,
+    damage: 20,
+  });
+  tick(0.4);
+  assert.equal(p.shield, shield);
+  assert.equal(g.bullets.length, 0);
+});
+
+test("a connected route through cell centers still fits the player after furnishing 300 decks", () => {
+  for (let seed = 0; seed < 100; seed++)
+    for (let deck = 0; deck < 3; deck++) {
+      const l = C.generateDeck(seed, deck),
+        walkable = l.map.map((row, z) =>
+          row.map((wall, x) =>
+            wall ||
+            !C.fits(
+              l.map,
+              (x + 0.5) * C.CELL,
+              (z + 0.5) * C.CELL,
+              0.28,
+              l.props,
+            )
+              ? 1
+              : 0,
+          ),
+        );
+      const distance = C.distances(
+        walkable,
+        Math.floor(l.start.x / C.CELL),
+        Math.floor(l.start.z / C.CELL),
+      );
+      for (const target of [l.card, l.exit, ...l.pickups])
+        assert.ok(
+          distance[
+            Math.floor(target.z / C.CELL) * C.SIZE +
+              Math.floor(target.x / C.CELL)
+          ] >= 0,
+          `blocked route ${seed}/${deck}`,
+        );
+    }
+});
+
+test("enemy classes and traits are varied, bounded and deterministic", () => {
+  const types = new Set(),
+    traits = new Set(),
+    health = new Set();
+  for (let seed = 0; seed < 40; seed++)
+    for (let deck = 0; deck < 3; deck++) {
+      const l = C.generateDeck(seed, deck);
+      assert.equal(
+        JSON.stringify(l.enemies),
+        JSON.stringify(C.generateDeck(seed, deck).enemies),
+      );
+      if (deck > 0) assert.equal(new Set(l.enemies.map((e) => e.type)).size, 6);
+      for (const e of l.enemies) {
+        types.add(e.type);
+        traits.add(e.trait);
+        health.add(e.maxHealth);
+        assert.ok(e.health >= 25 && e.health < 240);
+        assert.ok(e.speed > 0.4 && e.speed < 4);
+        assert.ok(e.interval > 0.6 && e.interval < 4);
+        assert.ok(e.scale > 0.65 && e.scale < 1.4);
+      }
+    }
+  assert.equal(types.size, 6);
+  assert.equal(traits.size, 4);
+  assert.ok(health.size > 30);
+});
+
+test("bulwark armor resists frontal rifle fire and has flank, EMP and blade counters", () => {
+  const e = {
+    ...C.makeEnemy(C.rng(1), "bulwark"),
+    x: 0,
+    z: 0,
+    angle: 0,
+    stun: 0,
+  };
+  assert.equal(C.enemyDamage(e, 100, { x: 0, z: 2 }), 45);
+  assert.equal(C.enemyDamage(e, 100, { x: 0, z: -2 }), 100);
+  assert.equal(C.enemyDamage(e, 100, { x: 0, z: 2 }, true), 100);
+  e.stun = 1;
+  assert.equal(C.enemyDamage(e, 100, { x: 0, z: 2 }), 100);
+});
+
+test("the blade chains two cuts into a stronger finisher, then resets after a pause", () => {
+  const { game: g, tick } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  g.player.weapon = 1;
+  const e = g.enemies[0];
+  const place = () => {
+    e.x = g.player.x + 1.5;
+    e.z = g.player.z;
+    e.health = 1000;
+    e.stun = 99;
+  };
+  g.player.yaw = Math.PI / 2;
+  place();
+  g.fire();
+  assert.equal(e.health, 954);
+  assert.equal(g.state.bladeStep, 0);
+  tick(0.36);
+  place();
+  g.fire();
+  assert.equal(e.health, 948);
+  assert.equal(g.state.bladeStep, 1);
+  tick(0.36);
+  place();
+  g.fire();
+  assert.equal(e.health, 922);
+  assert.equal(g.state.bladeStep, 2);
+  assert.ok(e.stun >= 1.2);
+  tick(1.1);
+  place();
+  g.fire();
+  assert.equal(e.health, 954);
+  assert.equal(g.state.bladeStep, 0);
+});
+
+test("blade parries return projectiles to enemies and cannot reflect bolts behind the pilot", () => {
+  const { game: g, tick } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  g.player.weapon = 1;
+  g.player.yaw = Math.PI / 2;
+  g.player.x -= 1.25;
+  const x = g.player.x,
+    z = g.player.z,
+    e = g.enemies[0];
+  e.x = x + 4;
+  e.z = z;
+  e.y = 1.2;
+  e.health = 50;
+  e.stun = 99;
+  g.bullets.push({
+    x: x + 2,
+    y: 1.2,
+    z,
+    dx: -1,
+    dy: 0,
+    dz: 0,
+    speed: 9,
+    life: 3,
+    damage: 15,
+  });
+  g.bullets.push({
+    x: x - 2,
+    y: 1.2,
+    z,
+    dx: 1,
+    dy: 0,
+    dz: 0,
+    speed: 1,
+    life: 3,
+    damage: 15,
+  });
+  const shield = g.player.shield;
+  g.fire();
+  assert.equal(g.bullets[0].friendly, true);
+  assert.ok(!g.bullets[1].friendly);
+  tick(0.2);
+  assert.ok(e.health <= 0);
+  assert.equal(g.player.shield, shield);
+});
+
+test("prism casters fire three distinct directions after a telegraphed windup", () => {
+  const { game: g, tick } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const e = g.enemies[0];
+  Object.assign(e, C.makeEnemy(C.rng(4), "prism"), {
+    x: g.player.x + 3,
+    z: g.player.z,
+    y: 1.2,
+    alert: true,
+    cooldown: 0,
+    charge: 0,
+    stun: 0,
+  });
+  tick(0.1);
+  assert.ok(e.charge > 0);
+  assert.equal(g.bullets.length, 0);
+  tick(e.windup + 0.02);
+  assert.equal(g.bullets.length, 3);
+  assert.equal(new Set(g.bullets.map((b) => b.dz.toFixed(4))).size, 3);
+});
+
+test("all six enemy models and every cutlass combo pose produce finite geometry", () => {
+  const { game: g, tick } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const counts = new Set();
+  for (const type of Object.keys(C.enemyTypes)) {
+    const mesh = [],
+      e = {
+        ...C.makeEnemy(C.rng(8), type),
+        x: 5,
+        y: 1.2,
+        z: 5,
+        angle: 0.5,
+        phase: 1,
+        charge: 0.5,
+        hit: 0,
+        stun: 1,
+      };
+    g.robot(mesh, e, 2);
+    assert.ok(mesh.length > 0 && mesh.length % 12 === 0);
+    assert.ok(mesh.every(Number.isFinite));
+    counts.add(mesh.length);
+  }
+  assert.ok(counts.size >= 5);
+  g.player.weapon = 1;
+  for (let i = 0; i < 3; i++) {
+    g.fire();
+    for (let j = 0; j < 3; j++) {
+      tick(0.1);
+      const mesh = g.bladeMesh(2);
+      assert.ok(mesh.length > 0 && mesh.length % 12 === 0);
+      assert.ok(mesh.every(Number.isFinite));
+    }
+    tick(0.07);
+  }
+});
+
+class FakeAudio {
+  constructor() {
+    this.currentTime = 0;
+    this.sampleRate = 8000;
+    this.state = "running";
+    this.sources = [];
+    this.starts = [];
+  }
+  node() {
+    const param = () => ({
+      value: 0,
+      setValueAtTime() {},
+      linearRampToValueAtTime() {},
+      exponentialRampToValueAtTime() {},
+      setTargetAtTime() {},
+      cancelScheduledValues() {},
+    });
+    return {
+      connect() {},
+      disconnect() {},
+      gain: param(),
+      frequency: param(),
+      Q: param(),
+      pan: param(),
+      delayTime: param(),
+    };
+  }
+  createGain() {
+    return this.node();
+  }
+  createDelay() {
+    return this.node();
+  }
+  createStereoPanner() {
+    return this.node();
+  }
+  createBiquadFilter() {
+    return this.node();
+  }
+  createPeriodicWave(real, imag) {
+    assert.equal(real.length, imag.length);
+    return {};
+  }
+  createBuffer(_, size) {
+    const data = new Float32Array(size);
+    return { getChannelData: () => data };
+  }
+  source() {
+    const node = this.node();
+    node.start = (time) => {
+      assert.ok(Number.isFinite(time));
+      this.starts.push(time);
+    };
+    node.stop = (time) => (node.stopTime = time);
+    node.setPeriodicWave = () => {};
+    this.sources.push(node);
+    return node;
+  }
+  createOscillator() {
+    return this.source();
+  }
+  createBufferSource() {
+    return this.source();
+  }
+  advance(seconds) {
+    this.currentTime += seconds;
+    for (const source of this.sources)
+      if (!source.ended && source.stopTime <= this.currentTime) {
+        source.ended = true;
+        source.onended?.();
+      }
+  }
+}
+
+test("the original 32-bar score contains bass, lead, arpeggios, drums and sectional variation", () => {
+  const voices = new Set(),
+    bars = [];
+  for (let bar = 0; bar < 32; bar++) {
+    const events = [];
+    for (let i = 0; i < 16; i++)
+      for (const note of M.score(bar * 16 + i, 2, false)) {
+        events.push(note);
+        voices.add(note.voice);
+        assert.ok(note.volume > 0 && note.volume <= 0.5);
+        assert.ok(note.length > 0 && note.length <= 4);
+        assert.ok(note.note === 0 || (note.note >= 36 && note.note <= 100));
+      }
+    bars.push(JSON.stringify(events));
+  }
+  assert.equal(voices.size, 7);
+  assert.ok(new Set(bars).size > 12);
+  assert.ok(M.score(6, 0, true).length > M.score(6, 0, false).length);
+  assert.equal(JSON.stringify(M.score(0)), JSON.stringify(M.score(512)));
+});
+
+test("music scheduling pauses, resumes without catch-up bursts, and cleans up voices", () => {
+  const c = new FakeAudio(),
+    music = new M.Player(c, c.node()),
+    state = { enabled: true, deck: 0, volume: 0.55 };
+  for (let i = 0; i < 400; i++) {
+    music.tick(state);
+    c.advance(0.025);
+    assert.ok(music.voices.size < 70);
+  }
+  const step = music.step;
+  music.tick({ ...state, enabled: false });
+  c.advance(0.1);
+  assert.equal(music.voices.size, 0);
+  music.tick({ ...state, enabled: false });
+  assert.equal(music.step, step);
+  c.advance(60);
+  const before = c.starts.length;
+  music.tick(state);
+  assert.ok(c.starts.length - before < 20);
+  assert.ok(c.starts.slice(before).every((t) => t >= c.currentTime));
+  c.advance(20);
+  const count = c.starts.length;
+  music.tick(state);
+  assert.ok(c.starts.length - count < 20);
+  music.tick({ ...state, enabled: false });
+  c.advance(1);
+  assert.equal(music.voices.size, 0);
 });
