@@ -3359,37 +3359,51 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           }
           for (const prop of level.props) {
             const { x, y, z, w, h, d, type } = prop;
-            box(out, x, y, z, w, h, d, palette.dark);
+            const facing = type === "case" ? 1 : -1;
+            const front = x + (w / 2) * facing;
+            // Recess the shell so panels and lights have distinct depths,
+            // while every layer stays inside the existing collision bounds.
+            box(out, x - facing * 0.025, y, z, w - 0.05, h, d, palette.dark);
             if (type === "case") {
               box(
                 out,
-                x + w / 2 - 0.01,
+                front - facing * 0.032,
                 0.52,
                 z,
-                0.02,
+                0.04,
                 0.42,
                 0.86,
                 palette.trim,
               );
-              box(out, x + w / 2, 0.64, z, 0.008, 0.04, 0.5, palette.mint, 1.2);
+              box(
+                out,
+                front - facing * 0.008,
+                0.64,
+                z,
+                0.016,
+                0.04,
+                0.5,
+                palette.mint,
+                1.2,
+              );
             } else
               for (let i = 0; i < 6; i++) {
                 box(
                   out,
-                  x - w / 2 + 0.01,
+                  front - facing * 0.032,
                   0.4 + i * 0.3,
                   z,
-                  0.02,
+                  0.04,
                   0.12,
                   0.68,
                   palette.trim,
                 );
                 box(
                   out,
-                  x - w / 2,
+                  front - facing * 0.008,
                   0.42 + i * 0.3,
                   z - 0.2,
-                  0.008,
+                  0.016,
                   0.045,
                   0.06,
                   palette.mint,
