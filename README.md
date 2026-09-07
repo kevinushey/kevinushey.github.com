@@ -24,6 +24,12 @@ Public details verified on September 7, 2026:
 - [renv](https://rstudio.github.io/renv/): author and maintainer credit.
 - [reticulate authors](https://rstudio.github.io/reticulate/authors.html): co-author
   credit.
+- [Rcpp package metadata](https://github.com/RcppCore/Rcpp/blob/master/DESCRIPTION)
+  and [Kevin’s commit history](https://github.com/RcppCore/Rcpp/commits?author=kevinushey):
+  authorship and contributions; Kevin confirmed his Rcpp Core team membership.
+- [rmarkdown authors](https://pkgs.rstudio.com/rmarkdown/authors.html) and
+  [Kevin’s commit history](https://github.com/rstudio/rmarkdown/commits?author=kevinushey):
+  co-author credit and contributions to rendering and website resources.
 - [Bluesky](https://bsky.app/profile/kevinushey.bsky.social): current social handle.
 - [LinkedIn](https://www.linkedin.com/in/kevin-ushey-33a35542): profile URL.
 - [UBC thesis record](https://open.library.ubc.ca/handle/2429/37068): replacement
