@@ -5003,8 +5003,75 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           B(0.31, -0.2, -0.68, 0.09, 0.03, 0.41, palette.dark);
           for (let i = 0; i < 7; i++)
             B(0.31, -0.18, -0.48 - i * 0.055, 0.12, 0.02, 0.025, palette.trim);
-          B(0.31, -0.14, -0.55, 0.11, 0.1, 0.13, palette.dark);
-          B(0.31, -0.077, -0.55, 0.055, 0.02, 0.07, palette.mint, 1.5);
+          const reloading = reloadTimer > 0,
+            ammoColor = reloading
+              ? palette.orange
+              : player.ammo <= player.magSize * 0.25
+                ? palette.red
+                : palette.mint;
+          B(0.31, -0.14, -0.55, 0.13, 0.105, 0.13, palette.trim);
+          B(0.31, -0.14, -0.48, 0.114, 0.089, 0.012, palette.dark);
+          B(0.31, -0.077, -0.55, 0.055, 0.02, 0.07, ammoColor, 1);
+          // A physical rear-facing display shares the rifle's recoil and bob.
+          const panel = (x, y, w, h, color, glow = 0) => {
+            const px = x + bx,
+              py = y + by - reload * 0.45,
+              pz = -0.473 + kick * 0.045;
+            quad(
+              out,
+              [
+                [px - w / 2, py - h / 2, pz],
+                [px + w / 2, py - h / 2, pz],
+                [px + w / 2, py + h / 2, pz],
+                [px - w / 2, py + h / 2, pz],
+              ],
+              [0, 0, 1],
+              color,
+              glow,
+            );
+          };
+          const digitMasks = [63, 6, 91, 79, 102, 109, 125, 7, 127, 111],
+            segments = [
+              [0, 0.024, 0.022, 0.005],
+              [0.013, 0.012, 0.005, 0.018],
+              [0.013, -0.012, 0.005, 0.018],
+              [0, -0.024, 0.022, 0.005],
+              [-0.013, -0.012, 0.005, 0.018],
+              [-0.013, 0.012, 0.005, 0.018],
+              [0, 0, 0.022, 0.005],
+            ];
+          String(player.ammo)
+            .padStart(2, "0")
+            .split("")
+            .forEach((digit, index) => {
+              const mask = digitMasks[Number(digit)];
+              segments.forEach(([x, y, w, h], segment) => {
+                const lit = mask & (1 << segment);
+                panel(
+                  0.289 + index * 0.042 + x,
+                  -0.132 + y,
+                  w,
+                  h,
+                  lit ? ammoColor : [0.035, 0.065, 0.07],
+                  lit ? 0.85 : 0,
+                );
+              });
+            });
+          // The charge strip becomes a refill progress meter during reloads.
+          const ammoFraction = reloading
+            ? C.clamp(1 - reloadTimer / player.reloadDuration, 0, 1)
+            : player.ammo / player.magSize;
+          for (let i = 0; i < 12; i++) {
+            const lit = i < Math.ceil(ammoFraction * 12);
+            panel(
+              0.2715 + i * 0.007,
+              -0.171,
+              0.005,
+              0.004,
+              lit ? ammoColor : [0.035, 0.065, 0.07],
+              lit ? 0.65 : 0,
+            );
+          }
           B(0.195, -0.27, -0.57, 0.025, 0.08, 0.19, palette.orange, 0.8);
           B(0.425, -0.285, -0.52, 0.026, 0.055, 0.26, palette.trim);
           B(0.31, -0.45, -0.64, 0.125, 0.19, 0.18, [0.15, 0.21, 0.23]);
