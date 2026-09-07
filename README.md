@@ -21,6 +21,18 @@ Public details verified on September 7, 2026:
 
 - [Posit profile](https://opensource.posit.co/people/kevin-ushey/): Principal
   Software Engineer title and RStudio work.
+- [rstudioapi package metadata](https://github.com/rstudio/rstudioapi/blob/HEAD/DESCRIPTION)
+  and [Kevin’s commit history](https://github.com/rstudio/rstudioapi/commits?author=kevinushey):
+  author and maintainer credit; access to the RStudio API from R.
+- [sourcetools package metadata](https://github.com/kevinushey/sourcetools/blob/HEAD/DESCRIPTION)
+  and [Kevin’s commit history](https://github.com/kevinushey/sourcetools/commits?author=kevinushey):
+  author and maintainer credit; reading, tokenizing, and parsing R code.
+- [Ark](https://github.com/posit-dev/ark) and its
+  [tree-sitter-r dependency](https://github.com/posit-dev/ark/blob/HEAD/crates/ark/Cargo.toml):
+  the R kernel, language server, and parsing tools used by Positron. Kevin’s
+  [Ark commits](https://github.com/posit-dev/ark/commits?author=kevinushey) and
+  [tree-sitter-r commits](https://github.com/r-lib/tree-sitter-r/commits?author=kevinushey)
+  document his contributions.
 - [renv](https://rstudio.github.io/renv/): author and maintainer credit.
 - [reticulate authors](https://rstudio.github.io/reticulate/authors.html): co-author
   credit.
