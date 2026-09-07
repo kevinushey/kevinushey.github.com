@@ -131,6 +131,9 @@ test("300 generated decks have fully reachable rooms, enemies, supplies and dist
   for (let seed = 0; seed < 100; seed++)
     for (let deck = 0; deck < 3; deck++) {
       const level = C.generateDeck(seed, deck);
+      const stashes = level.pickups.filter((p) => p.type === "ammo");
+      assert.equal(stashes.length, 2, "only two ammo stashes per floor");
+      assert.ok(stashes.every((p) => p.amount === 12));
       const d = C.distances(
         level.map,
         Math.floor(level.start.x / C.CELL),
@@ -275,8 +278,114 @@ test("partial reload conserves ammo and resupply preserves upgrades", () => {
   assert.equal(p.health, 125);
   assert.equal(p.damage, 34);
   assert.equal(p.ammo, 24);
-  assert.equal(p.reserve, 96);
+  assert.equal(
+    p.reserve,
+    23,
+    "the fabricator adds one magazine, not a full reserve",
+  );
   assert.ok(p.empMax < 7 && p.dashMax < 2);
+});
+
+test("ammo grants and lift supplies respect two spare magazines without destroying carried rounds", () => {
+  const start = C.newPlayer();
+  assert.equal(start.ammo + start.reserve, 48);
+  for (let loaded = 0; loaded <= 24; loaded++)
+    for (let reserve = 0; reserve <= 48; reserve++) {
+      const p = { ...start, ammo: loaded, reserve };
+      const total = loaded + reserve;
+      C.resupply(p);
+      assert.equal(p.ammo + p.reserve, Math.min(72, total + 24));
+      assert.ok(p.ammo <= 24 && p.reserve <= 48);
+      const before = p.ammo + p.reserve;
+      C.reload(p);
+      assert.equal(p.ammo + p.reserve, before);
+      const gained = C.addAmmo(p, 100);
+      assert.equal(gained, 48 - (before - p.ammo));
+      assert.equal(p.reserve, 48);
+      assert.equal(C.addAmmo(p, 8), 0);
+    }
+});
+
+test("partial pickups retain excess ammo and report only the rounds collected", () => {
+  const { game: g, element, tick } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const stash = {
+    x: g.player.x,
+    z: g.player.z,
+    type: "ammo",
+    amount: 12,
+    taken: false,
+  };
+  g.pickups.push(stash);
+  g.player.reserve = 47;
+  tick(0.05);
+  assert.equal(g.player.reserve, 48);
+  assert.equal(stash.amount, 11);
+  assert.equal(stash.taken, false);
+  assert.match(element("toast").textContent, /^\+1 PULSE CELLS/);
+  tick(0.1);
+  assert.equal(stash.amount, 11, "a full reserve leaves the pickup alone");
+  for (let i = 0; i < 4; i++) {
+    g.fire();
+    tick(0.2);
+  }
+  g.reloadWeapon();
+  tick(1.5);
+  assert.equal(g.player.ammo, 24);
+  assert.equal(g.player.reserve, 48);
+  assert.equal(
+    stash.amount,
+    7,
+    "reload space is filled without losing the remainder",
+  );
+  g.updateHUD();
+  assert.match(element("ammo").innerHTML, /48 \/ 48/);
+});
+
+test("crew caches cannot bypass the ammo cap or be collected twice", () => {
+  const { game: g } = campaign();
+  g.startRun();
+  const cache = { x: g.player.x, z: g.player.z, type: "cache", taken: false };
+  g.pickups.push(cache);
+  g.interaction = { type: "cache", item: cache };
+  g.player.reserve = 48;
+  g.interact();
+  assert.equal(
+    cache.taken,
+    false,
+    "leave a cache when both health and ammo are full",
+  );
+  g.player.reserve = 47;
+  g.player.health = 90;
+  g.interact();
+  assert.equal(g.player.reserve, 48);
+  assert.equal(g.player.health, 100);
+  assert.equal(g.player.caches, 1);
+  const remainder = g.pickups.at(-1);
+  assert.equal(remainder.type, "ammo");
+  assert.equal(remainder.amount, 7);
+  assert.equal(remainder.taken, false);
+  g.interact();
+  assert.equal(g.player.caches, 1);
+  assert.equal(g.pickups.at(-1), remainder);
+});
+
+test("enemy ammo drops are uncommon six-round pickups", () => {
+  const { game: g } = campaign();
+  g.startRun();
+  const enemy = g.enemies[0];
+  for (let i = 0; i < 200; i++) {
+    enemy.health = 1;
+    g.enemyHit(enemy, 100, true);
+  }
+  const drops = g.pickups.filter((p) => p.drop);
+  assert.ok(
+    drops.length >= 20 && drops.length <= 60,
+    `expected infrequent drops, got ${drops.length}/200`,
+  );
+  assert.ok(drops.every((p) => p.amount === 6));
+  assert.equal(g.player.reserve, 24, "kills do not refill the gun directly");
 });
 
 test("rifle fire, reload timing and melee with no ammunition use the live controller", () => {
@@ -291,7 +400,7 @@ test("rifle fire, reload timing and melee with no ammunition use the live contro
   assert.equal(g.player.ammo, 23, "reload is not instantaneous");
   tick(1);
   assert.equal(g.player.ammo, 24);
-  assert.equal(g.player.reserve, 95);
+  assert.equal(g.player.reserve, 23);
   g.player.ammo = g.player.reserve = 0;
   g.player.weapon = 1;
   const e = g.enemies[0];

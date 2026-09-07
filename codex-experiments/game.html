@@ -516,12 +516,21 @@
         letter-spacing: -2px;
         line-height: 1.2;
         margin: 8px 0;
+        text-shadow: 0 2px 8px #000b;
       }
       .ammo small {
+        display: inline-flex;
+        flex-direction: column;
+        vertical-align: middle;
         font-size: 17px;
-        color: #8a9fa2;
+        color: #c0d1d2;
         letter-spacing: 0;
         margin-left: 9px;
+      }
+      .ammo small span {
+        font-size: 8px;
+        letter-spacing: 1px;
+        margin-top: 3px;
       }
       .weapon-hint {
         font-size: 9px;
@@ -1271,7 +1280,9 @@
         </div>
         <div class="weapon">
           <div id="weapon-name" class="weapon-name">P–24 / PULSE RIFLE</div>
-          <div id="ammo" class="ammo">24<small>/ 96</small></div>
+          <div id="ammo" class="ammo">
+            24<small>24 / 48<span>RESERVE</span></small>
+          </div>
           <div id="weapon-hint" class="weapon-hint">
             [R] RELOAD &nbsp; [1/2] SWITCH
           </div>
@@ -1369,6 +1380,12 @@
         rooms for supplies. Your high score is floors completed; Standard and
         Explorer keep separate records on this device.
       </p>
+      <p>
+        The pulse rifle holds 24 rounds; your suit carries at most two spare
+        magazines (48 rounds), for 72 total. Start with one spare. Each lift
+        supplies just 24 rounds. Ammo is scarce: check side rooms, conserve
+        shots, and use the cutlass. Excess pickup ammo stays on the floor.
+      </p>
       <div class="control-grid">
         <div>
           <span>Move / sprint</span
@@ -1443,6 +1460,16 @@
       const OrbitCore = (() => {
         const CELL = 2.5,
           SIZE = 25;
+        const AMMO = {
+          magazine: 24,
+          reserve: 48,
+          startingReserve: 24,
+          stash: 12,
+          drop: 6,
+          dropChance: 0.2,
+          cache: 8,
+          fabricator: 24,
+        };
         const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
         const rng = (seed) => () => {
           seed |= 0;
@@ -1819,6 +1846,14 @@
           const card = { ...center(far[1]), room: far[1].index };
           const enemies = [],
             pickups = [];
+          // Two half-magazine stashes per floor, independently seeded from enemies.
+          const supplies = rng(seed ^ Math.imul(deck + 1, 0x27d4eb2d)),
+            ammoRooms = rooms.slice(1).filter((room) => room.index % 3 !== 0);
+          for (let i = ammoRooms.length - 1; i > 0; i--) {
+            const j = Math.floor(supplies() * (i + 1));
+            [ammoRooms[i], ammoRooms[j]] = [ammoRooms[j], ammoRooms[i]];
+          }
+          const stockedRooms = new Set(ammoRooms.slice(0, 2));
           const types =
             deck === 0
               ? ["drone", "skimmer", "sentry", "stalker"]
@@ -1844,11 +1879,13 @@
                   deck,
                 ),
               });
-            pickups.push({
-              x: (room.x + room.w - 1) * CELL,
-              z: (room.z + room.h - 1) * CELL,
-              type: room.index % 3 === 0 ? "health" : "ammo",
-            });
+            if (room.index % 3 === 0 || stockedRooms.has(room))
+              pickups.push({
+                x: (room.x + room.w - 1) * CELL,
+                z: (room.z + room.h - 1) * CELL,
+                type: room.index % 3 === 0 ? "health" : "ammo",
+                amount: room.index % 3 === 0 ? 35 : AMMO.stash,
+              });
             if (room.index % 2 === 0)
               pickups.push({
                 x: (room.x + 1) * CELL,
@@ -2002,9 +2039,9 @@
           maxHealth: 100,
           shield: 60,
           maxShield: 60,
-          ammo: 24,
-          magSize: 24,
-          reserve: 96,
+          ammo: AMMO.magazine,
+          magSize: AMMO.magazine,
+          reserve: AMMO.startingReserve,
           damage: 24,
           fireRate: 0.16,
           reloadDuration: 1.25,
@@ -2029,6 +2066,11 @@
           p.reserve -= n;
           return n;
         }
+        function addAmmo(p, amount) {
+          const added = Math.max(0, Math.min(amount, AMMO.reserve - p.reserve));
+          p.reserve += added;
+          return added;
+        }
         function upgrade(p, type) {
           if (type === "damage") {
             p.damage += 10;
@@ -2047,12 +2089,17 @@
         function resupply(p) {
           p.health = p.maxHealth;
           p.shield = p.maxShield;
-          p.ammo = p.magSize;
-          p.reserve = Math.max(p.reserve, 96);
+          const total = Math.min(
+            p.magSize + AMMO.reserve,
+            p.ammo + p.reserve + AMMO.fabricator,
+          );
+          p.ammo = Math.min(p.magSize, total);
+          p.reserve = total - p.ammo;
         }
         return {
           CELL,
           SIZE,
+          AMMO,
           clamp,
           rng,
           lightIntensity,
@@ -2074,6 +2121,7 @@
           newPlayer,
           hurt,
           reload,
+          addAmmo,
           upgrade,
           resupply,
         };
@@ -3559,7 +3607,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           }
           if (type === "upgrade") {
             const pulseMaxed = player.empMax <= 4 && player.dashMax <= 0.8;
-            content.innerHTML = `<div class="eyebrow mono">${player.floorsCompleted} FLOORS CLEARED / FLOOR ${deck + 2} AWAITS</div><h1>A little more<br>dangerous.</h1><p class="intro">Pick a permanent upgrade. Health, shields, and ammunition restored.<br>The next floor brings stronger machines. Keep moving.</p><div class="upgrade-grid"><button class="upgrade" data-upgrade="damage"><span class="symbol">↯</span><strong>Hotwired</strong><small>+10 rifle damage.<br>${player.fireRate > 0.065 ? "Up to 10% faster fire rate." : "Fire rate fully tuned."}<br>Make every shot count.</small></button><button class="upgrade" data-upgrade="shield"><span class="symbol">◈</span><strong>Second skin</strong><small>+35 maximum shield.<br>+25 maximum health.<br>A little room for error.</small></button><button class="upgrade" data-upgrade="pulse" ${pulseMaxed ? "disabled" : ""}><span class="symbol">◎</span><strong>Short circuit</strong><small>${pulseMaxed ? "Fully tuned.<br>Choose another upgrade." : "Up to 45% faster EMP recharge.<br>Up to 30% faster dash recharge.<br>Keep the upper hand."}</small></button></div>`;
+            content.innerHTML = `<div class="eyebrow mono">${player.floorsCompleted} FLOORS CLEARED / FLOOR ${deck + 2} AWAITS</div><h1>A little more<br>dangerous.</h1><p class="intro">Pick a permanent upgrade. Health and shields restored.<br>Fabricator: +24 rounds, up to your carry limit. Make them count.</p><div class="upgrade-grid"><button class="upgrade" data-upgrade="damage"><span class="symbol">↯</span><strong>Hotwired</strong><small>+10 rifle damage.<br>${player.fireRate > 0.065 ? "Up to 10% faster fire rate." : "Fire rate fully tuned."}<br>Make every shot count.</small></button><button class="upgrade" data-upgrade="shield"><span class="symbol">◈</span><strong>Second skin</strong><small>+35 maximum shield.<br>+25 maximum health.<br>A little room for error.</small></button><button class="upgrade" data-upgrade="pulse" ${pulseMaxed ? "disabled" : ""}><span class="symbol">◎</span><strong>Short circuit</strong><small>${pulseMaxed ? "Fully tuned.<br>Choose another upgrade." : "Up to 45% faster EMP recharge.<br>Up to 30% faster dash recharge.<br>Keep the upper hand."}</small></button></div>`;
             content.querySelectorAll("[data-upgrade]").forEach(
               (b) =>
                 (b.onclick = () => {
@@ -3759,11 +3807,12 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             );
             sparks(e.x, e.y, e.z, palette.orange, 24, 5);
             noise(0.2, 0.19, 650);
-            if (Math.random() < 0.75)
+            if (Math.random() < C.AMMO.dropChance)
               pickups.push({
                 x: e.x,
                 z: e.z,
                 type: "ammo",
+                amount: C.AMMO.drop,
                 taken: false,
                 drop: true,
               });
@@ -3958,11 +4007,32 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             tone(330, 0.5, "sine", 0.15, 660);
             menuScreen("upgrade");
           } else if (interaction.type === "cache") {
-            interaction.item.taken = true;
+            const cache = interaction.item;
+            if (cache.taken) return;
+            const cells = C.addAmmo(player, C.AMMO.cache),
+              health = Math.min(15, player.maxHealth - player.health);
+            if (cells === 0 && health === 0) {
+              toast("SUPPLIES FULL / 48 RESERVE CELLS MAX");
+              return;
+            }
+            cache.taken = true;
             player.caches++;
-            player.reserve += 24;
-            player.health = Math.min(player.maxHealth, player.health + 15);
-            toast("SALVAGE CACHE / +24 CELLS · +15 VITALS");
+            player.health += health;
+            if (cells < C.AMMO.cache)
+              pickups.push({
+                x: cache.x,
+                z: cache.z,
+                type: "ammo",
+                amount: C.AMMO.cache - cells,
+                drop: true,
+                taken: false,
+              });
+            toast(
+              "SALVAGE CACHE / " +
+                [cells && `+${cells} CELLS`, health && `+${health} VITALS`]
+                  .filter(Boolean)
+                  .join(" · "),
+            );
             radio(terminalLogs[(player.caches - 1) % terminalLogs.length], 8);
             tone(660, 0.25, "sine", 0.14, 990);
           }
@@ -4467,14 +4537,16 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               player.health = Math.min(player.maxHealth, player.health + 35);
               toast("+35 VITALS");
             } else {
-              if (player.reserve >= 240) continue;
-              player.reserve = Math.min(
-                240,
-                player.reserve + (p.drop ? 12 : 30),
+              const amount = p.amount ?? (p.drop ? C.AMMO.drop : C.AMMO.stash),
+                added = C.addAmmo(player, amount);
+              if (added === 0) continue;
+              p.amount = amount - added;
+              toast(
+                `+${added} PULSE CELLS${player.reserve === C.AMMO.reserve ? " / RESERVE FULL" : ""}`,
+                1.4,
               );
-              toast(p.drop ? "+12 PULSE CELLS" : "+30 PULSE CELLS", 1.4);
             }
-            p.taken = true;
+            p.taken = p.type === "health" || p.amount === 0;
             tone(p.type === "health" ? 660 : 420, 0.14, "sine", 0.1, 880);
           }
           if (
@@ -5507,7 +5579,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                 : "A–03 / STORM CUTLASS";
             $("ammo").innerHTML =
               player.weapon === 2
-                ? `${String(player.ammo).padStart(2, "0")}<small>/ ${player.reserve}</small>`
+                ? `${String(player.ammo).padStart(2, "0")}<small>${player.reserve} / ${C.AMMO.reserve}<span>RESERVE</span></small>`
                 : "∞";
             $("weapon-hint").textContent =
               reloadTimer > 0

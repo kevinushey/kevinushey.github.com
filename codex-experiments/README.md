@@ -7,10 +7,17 @@ There is no build step, dependency, asset download, or network requirement.
 
 Recover a gold access card and reach the green lift on each procedural floor.
 There is no final floor: survive as long as you can. A lift counts one completed
-floor, then offers a permanent upgrade and restores health, shields, and ammo.
+floor, then offers a permanent upgrade, restores health and shields, and supplies
+24 rounds up to your carry limit.
 Your score is floors completed, saved at each lift; dying on floor 7 scores 6.
 Standard and Explorer have separate local records. Old point-based records
 are not reused as floor counts, and audio/accessibility preferences carry over.
+
+**Ammo:** 24 rounds loaded, at most 48 in reserve (72 total). Runs start with
+24 loaded and one spare magazine. Each floor has two 12-round stashes; machines
+have a 20% chance to drop six rounds, and crew caches supply eight. Pickups and
+caches leave excess ammunition behind when your reserve is full. Reloading
+conserves rounds, and lift resupply adds only one magazine.
 
 Enemy health and damage grow cubically, eventually outpacing linear suit
 upgrades. Squads grow to six enemies per room; movement, fire cadence, and
