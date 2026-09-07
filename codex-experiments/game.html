@@ -3051,7 +3051,12 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           seen = new Uint8Array(SIZE * SIZE),
           lastHud = "",
           lockPending = false,
+          hadPointerLock = false,
+          wantsPointerLock = false,
+          resumeOnEscapeUp = false,
+          nativeUnlockAt = -Infinity,
           contextLost = false;
+        const pauseKeys = new Set();
         const terminalLogs = [
           "The crew made it to the lifeboats. Someone stayed behind to lock the machines in. Let's finish their work.",
           "Maintenance note: the sentries were not designed to hover. Apparently nobody told the sentries.",
@@ -3510,12 +3515,21 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           movePointer = null;
         }
         function unlock() {
+          // An intentional or delayed release must not pause a resumed run.
+          wantsPointerLock = false;
+          hadPointerLock = false;
           if (document.pointerLockElement === canvas)
             document.exitPointerLock();
         }
         async function requestLock() {
-          if (isTouch || document.pointerLockElement === canvas || lockPending)
+          if (
+            isTouch ||
+            document.pointerLockElement === canvas ||
+            lockPending ||
+            pauseKeys.has("Escape")
+          )
             return;
+          wantsPointerLock = true;
           lockPending = true;
           try {
             await canvas.requestPointerLock();
@@ -3525,7 +3539,9 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             lockPending = false;
           }
         }
-        function setPlaying() {
+        function setPlaying(captureMouse = true) {
+          nativeUnlockAt = -Infinity;
+          resumeOnEscapeUp = false;
           mode = "playing";
           $("menu").hidden = true;
           $("hud").hidden = false;
@@ -3535,7 +3551,11 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           canvas.focus();
           soundInit();
           syncMusic();
-          requestLock();
+          if (captureMouse) requestLock();
+          else {
+            unlock();
+            if (!isTouch) toast("CLICK TO CAPTURE MOUSE · OR USE ARROWS", 3);
+          }
         }
         function startRun() {
           const value = $("difficulty")?.value;
@@ -3730,7 +3750,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           );
           resize();
         });
-        function toggleMap() {
+        function toggleMap(captureMouse = true) {
           if (mode !== "playing") return;
           mapOpen = !mapOpen;
           syncMusic();
@@ -3742,7 +3762,9 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             $("close-map").focus();
           } else {
             canvas.focus();
-            requestLock();
+            if (captureMouse) requestLock();
+            else if (!isTouch)
+              toast("CLICK TO CAPTURE MOUSE · OR USE ARROWS", 3);
           }
         }
         $("close-map").onclick = toggleMap;
@@ -4061,13 +4083,20 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
         document.addEventListener("keydown", (e) => {
           if ($("guide").open) return;
           if (e.code === "Escape" || e.code === "KeyP") {
+            if (mode !== "playing" && mode !== "paused") return;
+            e.preventDefault();
+            if (e.repeat) return;
+            pauseKeys.add(e.code);
+            // Some browsers send pointerlockchange before Escape's keydown.
+            // Consume that same gesture, with an expiry if its keyup is swallowed.
+            if (e.code === "Escape" && e.timeStamp - nativeUnlockAt < 250)
+              return;
             if (mode === "playing") {
-              e.preventDefault();
-              if (mapOpen) toggleMap();
+              if (mapOpen) toggleMap(e.code !== "Escape");
               else pause();
             } else if (mode === "paused") {
-              e.preventDefault();
-              setPlaying();
+              if (e.code === "Escape") resumeOnEscapeUp = true;
+              else setPlaying();
             }
             return;
           }
@@ -4091,7 +4120,20 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             }
           }
         });
-        document.addEventListener("keyup", (e) => keys.delete(e.code));
+        document.addEventListener("keyup", (e) => {
+          keys.delete(e.code);
+          pauseKeys.delete(e.code);
+          if (e.code !== "Escape") return;
+          const resume = resumeOnEscapeUp;
+          resumeOnEscapeUp = false;
+          nativeUnlockAt = -Infinity;
+          // Escape is also the browser's unlock gesture. Recapture on the next
+          // click, rather than starting a second lock/unlock cycle on this key.
+          if (resume && mode === "paused" && !$("guide").open) {
+            e.preventDefault();
+            setPlaying(false);
+          }
+        });
         let dragLook = false,
           lookPointer = null,
           movePointer = null,
@@ -4159,21 +4201,33 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             look(e.movementX, e.movementY);
         });
         canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-        document.addEventListener("pointerlockchange", () => {
-          if (
-            !document.pointerLockElement &&
-            mode === "playing" &&
-            !mapOpen &&
-            !isTouch
-          )
+        document.addEventListener("pointerlockchange", (e) => {
+          const locked = document.pointerLockElement === canvas,
+            lost = hadPointerLock && !locked;
+          hadPointerLock = locked;
+          if (locked && (!wantsPointerLock || mode !== "playing" || mapOpen)) {
+            unlock();
+            return;
+          }
+          if (lost && mode === "playing" && !mapOpen && !isTouch) {
+            nativeUnlockAt = e.timeStamp;
+            resumeOnEscapeUp = false;
             pause();
+          }
         });
+        function clearPauseInput() {
+          pauseKeys.clear();
+          resumeOnEscapeUp = false;
+          nativeUnlockAt = -Infinity;
+        }
         window.addEventListener("blur", () => {
+          clearPauseInput();
           clearInput();
           pause();
         });
         document.addEventListener("visibilitychange", () => {
           if (document.hidden) {
+            clearPauseInput();
             clearInput();
             pause();
           }

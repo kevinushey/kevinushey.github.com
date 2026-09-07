@@ -48,6 +48,8 @@ controls, sensitivity, and reduced-motion settings.
 - **EMP:** F or right click. Stuns nearby visible enemies and clears nearby bolts.
 - **Interact:** E. Gold cards and supplies are collected on contact.
 - **Map:** M or click/tap the radar. **Pause:** Escape, P, or the pause button.
+- **Resume:** Escape resumes on release; click the game to capture the mouse
+  again. P or the Resume button resumes and requests mouse capture immediately.
 - **Touch:** movement joystick, drag to look, and dedicated action buttons.
 
 **Music:** “Ion Runner” is an original 32-bar chiptune, synthesized with pulse

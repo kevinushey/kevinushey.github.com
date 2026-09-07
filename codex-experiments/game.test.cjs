@@ -20,6 +20,14 @@ const C = vm.runInNewContext(`${coreSource}\nOrbitCore;`);
 // Rendering and DOM interaction are checked separately in a real browser.
 function campaign(initialSave = {}) {
   const elements = new Map();
+  const documentListeners = new Map(),
+    windowListeners = new Map();
+  const listen = (listeners, type, callback) => {
+    if (!listeners.has(type)) listeners.set(type, []);
+    listeners.get(type).push(callback);
+  };
+  let eventTime = 0,
+    lockRequests = 0;
   const storage = new Map([["dead-orbit-v1", JSON.stringify(initialSave)]]);
   const gl = new Proxy(
     {},
@@ -57,7 +65,9 @@ function campaign(initialSave = {}) {
         },
         getContext: (type) =>
           type === "webgl" ? gl : new Proxy({}, { get: () => () => {} }),
-        requestPointerLock: async () => {},
+        requestPointerLock: async () => {
+          lockRequests++;
+        },
         querySelector: () => element("first-button"),
         querySelectorAll: () =>
           ["damage", "shield", "pulse"].map((type) => {
@@ -77,11 +87,14 @@ function campaign(initialSave = {}) {
     getElementById: element,
     createElement: element,
     querySelectorAll: () => [],
-    addEventListener() {},
+    addEventListener: (type, callback) =>
+      listen(documentListeners, type, callback),
     body: element("body"),
     documentElement: element("html"),
     pointerLockElement: null,
-    exitPointerLock() {},
+    exitPointerLock() {
+      document.pointerLockElement = null;
+    },
   };
   const sandbox = {
     console,
@@ -96,7 +109,8 @@ function campaign(initialSave = {}) {
       setItem: (key, value) => storage.set(key, value),
     },
     requestAnimationFrame() {},
-    addEventListener() {},
+    addEventListener: (type, callback) =>
+      listen(windowListeners, type, callback),
   };
   sandbox.window = sandbox;
   const exposed = `\nwindow.testGame = { startRun, update, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, robot, bladeMesh,
@@ -112,6 +126,31 @@ function campaign(initialSave = {}) {
   return {
     game: sandbox.testGame,
     element,
+    get lockRequests() {
+      return lockRequests;
+    },
+    event(type, properties = {}, target = "document") {
+      eventTime = properties.timeStamp ?? eventTime + 10;
+      const event = {
+        timeStamp: eventTime,
+        repeat: false,
+        preventDefault() {},
+        ...properties,
+      };
+      for (const callback of (target === "window"
+        ? windowListeners
+        : documentListeners
+      ).get(type) ?? [])
+        callback(event);
+    },
+    pointerLock(locked, properties = {}) {
+      document.pointerLockElement = locked ? element("world") : null;
+      this.event("pointerlockchange", properties);
+    },
+    setHidden(hidden) {
+      document.hidden = hidden;
+      this.event("visibilitychange");
+    },
     get saved() {
       return JSON.parse(storage.get("dead-orbit-v1"));
     },
@@ -458,6 +497,110 @@ test("map and pause clear held inputs and suspend the simulation", () => {
   g.pause();
   assert.equal(g.state.mode, "paused");
   assert.equal(g.keys.size, 0);
+});
+
+test("Escape toggles once despite native unlock ordering and delayed release notifications", async () => {
+  for (const order of ["unlocked", "key-first", "unlock-first"]) {
+    const s = campaign(),
+      g = s.game;
+    g.startRun();
+    await new Promise(setImmediate);
+    if (order !== "unlocked") s.pointerLock(true);
+    if (order === "unlock-first") s.pointerLock(false);
+    s.event("keydown", { code: "Escape" });
+    if (order === "key-first") s.pointerLock(false);
+    for (let i = 0; i < 4; i++)
+      s.event("keydown", { code: "Escape", repeat: true });
+    s.event("keyup", { code: "Escape" });
+    assert.equal(g.state.mode, "paused", `${order}: first gesture pauses`);
+    const requests = s.lockRequests;
+    s.event("keydown", { code: "Escape" });
+    assert.equal(
+      g.state.mode,
+      "paused",
+      "wait until the unlock key is released",
+    );
+    for (let i = 0; i < 4; i++)
+      s.event("keydown", { code: "Escape", repeat: true });
+    s.event("keyup", { code: "Escape" });
+    s.pointerLock(false);
+    assert.equal(
+      g.state.mode,
+      "playing",
+      `${order}: releasing Escape must not reopen pause`,
+    );
+    assert.equal(
+      s.lockRequests,
+      requests,
+      "Escape does not race another pointer-lock request",
+    );
+    g.pause();
+    s.element("resume").onclick();
+    assert.ok(
+      s.lockRequests > requests,
+      "the resume button can still capture the mouse",
+    );
+  }
+});
+
+test("native unlock still pauses when keyboard events are swallowed, without eating a later Escape", async () => {
+  const s = campaign(),
+    g = s.game;
+  g.startRun();
+  await new Promise(setImmediate);
+  s.pointerLock(true);
+  g.keys.add("KeyW");
+  s.pointerLock(false);
+  assert.equal(g.state.mode, "paused");
+  assert.equal(g.keys.size, 0);
+  s.event("keydown", { code: "Escape", timeStamp: 1000 });
+  s.event("keyup", { code: "Escape" });
+  assert.equal(g.state.mode, "playing");
+});
+
+test("P ignores repeats, and Escape closes the map without recapturing on the unlock gesture", async () => {
+  const s = campaign(),
+    g = s.game;
+  g.startRun();
+  await new Promise(setImmediate);
+  s.pointerLock(true);
+  g.toggleMap();
+  const requests = s.lockRequests;
+  s.event("keydown", { code: "Escape" });
+  s.event("keydown", { code: "Escape", repeat: true });
+  s.event("keyup", { code: "Escape" });
+  s.pointerLock(false);
+  assert.equal(g.state.mapOpen, false);
+  assert.equal(g.state.mode, "playing");
+  assert.equal(s.lockRequests, requests);
+  for (const mode of ["paused", "playing"]) {
+    s.event("keydown", { code: "KeyP" });
+    for (let i = 0; i < 4; i++)
+      s.event("keydown", { code: "KeyP", repeat: true });
+    s.event("keyup", { code: "KeyP" });
+    assert.equal(g.state.mode, mode);
+  }
+});
+
+test("focus loss cancels a pending Escape resume and late capture cannot steal a menu's pointer", async () => {
+  for (const loss of ["blur", "visibility"]) {
+    const s = campaign(),
+      g = s.game;
+    g.startRun();
+    await new Promise(setImmediate);
+    g.pause();
+    s.pointerLock(true); // A request started before pausing arrives late.
+    s.pointerLock(false);
+    s.event("keydown", { code: "Escape" });
+    if (loss === "blur") s.event("blur", {}, "window");
+    else s.setHidden(true);
+    s.event("keyup", { code: "Escape" });
+    assert.equal(g.state.mode, "paused");
+    if (loss === "visibility") s.setHidden(false);
+    s.event("keydown", { code: "Escape" });
+    s.event("keyup", { code: "Escape" });
+    assert.equal(g.state.mode, "playing");
+  }
 });
 
 test("endless runs require each keycard, count each cleared floor once, and continue past floor three", () => {
