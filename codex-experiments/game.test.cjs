@@ -18,8 +18,9 @@ const C = vm.runInNewContext(`${coreSource}\nOrbitCore;`);
 
 // Exercise the actual controller with only its platform boundaries stubbed.
 // Rendering and DOM interaction are checked separately in a real browser.
-function campaign() {
+function campaign(initialSave = {}) {
   const elements = new Map();
+  const storage = new Map([["dead-orbit-v1", JSON.stringify(initialSave)]]);
   const gl = new Proxy(
     {},
     {
@@ -90,15 +91,18 @@ function campaign() {
     innerHeight: 720,
     devicePixelRatio: 1,
     matchMedia: () => ({ matches: false }),
-    localStorage: { getItem: () => "{}", setItem() {} },
+    localStorage: {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+    },
     requestAnimationFrame() {},
     addEventListener() {},
   };
   sandbox.window = sandbox;
-  const exposed = `\nwindow.testGame = { startRun, update, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, robot, bladeMesh,
+  const exposed = `\nwindow.testGame = { startRun, update, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, robot, bladeMesh,
     get player() { return player; }, get level() { return level; }, get enemies() { return enemies; },
     get pickups() { return pickups; }, get bullets() { return bullets; },
-    get state() { return { mode, deck, cardTaken, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer }; },
+    get state() { return { mode, deck, cardTaken, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords }; },
     get interaction() { return interaction; }, set interaction(v) { interaction = v; },
     get keys() { return keys; }, toggleMap };\n})();`;
   vm.runInNewContext(
@@ -108,6 +112,9 @@ function campaign() {
   return {
     game: sandbox.testGame,
     element,
+    get saved() {
+      return JSON.parse(storage.get("dead-orbit-v1"));
+    },
     tick(seconds) {
       for (let i = 0; i < Math.ceil(seconds * 60); i++) {
         if (
@@ -315,12 +322,29 @@ test("map and pause clear held inputs and suspend the simulation", () => {
   assert.equal(g.keys.size, 0);
 });
 
-test("full campaign requires each keycard, applies two upgrades, and ends in victory", () => {
-  const { game: g, element, tick } = campaign();
+test("endless runs require each keycard, count each cleared floor once, and continue past floor three", () => {
+  const session = campaign({ best: 98765, musicVolume: 0.3 }),
+    { game: g, element, tick } = session;
   g.startRun();
-  for (let deck = 0; deck < 3; deck++) {
+  assert.equal(
+    g.state.floorRecords.standard,
+    0,
+    "legacy points are not floor records",
+  );
+  for (let deck = 0; deck < 16; deck++) {
     assert.equal(g.state.deck, deck);
+    assert.equal(g.player.floorsCompleted, deck);
     assert.equal(g.state.cardTaken, false);
+    g.updateHUD();
+    assert.equal(
+      element("deck-number").textContent,
+      String(deck + 1).padStart(2, "0"),
+    );
+    assert.ok(element("deck-name").textContent);
+    assert.match(
+      element("run-progress").textContent,
+      new RegExp(`^${deck} CLEARED`),
+    );
     g.enemies.forEach((e) => (e.health = 0));
     g.player.x = g.level.exit.x;
     g.player.z = g.level.exit.z;
@@ -331,23 +355,65 @@ test("full campaign requires each keycard, applies two upgrades, and ends in vic
       "playing",
       "a locked lift must not advance the campaign",
     );
+    assert.equal(g.player.floorsCompleted, deck);
     g.player.x = g.level.card.x;
     g.player.z = g.level.card.z;
     tick(0.05);
     assert.equal(g.state.cardTaken, true);
+    assert.equal(
+      g.player.floorsCompleted,
+      deck,
+      "a card alone does not clear a floor",
+    );
     g.player.x = g.level.exit.x;
     g.player.z = g.level.exit.z;
     tick(0.05);
     g.interact();
-    if (deck < 2) {
-      assert.equal(g.state.mode, "upgrade");
-      element(`upgrade-${deck === 0 ? "shield" : "damage"}`).onclick();
-      assert.equal(g.player.health, g.player.maxHealth);
-    }
+    assert.equal(g.state.mode, "upgrade");
+    assert.equal(g.player.floorsCompleted, deck + 1);
+    g.interact();
+    assert.equal(
+      g.player.floorsCompleted,
+      deck + 1,
+      "held use cannot count a lift twice",
+    );
+    assert.equal(
+      session.saved.floorRecords.standard,
+      deck + 1,
+      "record saves before the next floor",
+    );
+    const choose = element(
+      `upgrade-${deck % 2 === 0 ? "shield" : "damage"}`,
+    ).onclick;
+    choose();
+    choose();
+    assert.equal(
+      g.state.deck,
+      deck + 1,
+      "repeated upgrade clicks cannot skip a floor",
+    );
+    assert.equal(g.player.upgrades.length, deck + 1);
+    assert.equal(g.player.health, g.player.maxHealth);
   }
-  assert.equal(g.state.mode, "victory");
-  assert.equal(g.player.upgrades.length, 2);
-  assert.ok(g.player.score >= 3750);
+  assert.equal(g.state.mode, "playing");
+  g.damage(1e9);
+  assert.equal(g.state.mode, "dead");
+  assert.equal(
+    g.player.floorsCompleted,
+    16,
+    "dying on floor 17 still scores 16",
+  );
+  assert.match(element("menu-content").innerHTML, /Floors completed/);
+  assert.match(element("menu-content").innerHTML, /New personal best/);
+  assert.equal(session.saved.floorRecords.standard, 16);
+  assert.equal(
+    session.saved.musicVolume,
+    0.3,
+    "settings survive record writes",
+  );
+  const restored = campaign(session.saved);
+  assert.equal(restored.game.state.floorRecords.standard, 16);
+  assert.match(restored.element("best").textContent, /16 FLOORS/);
 });
 
 test("death and retry reset inventory, abilities, deck, upgrades and score", () => {
@@ -355,7 +421,7 @@ test("death and retry reset inventory, abilities, deck, upgrades and score", () 
   g.startRun();
   C.upgrade(g.player, "shield");
   g.emp();
-  g.player.score = 900;
+  g.player.floorsCompleted = 9;
   g.damage(9999);
   assert.equal(g.state.mode, "dead");
   g.startRun();
@@ -364,7 +430,8 @@ test("death and retry reset inventory, abilities, deck, upgrades and score", () 
   assert.equal(g.player.maxShield, 60);
   assert.equal(g.player.upgrades.length, 0);
   assert.equal(g.player.ammo, 24);
-  assert.equal(g.player.score, 0);
+  assert.equal(g.player.floorsCompleted, 0);
+  assert.equal(g.state.floorRecords.standard, 9);
   assert.equal(g.state.empTimer, 0);
 });
 
@@ -379,6 +446,79 @@ test("Explorer damage reduction survives retry without a difficulty selector", (
   g.startRun();
   g.damage(20);
   assert.equal(g.player.shield, 50);
+});
+
+test("floor records stay separate by difficulty, never decrease, and reject invalid saved values", () => {
+  const { game: g, element } = campaign({
+    floorRecords: { standard: 12, explorer: 3 },
+  });
+  element("difficulty").onchange({ target: { value: "explorer" } });
+  element("difficulty").value = "explorer";
+  assert.match(element("best").textContent, /EXPLORER BEST \/ 3 FLOORS/);
+  g.startRun();
+  g.player.floorsCompleted = 5;
+  g.damage(1e9);
+  assert.equal(g.state.floorRecords.explorer, 5);
+  assert.equal(g.state.floorRecords.standard, 12);
+  g.startRun();
+  g.damage(1e9);
+  assert.equal(g.player.floorsCompleted, 0);
+  assert.equal(g.state.floorRecords.explorer, 5);
+  const corrupt = campaign({ floorRecords: { standard: -5, explorer: "900" } });
+  assert.equal(corrupt.game.state.floorRecords.standard, 0);
+  assert.equal(corrupt.game.state.floorRecords.explorer, 0);
+});
+
+test("late floors grow lethal while spawns, enemy movement and upgrade rates remain valid", () => {
+  const tank = C.newPlayer(),
+    gunner = C.newPlayer();
+  for (let i = 0; i < 100; i++) {
+    C.upgrade(tank, "shield");
+    C.upgrade(gunner, "damage");
+    C.upgrade(gunner, "pulse");
+  }
+  assert.ok(gunner.fireRate >= 0.065);
+  assert.equal(gunner.empMax, 4);
+  assert.equal(gunner.dashMax, 0.8);
+  const lethal = C.makeEnemy(C.rng(42), "sentry", 100);
+  assert.ok(
+    lethal.damage * 0.5 > tank.maxHealth + tank.maxShield,
+    "enemy damage eventually beats even an Explorer tank build",
+  );
+  assert.ok(
+    lethal.maxHealth > gunner.damage * gunner.magSize,
+    "late armor outpaces rifle upgrades",
+  );
+  let previousHealth = 0,
+    previousDamage = 0;
+  for (const deck of [0, 1, 2, 3, 9, 24, 99, 9999]) {
+    const e = C.makeEnemy(C.rng(42), "sentry", deck);
+    assert.ok(e.maxHealth > previousHealth && e.damage > previousDamage);
+    previousHealth = e.maxHealth;
+    previousDamage = e.damage;
+    for (let seed = 0; seed < 12; seed++) {
+      const level = C.generateDeck(seed, deck);
+      assert.ok(level.enemies.length >= 8 && level.enemies.length <= 48);
+      for (const enemy of level.enemies) {
+        assert.ok(
+          C.fits(
+            level.map,
+            enemy.x,
+            enemy.z,
+            enemy.collisionRadius,
+            level.props,
+          ),
+          `blocked enemy spawn ${seed}/${deck}`,
+        );
+        assert.ok(
+          enemy.speed < 10 && enemy.interval >= 0.42 && enemy.boltSpeed < 24,
+        );
+        for (const value of Object.values(enemy))
+          if (typeof value === "number") assert.ok(Number.isFinite(value));
+      }
+      checkPassageClearance(level, `late ${seed}/${deck}`);
+    }
+  }
 });
 
 test("cabinets block walking, sprinting and dashing without trapping the player", () => {
@@ -611,8 +751,8 @@ test("enemy classes and traits are varied, bounded and deterministic", () => {
         types.add(e.type);
         traits.add(e.trait);
         health.add(e.maxHealth);
-        assert.ok(e.health >= 25 && e.health < 240);
-        assert.ok(e.speed > 0.4 && e.speed < 4);
+        assert.ok(e.health >= 25 && e.health < 340);
+        assert.ok(e.speed > 0.4 && e.speed < 5);
         assert.ok(e.interval > 0.6 && e.interval < 4);
         assert.ok(e.scale > 0.65 && e.scale < 1.4);
       }
@@ -899,4 +1039,25 @@ test("music scheduling pauses, resumes without catch-up bursts, and cleans up vo
   music.tick({ ...state, enabled: false });
   c.advance(1);
   assert.equal(music.voices.size, 0);
+});
+
+test("the soundtrack keeps a playable tempo even on extremely late floors", () => {
+  const audio = new FakeAudio(),
+    music = new M.Player(audio, audio.node());
+  const steps = new Set();
+  music.note = (_, time, stepLength) => {
+    assert.ok(stepLength > 0.08 && stepLength < 0.16);
+    steps.add(time);
+  };
+  for (let i = 0; i < 400; i++) {
+    music.tick({ enabled: true, deck: 1000000 });
+    audio.advance(0.025);
+  }
+  assert.ok(steps.size > 0);
+  const times = [...steps].sort((a, b) => a - b);
+  for (let i = 1; i < times.length; i++)
+    assert.ok(
+      times[i] - times[i - 1] > 0.08,
+      "notes keep audible spacing between steps",
+    );
 });

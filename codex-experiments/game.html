@@ -9,9 +9,9 @@
     <meta name="theme-color" content="#080e12" />
     <meta
       name="description"
-      content="Dead Orbit. A self-contained, first-person sci-fi escape game. Three decks. One way home."
+      content="Dead Orbit. An endless first-person sci-fi survival game. Clear floors, upgrade your suit, and survive an increasingly hostile station."
     />
-    <title>DEAD ORBIT — A station worth escaping</title>
+    <title>DEAD ORBIT — One more floor</title>
     <style>
       :root {
         color-scheme: dark;
@@ -321,9 +321,13 @@
           transform 0.15s,
           border-color 0.15s;
       }
-      .upgrade:hover {
+      .upgrade:hover:not(:disabled) {
         border-color: var(--orange);
         transform: translateY(-4px);
+      }
+      .upgrade:disabled {
+        opacity: 0.4;
+        cursor: default;
       }
       .upgrade .symbol {
         font-size: 30px;
@@ -395,19 +399,11 @@
         font-size: 9px;
         letter-spacing: 1.6px;
       }
-      .pips {
-        display: flex;
-        gap: 4px;
+      .run-progress {
         margin-top: 14px;
-      }
-      .pips i {
-        display: block;
-        width: 38px;
-        height: 2px;
-        background: #ffffff26;
-      }
-      .pips i.active {
-        background: var(--orange);
+        color: var(--orange);
+        font-size: 10px;
+        letter-spacing: 1px;
       }
       .objective {
         margin-top: 24px;
@@ -1192,7 +1188,7 @@
       <footer class="menu-footer">
         <span>CODEX EXPERIMENTS &nbsp; / &nbsp; 001</span>
         <div class="features">
-          <span>3 DECKS</span><span>ONE WAY OUT</span
+          <span>ENDLESS FLOORS</span><span>ONE LIFE</span
           ><span>NO TWO RUNS ALIKE</span>
         </div>
         <span id="best"></span>
@@ -1205,10 +1201,12 @@
             <span id="deck-number" class="deck-number">01</span>
             <div>
               <strong id="deck-name">DOCKING RING</strong
-              ><small>KEPLER–09 / ESCAPE PROTOCOL</small>
+              ><small>KEPLER–09 / ENDLESS PROTOCOL</small>
             </div>
           </div>
-          <div class="pips"><i></i><i></i><i></i></div>
+          <div id="run-progress" class="run-progress mono">
+            0 CLEARED / BEST 0
+          </div>
           <div class="objective">
             <small>CURRENT OBJECTIVE</small
             ><strong id="objective">Recover the deck access card</strong>
@@ -1364,9 +1362,12 @@
       </div>
       <h2>Your suit has a few tricks.</h2>
       <p>
-        Find the gold access card on each deck, then reach the green lift.
-        Escape all three decks to get home. Explore side rooms for supplies;
-        choose a permanent upgrade between decks.
+        Find the gold access card on each deck, then reach the green lift. There
+        is no final floor. Reach each lift alive to score one completed floor,
+        then choose a permanent upgrade and resupply. Enemy squads grow tougher,
+        faster, and more numerous until the station overwhelms you. Explore side
+        rooms for supplies. Your high score is floors completed; Standard and
+        Explorer keep separate records on this device.
       </p>
       <div class="control-grid">
         <div>
@@ -1495,7 +1496,6 @@
             scale: 1,
             color: [0.26, 0.35, 0.39],
             accent: [0.3, 0.9, 0.74],
-            reward: 100,
           },
           sentry: {
             name: "Heavy sentry",
@@ -1508,7 +1508,6 @@
             scale: 1.1,
             color: [0.4, 0.3, 0.2],
             accent: [1, 0.56, 0.18],
-            reward: 140,
           },
           stalker: {
             name: "Stalker",
@@ -1521,7 +1520,6 @@
             scale: 0.92,
             color: [0.28, 0.32, 0.23],
             accent: [0.65, 1, 0.3],
-            reward: 110,
           },
           skimmer: {
             name: "Skimmer",
@@ -1534,7 +1532,6 @@
             scale: 0.84,
             color: [0.28, 0.43, 0.49],
             accent: [0.28, 0.8, 1],
-            reward: 120,
           },
           prism: {
             name: "Prism caster",
@@ -1547,7 +1544,6 @@
             scale: 0.98,
             color: [0.39, 0.24, 0.46],
             accent: [0.85, 0.38, 1],
-            reward: 150,
           },
           bulwark: {
             name: "Bulwark",
@@ -1560,11 +1556,22 @@
             scale: 1.18,
             color: [0.34, 0.37, 0.3],
             accent: [1, 0.72, 0.26],
-            reward: 220,
           },
         };
+        function floorPressure(deck) {
+          // Cubic enemy strength eventually outpaces linear suit upgrades.
+          // Population, movement and firing frequency stay bounded for playability.
+          return {
+            health: 1 + 0.16 * deck + 0.018 * deck ** 2 + 0.002 * deck ** 3,
+            damage: 1 + 0.1 * deck + 0.012 * deck ** 2 + 0.0015 * deck ** 3,
+            speed: 1 + Math.min(1.5, deck * 0.075),
+            cadence: 1 + Math.min(2.2, deck * 0.1),
+            squadSize: Math.min(5, 1 + Math.floor(deck / 3)),
+          };
+        }
         function makeEnemy(random, type, deck = 0) {
           const base = enemyTypes[type],
+            pressure = floorPressure(deck),
             roll = random(),
             trait =
               roll < 0.5
@@ -1577,6 +1584,7 @@
           const scale = base.scale * (0.92 + random() * 0.16);
           const health = Math.round(
             base.health *
+              pressure.health *
               (0.9 + random() * 0.2) *
               (trait === "reinforced"
                 ? 1.32
@@ -1595,15 +1603,28 @@
             maxHealth: health,
             speed:
               base.speed *
+              pressure.speed *
               (0.9 + random() * 0.2) *
               (trait === "swift" ? 1.3 : trait === "reinforced" ? 0.8 : 1),
-            damage: Math.round(base.damage * (0.9 + random() * 0.2)),
-            interval:
-              base.interval *
-              (0.9 + random() * 0.2) *
-              (trait === "overclocked" ? 0.72 : 1),
-            windup: base.windup * (0.94 + random() * 0.12),
-            boltSpeed: (8.4 + deck * 0.8) * (0.92 + random() * 0.16),
+            damage: Math.round(
+              base.damage * pressure.damage * (0.9 + random() * 0.2),
+            ),
+            interval: Math.max(
+              0.42,
+              (base.interval *
+                (0.9 + random() * 0.2) *
+                (trait === "overclocked" ? 0.72 : 1)) /
+                pressure.cadence,
+            ),
+            windup:
+              base.windup === 0
+                ? 0
+                : Math.max(
+                    0.24,
+                    (base.windup * (0.94 + random() * 0.12)) / pressure.cadence,
+                  ),
+            boltSpeed:
+              Math.min(22, 8.4 + deck * 0.8) * (0.92 + random() * 0.16),
             hoverPhase: random() * Math.PI * 2,
             strafeDirection: random() < 0.5 ? -1 : 1,
             accent:
@@ -1785,14 +1806,16 @@
             [types[i], types[j]] = [types[j], types[i]];
           }
           for (const room of rooms.slice(1)) {
-            const count =
-              1 +
-              (deck > 0 && random() < 0.45 ? 1 : 0) +
-              (deck === 2 && room.index === exit.room ? 1 : 0);
+            const count = Math.min(
+              6,
+              floorPressure(deck).squadSize +
+                (deck > 0 && random() < 0.45 ? 1 : 0) +
+                (deck >= 2 && room.index === exit.room ? 1 : 0),
+            );
             for (let i = 0; i < count; i++)
               enemies.push({
-                x: (room.x + 1.25 + (i % 2) * 1.35) * CELL,
-                z: (room.z + 1.35 + Math.floor(i / 2) * 1.35) * CELL,
+                x: (room.x + 1.1 + (i % 3) * 1.05) * CELL,
+                z: (room.z + 1.2 + Math.floor(i / 3) * 1.45) * CELL,
                 ...makeEnemy(
                   random,
                   types[enemies.length % types.length],
@@ -1966,7 +1989,7 @@
           empMax: 12,
           dashMax: 2.5,
           weapon: 2,
-          score: 0,
+          floorsCompleted: 0,
           kills: 0,
           caches: 0,
           elapsed: 0,
@@ -1987,7 +2010,7 @@
         function upgrade(p, type) {
           if (type === "damage") {
             p.damage += 10;
-            p.fireRate *= 0.9;
+            p.fireRate = Math.max(0.065, p.fireRate * 0.9);
           }
           if (type === "shield") {
             p.maxShield += 35;
@@ -2012,6 +2035,7 @@
           rng,
           distances,
           generateDeck,
+          floorPressure,
           enemyTypes,
           makeEnemy,
           enemyDamage,
@@ -2181,7 +2205,7 @@
             add("fill", root + 36 + [7, 5, 3, 0][tick - 12], 0.55, 0.067, 0.3);
             if (tick % 2 === 1) add("snare", 0, 0.5, 0.12);
           }
-          if (deck === 2 && tick === 0) add("lead", root + 19, 4, 0.035, 0.2);
+          if (deck >= 2 && tick === 0) add("lead", root + 19, 4, 0.035, 0.2);
           return events;
         }
         class Player {
@@ -2253,7 +2277,7 @@
               return;
             }
             const now = this.context.currentTime,
-              stepLength = 60 / (128 + deck * 6) / 4;
+              stepLength = 60 / Math.min(164, 128 + deck * 6) / 4;
             if (!this.active) {
               this.active = true;
               this.next = now + 0.04;
@@ -2491,13 +2515,17 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
         function makeAtlas(deck) {
           actx.fillStyle = "#fff";
           actx.fillRect(0, 0, 1024, 512);
-          const names = ["DOCKING / 01", "RESEARCH / 02", "REACTOR / 03"];
           actx.fillStyle = "#111c22";
           actx.fillRect(0, 0, 1024, 240);
           actx.fillStyle = "#ffb36c";
           actx.fillRect(30, 28, 8, 68);
           actx.font = "bold 76px sans-serif";
-          actx.fillText(names[deck], 60, 94);
+          actx.fillText(
+            `${deckNames[deck % deckNames.length]} / ${deck + 1}`,
+            60,
+            94,
+            900,
+          );
           actx.font = "22px monospace";
           actx.fillStyle = "#aabfc1";
           actx.fillText("KEPLER–09     DEEP SPACE DIVISION     →", 60, 151);
@@ -2760,7 +2788,15 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               ? saved.reduced
               : matchMedia("(prefers-reduced-motion: reduce)").matches,
           sensitivity = clamp(Number(saved.sensitivity) || 1, 0.5, 2),
-          best = Number(saved.best) || 0,
+          floorRecords = Object.fromEntries(
+            ["standard", "explorer"].map((profile) => {
+              const value = saved.floorRecords?.[profile];
+              return [
+                profile,
+                Number.isSafeInteger(value) && value >= 0 ? value : 0,
+              ];
+            }),
+          ),
           musicEnabled = saved.musicEnabled !== false,
           musicVolume = clamp(
             Number.isFinite(saved.musicVolume) ? saved.musicVolume : 0.55,
@@ -2775,7 +2811,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                 muted,
                 reduced,
                 sensitivity,
-                best,
+                floorRecords,
                 musicEnabled,
                 musicVolume,
               }),
@@ -2886,12 +2922,20 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           g.connect(master);
           source.start();
         }
-        const deckNames = ["DOCKING RING", "RESEARCH WING", "REACTOR HEART"];
+        const deckNames = [
+          "DOCKING RING",
+          "RESEARCH WING",
+          "REACTOR HEART",
+          "CRYO VAULT",
+          "FOUNDRY",
+          "SIGNAL CORE",
+        ];
         let mode = "title",
           player = C.newPlayer(),
           level,
           deck = 0,
           runSeed = 0,
+          runBestAtStart = 0,
           enemies = [],
           pickups = [],
           bullets = [],
@@ -2960,12 +3004,14 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             random = C.rng(level.seed + deck * 123 + 8);
           lights = [];
           makeAtlas(deck);
-          const accent =
-            deck === 1
-              ? [0.25, 0.73, 0.87]
-              : deck === 2
-                ? [0.98, 0.36, 0.12]
-                : palette.orange;
+          const accent = [
+            palette.orange,
+            [0.25, 0.73, 0.87],
+            [0.98, 0.36, 0.12],
+            [0.43, 0.72, 1],
+            [1, 0.65, 0.2],
+            [0.73, 0.43, 0.95],
+          ][deck % deckNames.length];
           for (let z = 0; z < SIZE; z++)
             for (let x = 0; x < SIZE; x++) {
               const wx = (x + 0.5) * CELL,
@@ -3052,7 +3098,10 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
                     x: wx,
                     y: 3.1,
                     z: wz,
-                    color: deck === 2 ? [1, 0.57, 0.35] : [0.48, 0.75, 0.81],
+                    color:
+                      deck % deckNames.length === 2
+                        ? [1, 0.57, 0.35]
+                        : [0.48, 0.75, 0.81],
                     power: 1.9,
                   });
                 }
@@ -3356,7 +3405,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             angle: 0,
             phase: e.hoverPhase,
             alert: false,
-            cooldown: 1 + i * 0.15,
+            cooldown: (1 + i * 0.05) / Math.min(2.5, 1 + deck * 0.1),
             charge: 0,
             stun: 0,
             hit: 0,
@@ -3413,6 +3462,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           deck = 0;
           gameTime = 0;
           player = C.newPlayer();
+          runBestAtStart = floorRecords[difficulty];
           makeLevel();
           setPlaying();
           radio(
@@ -3422,11 +3472,21 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           toast(
             isTouch
               ? "LEFT THUMB TO MOVE · DRAG RIGHT TO LOOK"
-              : "DECK 01 / DOCKING RING",
+              : "FLOOR 01 / DOCKING RING",
             isTouch ? 6 : 3,
           );
         }
         let difficulty = "standard";
+        function updateBestLabel() {
+          $("best").textContent =
+            `${difficulty.toUpperCase()} BEST / ${floorRecords[difficulty].toLocaleString()} FLOORS`;
+        }
+        function recordFloors() {
+          if (player.floorsCompleted > floorRecords[difficulty]) {
+            floorRecords[difficulty] = player.floorsCompleted;
+            save();
+          }
+        }
         function menuScreen(type) {
           mode = type;
           syncMusic();
@@ -3438,19 +3498,22 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           document.body.classList.remove("touch-playing");
           $("menu").classList.toggle("centered", type !== "title");
           $("scene-label").hidden = type !== "title";
-          $("best").textContent = best
-            ? `PERSONAL BEST / ${best.toLocaleString()}`
-            : "EST. RUN / 8–12 MIN";
+          updateBestLabel();
           const content = $("menu-content");
           if (type === "title") {
             content.innerHTML =
-              '<div class="eyebrow mono">A FIRST-PERSON ESCAPE</div><h1>DEAD<br><span>ORBIT</span></h1><p class="intro">The station went quiet. The machines didn’t.<br>Three decks between you and the last shuttle home.</p><div class="actions"><button class="primary" id="start">INITIATE ESCAPE <span>↗</span></button><button class="secondary" id="help">Field guide</button></div><label class="difficulty">MISSION PROFILE <select id="difficulty" aria-label="Mission difficulty"><option value="standard">Standard · Stay sharp</option><option value="explorer">Explorer · More breathing room</option></select></label>';
+              '<div class="eyebrow mono">ENDLESS FIRST-PERSON SURVIVAL</div><h1>DEAD<br><span>ORBIT</span></h1><p class="intro">The station goes on forever. You won’t.<br>Clear floors. Build your suit. See how far you get.</p><div class="actions"><button class="primary" id="start">BEGIN RUN <span>↗</span></button><button class="secondary" id="help">Field guide</button></div><label class="difficulty">MISSION PROFILE <select id="difficulty" aria-label="Mission difficulty"><option value="standard">Standard · Stay sharp</option><option value="explorer">Explorer · More breathing room</option></select></label>';
             $("start").onclick = startRun;
             $("help").onclick = showGuide;
+            $("difficulty").value = difficulty;
+            $("difficulty").onchange = (e) => {
+              difficulty =
+                e.target.value === "explorer" ? "explorer" : "standard";
+              updateBestLabel();
+            };
           }
           if (type === "paused") {
-            content.innerHTML =
-              '<div class="eyebrow mono">SIGNAL ON HOLD</div><h1>Take a breath.</h1><p class="intro">Even the machines can wait a moment. Your run is paused.</p><div class="actions"><button class="primary" id="resume">RESUME ESCAPE <span>↗</span></button><button class="secondary" id="help">Field guide & settings</button><button class="secondary" id="quit">End run</button></div>';
+            content.innerHTML = `<div class="eyebrow mono">FLOOR ${deck + 1} / SIGNAL ON HOLD</div><h1>Take a breath.</h1><p class="intro">${player.floorsCompleted} floors cleared. Your run is paused.<br>Even the machines can wait a moment.</p><div class="actions"><button class="primary" id="resume">RESUME RUN <span>↗</span></button><button class="secondary" id="help">Field guide & settings</button><button class="secondary" id="quit">End run</button></div>`;
             $("resume").onclick = setPlaying;
             $("help").onclick = showGuide;
             $("quit").onclick = () => {
@@ -3460,31 +3523,43 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             };
           }
           if (type === "upgrade") {
-            content.innerHTML = `<div class="eyebrow mono">DECK ${String(deck + 1).padStart(2, "0")} COMPLETE</div><h1>A little more<br>dangerous.</h1><p class="intro">The lift has a working fabricator. Pick a permanent suit upgrade.<br>Health, shields, and ammunition restored on the next deck.</p><div class="upgrade-grid"><button class="upgrade" data-upgrade="damage"><span class="symbol">↯</span><strong>Hotwired</strong><small>+10 rifle damage.<br>10% faster fire rate.<br>Make every shot count.</small></button><button class="upgrade" data-upgrade="shield"><span class="symbol">◈</span><strong>Second skin</strong><small>+35 maximum shield.<br>+25 maximum health.<br>A little room for error.</small></button><button class="upgrade" data-upgrade="pulse"><span class="symbol">◎</span><strong>Short circuit</strong><small>45% faster EMP recharge.<br>30% faster dash recharge.<br>Keep the upper hand.</small></button></div>`;
+            const pulseMaxed = player.empMax <= 4 && player.dashMax <= 0.8;
+            content.innerHTML = `<div class="eyebrow mono">${player.floorsCompleted} FLOORS CLEARED / FLOOR ${deck + 2} AWAITS</div><h1>A little more<br>dangerous.</h1><p class="intro">Pick a permanent upgrade. Health, shields, and ammunition restored.<br>The next floor brings stronger machines. Keep moving.</p><div class="upgrade-grid"><button class="upgrade" data-upgrade="damage"><span class="symbol">↯</span><strong>Hotwired</strong><small>+10 rifle damage.<br>${player.fireRate > 0.065 ? "Up to 10% faster fire rate." : "Fire rate fully tuned."}<br>Make every shot count.</small></button><button class="upgrade" data-upgrade="shield"><span class="symbol">◈</span><strong>Second skin</strong><small>+35 maximum shield.<br>+25 maximum health.<br>A little room for error.</small></button><button class="upgrade" data-upgrade="pulse" ${pulseMaxed ? "disabled" : ""}><span class="symbol">◎</span><strong>Short circuit</strong><small>${pulseMaxed ? "Fully tuned.<br>Choose another upgrade." : "Up to 45% faster EMP recharge.<br>Up to 30% faster dash recharge.<br>Keep the upper hand."}</small></button></div>`;
             content.querySelectorAll("[data-upgrade]").forEach(
               (b) =>
                 (b.onclick = () => {
+                  if (
+                    mode !== "upgrade" ||
+                    b.disabled ||
+                    (b.dataset.upgrade === "pulse" && pulseMaxed)
+                  )
+                    return;
                   C.upgrade(player, b.dataset.upgrade);
-                  deck++;
+                  deck = player.floorsCompleted;
                   C.resupply(player);
                   makeLevel();
                   setPlaying();
                   radio(
-                    deck === 1
-                      ? "Research wing. They were teaching the machines to improvise. I would call the experiment a success."
-                      : "Reactor heart. Last deck, last access card. The shuttle is still here. So are you.",
+                    `Floor ${deck + 1}. ${deckNames[deck % deckNames.length]}. ` +
+                      [
+                        "The station has more floors than the blueprints. Naturally.",
+                        "They were teaching the machines to improvise. I would call the experiment a success.",
+                        "More armor. More firepower. Find that card before they find you.",
+                        "The temperature is falling. Your odds are following it.",
+                        "The fabricators are building reinforcements. Ours was the small one.",
+                        "No signal from the surface. Just another lift, and another floor.",
+                      ][deck % deckNames.length],
                     8,
                   );
                 }),
             );
           }
-          if (type === "dead" || type === "victory") {
-            const won = type === "victory",
-              minutes = Math.floor(player.elapsed / 60),
+          if (type === "dead") {
+            const minutes = Math.floor(player.elapsed / 60),
               seconds = Math.floor(player.elapsed % 60)
                 .toString()
                 .padStart(2, "0");
-            content.innerHTML = `<div class="eyebrow mono">${won ? "ESCAPE CONFIRMED / SIGNAL RESTORED" : "VITAL SIGNAL LOST"}</div><h1>${won ? "Next stop.<br><span>Home.</span>" : "The station<br>keeps you."}</h1><p class="intro">${won ? "Kepler–09 gets smaller in the rear window. For the first time all night, the silence feels good." : "Somewhere, a maintenance drone files an incident report. Your next run will have a different layout—and a better-informed pilot."}</p><div class="stat-row"><div><strong>${player.score.toLocaleString()}</strong><small>Score</small></div><div><strong>${minutes}:${seconds}</strong><small>Run time</small></div><div><strong>${player.kills}</strong><small>Machines scrapped</small></div></div><div class="actions"><button class="primary" id="retry">${won ? "ONE MORE RUN" : "TRY AGAIN"} <span>↗</span></button><button class="secondary" id="title">Main menu</button></div>`;
+            content.innerHTML = `<div class="eyebrow mono">FLOOR ${deck + 1} / VITAL SIGNAL LOST</div><h1>The station<br>keeps you.</h1><p class="intro">${player.floorsCompleted > runBestAtStart ? "New personal best. " : player.floorsCompleted > 0 && player.floorsCompleted === floorRecords[difficulty] ? "Personal best matched. " : ""}There is always another floor.<br>Your next run brings a new layout and a better-informed pilot.</p><div class="stat-row"><div><strong>${player.floorsCompleted.toLocaleString()}</strong><small>Floors completed</small></div><div><strong>${minutes}:${seconds}</strong><small>Run time</small></div><div><strong>${player.kills}</strong><small>Machines scrapped</small></div></div><div class="actions"><button class="primary" id="retry">TRY AGAIN <span>↗</span></button><button class="secondary" id="title">Main menu</button></div>`;
             $("retry").onclick = startRun;
             $("title").onclick = () => {
               deck = 0;
@@ -3494,16 +3569,10 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           }
           content.querySelector("button")?.focus({ preventScroll: true });
         }
-        function finish(won) {
-          if (won)
-            player.score +=
-              1500 + Math.max(0, Math.floor(900 - player.elapsed));
-          if (player.score > best) {
-            best = player.score;
-            save();
-          }
-          tone(won ? 523 : 100, 1, "sine", 0.22, won ? 1046 : 28);
-          menuScreen(won ? "victory" : "dead");
+        function finish() {
+          recordFloors();
+          tone(100, 1, "sine", 0.22, 28);
+          menuScreen("dead");
         }
         function showGuide() {
           if (mode === "playing") pause();
@@ -3646,13 +3715,11 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           if (e.health <= 0) {
             combo = gameTime - lastKill < 4 ? Math.min(4, combo + 1) : 1;
             lastKill = gameTime;
-            const award = e.reward * combo;
-            player.score += award;
             player.kills++;
             toast(
               combo > 1
-                ? `+${award} / ${combo}× SCRAP CHAIN`
-                : `+${award} / ${e.name.toUpperCase()} SCRAPPED`,
+                ? `${combo}× SCRAP CHAIN / ${e.name.toUpperCase()}`
+                : `${e.name.toUpperCase()} SCRAPPED`,
               1.5,
             );
             sparks(e.x, e.y, e.z, palette.orange, 24, 5);
@@ -3841,7 +3908,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           noise(0.15, 0.18, 800);
           tone(75, 0.2, "triangle", 0.16, 30);
           if (C.hurt(player, amount * (difficulty === "explorer" ? 0.5 : 1)))
-            finish(false);
+            finish();
         }
         function interact() {
           if (mode !== "playing" || mapOpen || !interaction) return;
@@ -3851,17 +3918,16 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               tone(120, 0.2, "square", 0.06);
               return;
             }
-            player.score += 500;
+            player.floorsCompleted++;
+            recordFloors();
             tone(330, 0.5, "sine", 0.15, 660);
-            if (deck === 2) finish(true);
-            else menuScreen("upgrade");
+            menuScreen("upgrade");
           } else if (interaction.type === "cache") {
             interaction.item.taken = true;
             player.caches++;
-            player.score += 150;
             player.reserve += 24;
             player.health = Math.min(player.maxHealth, player.health + 15);
-            toast("SALVAGE CACHE / +150 · +24 CELLS · +15 VITALS");
+            toast("SALVAGE CACHE / +24 CELLS · +15 VITALS");
             radio(terminalLogs[(player.caches - 1) % terminalLogs.length], 8);
             tone(660, 0.25, "sine", 0.14, 990);
           }
@@ -4347,8 +4413,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             Math.hypot(player.x - level.card.x, player.z - level.card.z) < 1.4
           ) {
             cardTaken = true;
-            player.score += 250;
-            toast("ACCESS CARD ACQUIRED / +250", 4);
+            toast("ACCESS CARD ACQUIRED / LIFT UNLOCKED", 4);
             radio("Access accepted. The lift is green. Time to go.", 5);
             tone(523, 0.15, "sine", 0.15, 1046);
             sparks(level.card.x, 1.2, level.card.z, palette.orange, 25, 4);
@@ -5357,6 +5422,8 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
         function updateHUD() {
           const fingerprint = [
             deck,
+            player.floorsCompleted,
+            floorRecords[difficulty],
             cardTaken,
             Math.ceil(player.health),
             Math.ceil(player.shield),
@@ -5371,14 +5438,11 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           if (fingerprint !== lastHud) {
             lastHud = fingerprint;
             $("deck-number").textContent = String(deck + 1).padStart(2, "0");
-            $("deck-name").textContent = deckNames[deck];
-            document
-              .querySelectorAll(".pips i")
-              .forEach((el, i) => el.classList.toggle("active", i <= deck));
+            $("deck-name").textContent = deckNames[deck % deckNames.length];
+            $("run-progress").textContent =
+              `${player.floorsCompleted} CLEARED / BEST ${floorRecords[difficulty]}`;
             $("objective").textContent = cardTaken
-              ? deck === 2
-                ? "Reach the shuttle lift"
-                : "Reach the transit lift"
+              ? "Reach the transit lift"
               : "Recover the deck access card";
             $("health-value").textContent = Math.ceil(player.health);
             $("shield-value").textContent = Math.ceil(player.shield);
@@ -5412,7 +5476,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
             $("emp-status").classList.toggle("charging", empTimer > 0);
             $("interact").hidden = !interaction;
             $("interact").innerHTML = interaction
-              ? `<kbd>${isTouch ? "USE" : "E"}</kbd> &nbsp; ${interaction.type === "cache" ? "Salvage crew cache" : cardTaken ? (deck === 2 ? "Board the escape shuttle" : "Take the lift") : "Lift locked · access card required"}`
+              ? `<kbd>${isTouch ? "USE" : "E"}</kbd> &nbsp; ${interaction.type === "cache" ? "Salvage crew cache" : cardTaken ? "Take the lift / next floor" : "Lift locked · access card required"}`
               : "";
           }
           $("toast").style.opacity = toastTimer > 0 ? "1" : "0";
@@ -5509,7 +5573,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           contextLost = true;
           pause();
           fail(
-            "The graphics connection was interrupted. Reconnect to start a fresh escape.",
+            "The graphics connection was interrupted. Reconnect to start a fresh run.",
           );
         });
         makeLevel(true);
