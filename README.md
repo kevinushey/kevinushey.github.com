@@ -57,7 +57,16 @@ The research and education background is retained from the original homepage.
 
 `img/kevin-ushey.jpg` is the personal photo Kevin supplied on September 7, 2026,
 resized to 1350 × 1800 and JPEG-compressed for the web, without retouching or
-generative edits. It replaces the earlier Posit headshot. CSS applies a circular
+generative edits. It replaces the earlier Posit headshot. The homepage loads
+`img/kevin-ushey-600.jpg`, a 600 × 800 progressive JPEG derivative with metadata
+removed (111,756 bytes, down from 1,043,922 bytes). This accommodates the 128px
+portrait at 3× pixel density, including its 152% CSS zoom. To regenerate it:
+
+```sh
+magick img/kevin-ushey.jpg -resize 600x800 -strip -interlace Plane -quality 80 img/kevin-ushey-600.jpg
+```
+
+CSS applies a circular
 head-and-shoulders crop while keeping the original photograph intact. The crop
 keeps his full head and some autumn background visible at every screen size;
 adjust `.portrait img` in `css/styles.css` to change the framing.
