@@ -32,8 +32,8 @@ Public details verified on September 7, 2026:
   co-author credit and contributions to rendering and website resources.
 - [Bluesky](https://bsky.app/profile/kevinushey.bsky.social): current social handle.
 - [LinkedIn](https://www.linkedin.com/in/kevin-ushey-33a35542): profile URL.
-- [UBC thesis record](https://open.library.ubc.ca/handle/2429/37068): replacement
-  for the old broken PDF link.
+- [Thesis DOI](https://dx.doi.org/10.14288/1.0072188): Kevin’s preferred
+  permanent link to the thesis.
 
 The research and education background is retained from the original homepage.
 
