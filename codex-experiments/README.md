@@ -23,6 +23,8 @@ frontal armor, and reflects incoming bolts. Cabinets and equipment cases block
 movement and attacks, with height-aware projectile collision.
 Furniture stays inside rooms and leaves full-width doorways, room-side
 approaches, and hallways clear.
+About 7% of ceiling lights have occasional, independently timed voltage dips.
+The tube and its cast light dim together; reduced motion keeps them steady.
 
 Six enemy classes have distinct silhouettes and behavior: patrol drones, heavy
 sentries, melee stalkers, strafing skimmers, spread-shot prism casters, and

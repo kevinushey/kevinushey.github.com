@@ -230,6 +230,35 @@ test("shields absorb damage before health and damage cannot make health negative
   assert.equal(p.health, 0);
 });
 
+test("faulty lights have sparse, independent voltage dips and stay steady with reduced motion", () => {
+  const lamp = { seed: 47, phase: 3.2, period: 12.5 },
+    other = { seed: 81, phase: 9.1, period: 17 };
+  let dips = 0,
+    minimum = 1,
+    different = false;
+  for (let step = 0; step < 6000; step++) {
+    const time = step / 100,
+      value = C.lightIntensity(lamp, time);
+    assert.ok(Number.isFinite(value) && value >= 0.049 && value <= 1);
+    assert.equal(
+      value,
+      C.lightIntensity(lamp, time),
+      "stable at the same simulation time",
+    );
+    assert.equal(C.lightIntensity(lamp, time, true), 1);
+    assert.equal(C.lightIntensity(null, time), 1);
+    if (value < 0.99) dips++;
+    minimum = Math.min(minimum, value);
+    if (value !== C.lightIntensity(other, time)) different = true;
+  }
+  assert.ok(minimum < 0.3, "a failing tube visibly dims");
+  assert.ok(
+    dips > 0 && dips < 600,
+    "most of the time the light remains steady",
+  );
+  assert.ok(different, "nearby faulty lamps do not blink in unison");
+});
+
 test("partial reload conserves ammo and resupply preserves upgrades", () => {
   const p = C.newPlayer();
   p.ammo = 20;
