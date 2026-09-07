@@ -3068,6 +3068,44 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           g.connect(master);
           source.start();
         }
+        function dashSound() {
+          if (!audio || muted) return;
+          const t = audio.currentTime,
+            duration = 0.28,
+            buffer = audio.createBuffer(
+              1,
+              Math.ceil(audio.sampleRate * duration),
+              audio.sampleRate,
+            ),
+            data = buffer.getChannelData(0);
+          for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+          const source = audio.createBufferSource(),
+            filter = audio.createBiquadFilter(),
+            gain = audio.createGain();
+          source.buffer = buffer;
+          // A quick ignition opens into an airy jet, then falls away with the boost.
+          filter.type = "bandpass";
+          filter.Q.value = 0.65;
+          filter.frequency.setValueAtTime(850, t);
+          filter.frequency.exponentialRampToValueAtTime(4800, t + 0.035);
+          filter.frequency.exponentialRampToValueAtTime(320, t + duration);
+          gain.gain.setValueAtTime(0.0001, t);
+          gain.gain.linearRampToValueAtTime(0.48, t + 0.008);
+          gain.gain.exponentialRampToValueAtTime(0.14, t + 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+          source.connect(filter);
+          filter.connect(gain);
+          gain.connect(master);
+          source.onended = () => {
+            source.disconnect();
+            filter.disconnect();
+            gain.disconnect();
+          };
+          source.start(t);
+          source.stop(t + duration);
+          tone(240, 0.14, "triangle", 0.17, 55);
+          tone(720, 0.17, "square", 0.055, 170);
+        }
         const deckNames = [
           "DOCKING RING",
           "RESEARCH WING",
@@ -4217,7 +4255,7 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
           if (mode !== "playing" || mapOpen || dashTimer > 0) return;
           dashTimer = player.dashMax;
           dashActive = 0.17;
-          tone(100, 0.2, "sine", 0.14, 260);
+          dashSound();
         }
         function damage(amount) {
           if (mode !== "playing") return;
