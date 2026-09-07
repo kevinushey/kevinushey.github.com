@@ -6,6 +6,11 @@ repository with `python3 -m http.server` and visit `/codex-experiments/game.html
 There is no build step, dependency, asset download, or network requirement.
 
 Recover a gold access card and reach the green lift on each procedural floor.
+The card activates a swirling transit portal. Walk through its opening from
+either side to leave the floor, or use E / the touch Use button nearby. A brief
+warp effect and sound lead into the upgrade screen. Reduced motion keeps the
+portal animation steady and uses a simple fade for transit. Crossing detection
+checks the entire movement segment, including dashes, and awards each floor once.
 There is no final floor: survive as long as you can. A lift counts one completed
 floor, then offers a permanent upgrade, restores health and shields, and supplies
 24 rounds up to your carry limit.

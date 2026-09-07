@@ -113,10 +113,10 @@ function campaign(initialSave = {}) {
       listen(windowListeners, type, callback),
   };
   sandbox.window = sandbox;
-  const exposed = `\nwindow.testGame = { startRun, update, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, robot, bladeMesh,
+  const exposed = `\nwindow.testGame = { startRun, update, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, robot, bladeMesh, portalMesh,
     get player() { return player; }, get level() { return level; }, get enemies() { return enemies; },
     get pickups() { return pickups; }, get bullets() { return bullets; },
-    get state() { return { mode, deck, cardTaken, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords }; },
+    get state() { return { mode, deck, cardTaken, portalCharge, transitTimer, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords }; },
     get interaction() { return interaction; }, set interaction(v) { interaction = v; },
     get keys() { return keys; }, toggleMap };\n})();`;
   vm.runInNewContext(
@@ -157,8 +157,9 @@ function campaign(initialSave = {}) {
     tick(seconds) {
       for (let i = 0; i < Math.ceil(seconds * 60); i++) {
         if (
-          sandbox.testGame.state.mode === "playing" &&
-          !sandbox.testGame.state.mapOpen
+          (sandbox.testGame.state.mode === "playing" &&
+            !sandbox.testGame.state.mapOpen) ||
+          sandbox.testGame.state.mode === "transit"
         )
           sandbox.testGame.update(1 / 60);
       }
@@ -684,6 +685,117 @@ test("focus loss cancels a pending Escape resume and late capture cannot steal a
   }
 });
 
+test("portal crossings use the swept opening, including reverse and diagonal movement", () => {
+  const portal = { x: 5, z: 8 };
+  for (const [from, to, expected] of [
+    [{ x: 5, z: 10 }, { x: 5, z: 6 }, true],
+    [{ x: 5, z: 6 }, { x: 5, z: 10 }, true],
+    [{ x: 4, z: 10 }, { x: 6, z: 6 }, true],
+    [{ x: 3, z: 10 }, { x: 5, z: 6 }, false],
+    [{ x: 5.8, z: 10 }, { x: 5.8, z: 6 }, false],
+    [{ x: 4, z: 8 }, { x: 6, z: 8 }, false],
+    [{ x: 5, z: 8 }, { x: 5, z: 8 }, false],
+    [{ x: 5, z: 8.1 }, { x: 5, z: 8.05 }, false],
+  ])
+    assert.equal(C.crossesPortal(from, to, portal), expected);
+});
+
+test("walking or dashing through an unlocked portal safely completes exactly one floor", () => {
+  for (const direction of [-1, 1])
+    for (const boost of [false, true]) {
+      const session = campaign(),
+        { game: g, tick, element } = session;
+      g.startRun();
+      g.enemies.forEach((e) => (e.health = 0));
+      Object.assign(g.player, g.level.card);
+      tick(0.05);
+      assert.equal(g.state.cardTaken, true);
+      g.player.x = g.level.exit.x;
+      g.player.z = g.level.exit.z + direction * 0.12;
+      g.player.yaw = direction === 1 ? 0 : Math.PI;
+      g.keys.add("KeyW");
+      if (boost) g.dash();
+      tick(0.05);
+      assert.equal(g.state.mode, "transit");
+      assert.equal(g.player.floorsCompleted, 1);
+      assert.equal(session.saved.floorRecords.standard, 1);
+      assert.equal(element("hud").hidden, true);
+      const health = g.player.health,
+        ammo = g.player.ammo;
+      g.damage(1e9);
+      g.fire();
+      g.interact();
+      assert.equal(
+        g.player.health,
+        health,
+        "transit is safe from incoming damage",
+      );
+      assert.equal(g.player.ammo, ammo);
+      assert.equal(g.player.floorsCompleted, 1);
+      tick(C.PORTAL.duration + 0.05);
+      assert.equal(g.state.mode, "upgrade");
+      element("upgrade-shield").onclick();
+      assert.equal(g.state.mode, "playing");
+      assert.equal(g.state.deck, 1);
+      assert.equal(g.state.cardTaken, false);
+      assert.equal(g.state.portalCharge, 0);
+      assert.equal(g.state.transitTimer, 0);
+      assert.equal(element("hud").hidden, false);
+    }
+});
+
+test("locked portals, standing nearby and passing beside the frame never clear a floor", () => {
+  const { game: g, tick } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  g.player.x = g.level.exit.x;
+  g.player.z = g.level.exit.z + 0.12;
+  g.player.yaw = 0;
+  g.keys.add("KeyW");
+  tick(0.1);
+  assert.equal(g.player.floorsCompleted, 0);
+  assert.equal(g.state.mode, "playing");
+  g.keys.clear();
+  Object.assign(g.player, g.level.card);
+  tick(0.05);
+  g.player.x = g.level.exit.x + 0.8;
+  g.player.z = g.level.exit.z + 0.12;
+  g.keys.add("KeyW");
+  tick(0.1);
+  assert.equal(g.player.floorsCompleted, 0);
+  g.keys.clear();
+  g.player.x = g.level.exit.x;
+  g.player.z = g.level.exit.z + 0.1;
+  tick(0.3);
+  assert.equal(g.state.mode, "playing");
+  g.toggleMap();
+  g.keys.add("KeyW");
+  tick(0.2);
+  assert.equal(g.player.floorsCompleted, 0);
+});
+
+test("portal meshes remain finite and reduced motion keeps their animation steady", () => {
+  for (const reduced of [false, true]) {
+    const { game: g, tick } = campaign({ reduced });
+    g.startRun();
+    g.enemies.forEach((e) => (e.health = 0));
+    for (const unlocked of [false, true]) {
+      if (unlocked) {
+        Object.assign(g.player, g.level.card);
+        tick(1);
+      }
+      const first = [],
+        later = [];
+      g.portalMesh(first, 1);
+      g.portalMesh(later, 4);
+      assert.ok(first.length > 0 && first.length % 12 === 0);
+      assert.ok(first.every(Number.isFinite) && later.every(Number.isFinite));
+      if (reduced) assert.deepEqual(first, later);
+      else if (unlocked) assert.notDeepEqual(first, later);
+    }
+  }
+});
+
 test("endless runs require each keycard, count each cleared floor once, and continue past floor three", () => {
   const session = campaign({ best: 98765, musicVolume: 0.3 }),
     { game: g, element, tick } = session;
@@ -731,6 +843,8 @@ test("endless runs require each keycard, count each cleared floor once, and cont
     g.player.z = g.level.exit.z;
     tick(0.05);
     g.interact();
+    assert.equal(g.state.mode, "transit");
+    tick(C.PORTAL.duration + 0.05);
     assert.equal(g.state.mode, "upgrade");
     assert.equal(g.player.floorsCompleted, deck + 1);
     g.interact();
