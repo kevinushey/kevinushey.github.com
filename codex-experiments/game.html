@@ -3570,21 +3570,65 @@ void main(){vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=lengt
               }
             }
           for (const room of level.rooms) {
-            const x = (room.cx + 0.5) * CELL,
-              z = (room.z + 0.05) * CELL;
-            sign(
-              out,
-              x,
-              room.index === 0 ? 3.15 : 2.48,
-              z + 0.09,
-              3.5,
-              room.index === 0 ? 0.42 : 0.82,
-              0,
-              0,
-            );
+            // Fit the board inside the actual recess, including the side posts.
+            let left = room.cx,
+              right = room.cx;
+            while (left > room.x && level.map[room.z][left - 1] === 0) left--;
+            while (
+              right < room.x + room.w - 1 &&
+              level.map[room.z][right + 1] === 0
+            )
+              right++;
+            const centerX = (room.cx + 0.5) * CELL,
+              w = Math.min(3.5, (right - left + 1) * CELL - 0.8),
+              x = clamp(
+                centerX,
+                left * CELL + 0.4 + w / 2,
+                (right + 1) * CELL - 0.4 - w / 2,
+              ),
+              z = room.z * CELL,
+              y = room.index === 0 ? 3.15 : 2.48,
+              h = ((room.index === 0 ? 0.42 : 0.82) * w) / 3.5,
+              top = y + h / 2 + 0.06;
+            // Posts extend 0.28 m into the room. Suspend the board ahead
+            // of them, with a recessed face and no coplanar backing surface.
+            box(out, x, y, z + 0.33, w + 0.12, h + 0.12, 0.04, palette.dark);
+            for (const s of [-1, 1]) {
+              box(
+                out,
+                x + s * w * 0.35,
+                (top + room.ceiling) / 2,
+                z + 0.43,
+                0.045,
+                room.ceiling - top,
+                0.045,
+                palette.trim,
+              );
+              box(
+                out,
+                x + s * (w / 2 + 0.03),
+                y,
+                z + 0.43,
+                0.06,
+                h + 0.12,
+                0.16,
+                palette.dark,
+              );
+              box(
+                out,
+                x,
+                y + s * (h / 2 + 0.03),
+                z + 0.43,
+                w,
+                0.06,
+                0.16,
+                palette.dark,
+              );
+            }
+            sign(out, x, y, z + 0.5, w, h, 0, 0);
             box(
               out,
-              x,
+              centerX,
               0.024,
               (room.cz + 0.5) * CELL,
               1.8,
