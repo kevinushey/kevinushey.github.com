@@ -1,100 +1,110 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kevin Ushey</title>
-<link href="bootstrap/css/bootstrap.min.css" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css"/>
-<link href="bootstrap/css/bootstrap-responsive.min.css" rel="stylesheet">
-<link href="FontAwesome/css/font-awesome.min.css" rel="stylesheet">
-</head>
-<body>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Kevin Ushey is a Principal Software Engineer at Posit, building open-source tools for R, reproducible research, and data science.">
+    <meta name="theme-color" content="#f8faff">
+    <title>Kevin Ushey — Software Engineer</title>
+    <link rel="canonical" href="https://kevinushey.github.io/">
+    <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="css/styles.css">
+  </head>
+  <body id="top">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header wrap">
+      <a class="wordmark" href="#top" aria-label="Kevin Ushey, home">ku<span>.</span></a>
+      <nav aria-label="Main navigation">
+        <a href="#work">Work</a>
+        <a href="#about">About</a>
+        <a href="#contact">Contact</a>
+        <a href="https://kevinushey.github.io/blog/">Blog <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
 
-<!-- nav bar -->
-<div class="navbar navbar-inverse navbar-fixed-top">
-	<div class="navbar-inner">
-		<div class="container">
-			<button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
-				<span class="icon-bar"></span>
-				<span class="icon-bar"></span>
-				<span class="icon-bar"></span>
-			</button>
-			<a class="brand" href="#">Kevin Ushey</a>
-			<div class="nav-collapse collapse">
-				<ul class="nav">
-					<li class="active"><a href="#">Home</a></li>
-					<li><a href="#about">About</a></li>
-					<li><a href="#contact">Contact</a></li>
-					<li><a href="blog">Blog</a></li>
-				</ul>
-			</div><!--/.nav-collapse -->
-		</div>
-	</div>
-</div>
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="intro-heading">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Software engineer &amp; tool builder</p>
+          <h1 id="intro-heading">Kevin<br> Ushey<span>.</span></h1>
+          <p class="intro">I build open-source tools for people who work with data.</p>
+          <p class="current-role">Principal Software Engineer at <a href="https://posit.co/">Posit</a>.<br>Making research more reproducible, and software more useful.</p>
+          <div class="hero-links">
+            <a class="button" href="#work">Explore my work <span aria-hidden="true">↓</span></a>
+            <a class="text-link" href="https://github.com/kevinushey">Find me on GitHub <span aria-hidden="true">↗</span></a>
+          </div>
+        </div>
+        <figure class="portrait">
+          <div class="portrait-frame">
+            <img src="img/kevin-ushey.png" width="512" height="512" alt="Kevin Ushey" fetchpriority="high">
+          </div>
+          <figcaption><span class="caption-rule" aria-hidden="true"></span> A statistician by training. A tool builder at heart.</figcaption>
+        </figure>
+      </section>
 
-<div class="container" id="main">
-	<div class="row">
+      <section class="work-section wrap section" id="work" aria-labelledby="work-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Selected work</p>
+            <h2 id="work-heading">Better tools. Better workflows.</h2>
+          </div>
+          <p>Some of the open-source projects<br class="desktop-break"> I help build at Posit.</p>
+        </div>
+        <div class="project-list">
+          <a class="project" href="https://rstudio.github.io/renv/">
+            <span class="project-number" aria-hidden="true">01</span>
+            <div class="project-name"><h3>renv</h3><span>Author &amp; maintainer</span></div>
+            <p>Reproducible environments for R. Capture your package dependencies and restore them wherever your work takes you.</p>
+            <span class="project-arrow" aria-hidden="true">↗</span>
+          </a>
+          <a class="project" href="https://posit.co/products/open-source/rstudio/">
+            <span class="project-number" aria-hidden="true">02</span>
+            <div class="project-name"><h3>RStudio IDE</h3><span>Developer tools</span></div>
+            <p>An environment for writing code, exploring data, and sharing results. Helping make everyday R development a little better.</p>
+            <span class="project-arrow" aria-hidden="true">↗</span>
+          </a>
+          <a class="project" href="https://rstudio.github.io/reticulate/">
+            <span class="project-number" aria-hidden="true">03</span>
+            <div class="project-name"><h3>reticulate</h3><span>Co-author</span></div>
+            <p>Bringing R and Python together. Use Python libraries, exchange data, and combine both languages in one workflow.</p>
+            <span class="project-arrow" aria-hidden="true">↗</span>
+          </a>
+        </div>
+        <a class="text-link more-projects" href="https://github.com/kevinushey?tab=repositories">More projects on GitHub <span aria-hidden="true">↗</span></a>
+      </section>
 
-		<!-- left part of page -->
-		<div class="span8">
-			<h1>Kevin Ushey</h1>
-			<p class="lead">Software Engineer</p>
-			<div id="about">
+      <section class="about-section wrap section" id="about" aria-labelledby="about-heading">
+        <div>
+          <p class="eyebrow">A little background</p>
+          <h2 id="about-heading">From statistics<br> to software.</h2>
+        </div>
+        <div class="about-copy">
+          <p class="about-lead">I like building tools that help researchers and scientists answer the questions they care about.</p>
+          <p>At <a href="https://posit.co/">Posit</a>, formerly RStudio, I work on open-source software for data science, from development tools to package management and reproducible R environments.</p>
+          <p>Before that, I was a statistical programmer in the <a href="https://www.rglab.org/">Gottardo Lab</a> at <a href="https://www.fredhutch.org/">Fred Hutchinson Cancer Research Center</a>.</p>
+          <p>I earned my MSc in Statistics at the University of British Columbia, working with <a href="https://jennybryan.org/">Jenny Bryan</a>. My research explored gene–gene and gene–drug interactions in yeast growth curves.</p>
+          <a class="text-link" href="https://open.library.ubc.ca/handle/2429/37068">Read my MSc thesis <span aria-hidden="true">↗</span></a>
+        </div>
+      </section>
 
-				<h2>About Me</h2>
-				<p>
-					I am a software engineer at <a href="http://www.rstudio.com">RStudio</a>, and previously worked as
-					as a statistical programmer at the <a href="http://www.rglab.org/">rglab</a>
-					within the <a href="http://www.fhcrc.org/en.html">Fred Hutchinson Cancer Research Center</a>.
-					I am a tool builder -- I enjoy developing computational tools that help researchers and scientists
-					to achieve their analytic goals.
-				</p>
-				<p>
-					I completed an MSc in Statistics at the University of British Columbia, under the supervision of
-					<a href="http://www.stat.ubc.ca/~jenny/">Jenny Bryan</a>. My
-					<a href="https://circle.ubc.ca/bitstream/id/132997/ubc_2011_fall_ushey_kevin.pdf">thesis</a> (PDF)
-					involved the study of gene-gene and gene-Rx interaction effects, and statistical assessment of these
-					epistatic effects in yeast growth curves.
-				</p>
-			</div>
+      <section class="contact-section" id="contact" aria-labelledby="contact-heading">
+        <div class="contact-inner wrap">
+          <div>
+            <p class="eyebrow">Elsewhere on the internet</p>
+            <h2 id="contact-heading">Let’s connect<span>.</span></h2>
+          </div>
+          <div class="social-links">
+            <a href="https://bsky.app/profile/kevinushey.bsky.social" rel="me"><span>Bluesky<small>@kevinushey.bsky.social</small></span><span aria-hidden="true">↗</span></a>
+            <a href="https://github.com/kevinushey" rel="me"><span>GitHub<small>@kevinushey</small></span><span aria-hidden="true">↗</span></a>
+            <a href="https://www.linkedin.com/in/kevin-ushey-33a35542" rel="me"><span>LinkedIn<small>Kevin Ushey</small></span><span aria-hidden="true">↗</span></a>
+          </div>
+        </div>
+      </section>
+    </main>
 
-			<div id="contact">
-
-				<h2>Contact</h2>
-				<ul class="unstyled">
-					<li>
-						<i class="icon-twitter"></i><strong> Twitter: </strong> <a href="https://twitter.com/kevin_ushey">@kevin_ushey</a>
-					</li>
-					<li>
-						<i class="icon-github"></i><strong> GitHub: </strong> <a href="http://www.github.com/kevinushey">github.com/kevinushey</a>
-					</li>
-					<li>
-						<i class="icon-linkedin-sign"></i><strong> LinkedIn: </strong> <a href="http://www.linkedin.com/pub/kevin-ushey/42/355/33a">linkedin.com/kevin-ushey</a>
-					</li>
-				</ul>
-			</div>
-
-		</div>
-		<!-- right part of page -->
-		<div class="hidden-phone">
-
-			<div class="span4">
-				<img style="float: right;" src="img/kevin.jpg">
-			</div>
-		</div>
-
-	</div>
-	<!-- footer -->
-	<div class="modal-footer">
-		<p>
-			Designed with <a href="http://twitter.github.com/bootstrap/">Twitter Bootstrap</a>.
-			Hosted on <a href="https://github.com/kevinushey/kevinushey.github.com">GitHub pages</a>.
-			Icons from <a href="http://fortawesome.github.com/Font-Awesome/">Font Awesome</a>.
-		</p>
-	</div>
-</div>
-
-<script type="text/javascript" src="js/jquery-1.9.1.min.js"></script>
-<script type="text/javascript" src="bootstrap/js/bootstrap.min.js"></script>
-</body>
+    <footer class="site-footer wrap">
+      <p>Kevin Ushey</p>
+      <div><a href="https://kevinushey.github.io/blog/">Notes on R &amp; C++ <span aria-hidden="true">↗</span></a><a href="https://github.com/kevinushey/kevinushey.github.com">View source <span aria-hidden="true">↗</span></a></div>
+    </footer>
+  </body>
 </html>

@@ -1,0 +1,43 @@
+# Kevin Ushey’s website
+
+A static personal website, served directly by GitHub Pages. The homepage uses
+semantic HTML and responsive CSS with system fonts; it needs no JavaScript or
+external UI libraries. The older bundled libraries remain available for existing
+URLs, but the homepage no longer loads them.
+
+## Preview and build
+
+Run `python3 -m http.server 4173 --bind 127.0.0.1` from this directory and open
+<http://127.0.0.1:4173/>.
+
+GitHub Pages can continue serving the repository as before. For the separate
+private Sites preview, `python3 scripts/build.py` stages the static public files
+in `dist/`. The build does not change the source files. `.openai/hosting.json`
+identifies that preview and its static output directory.
+
+The blog is a separate GitHub Pages project, so its links are absolute to keep
+them working both on GitHub Pages and in the private preview.
+
+## Content and image sources
+
+Public details verified on September 7, 2026:
+
+- [Posit profile](https://opensource.posit.co/people/kevin-ushey/): Principal
+  Software Engineer title and RStudio work.
+- [renv](https://rstudio.github.io/renv/): author and maintainer credit.
+- [reticulate authors](https://rstudio.github.io/reticulate/authors.html): co-author
+  credit.
+- [Bluesky](https://bsky.app/profile/kevinushey.bsky.social): current social handle.
+- [LinkedIn](https://www.linkedin.com/in/kevin-ushey-33a35542): profile URL.
+- [UBC thesis record](https://open.library.ubc.ca/handle/2429/37068): replacement
+  for the old broken PDF link.
+
+The research and education background is retained from the original homepage.
+
+`img/kevin-ushey.png` is the unmodified 512 × 512 headshot currently published on
+the [official Posit profile](https://opensource.posit.co/people/kevin-ushey/),
+downloaded from
+<https://opensource.posit.co/people/kevin-ushey/kevin-ushey.png>.
+The photograph’s capture date is unknown. The identical file is available in
+[Posit’s source repository](https://github.com/posit-dev/open-source-website/blob/main/content/people/kevin-ushey/kevin-ushey.png),
+whose MIT license is preserved in `img/kevin-ushey.LICENSE.txt`.
