@@ -34,10 +34,9 @@ Public details verified on September 7, 2026:
 
 The research and education background is retained from the original homepage.
 
-`img/kevin-ushey.png` is the unmodified 512 × 512 headshot currently published on
-the [official Posit profile](https://opensource.posit.co/people/kevin-ushey/),
-downloaded from
-<https://opensource.posit.co/people/kevin-ushey/kevin-ushey.png>.
-The photograph’s capture date is unknown. The identical file is available in
-[Posit’s source repository](https://github.com/posit-dev/open-source-website/blob/main/content/people/kevin-ushey/kevin-ushey.png),
-whose MIT license is preserved in `img/kevin-ushey.LICENSE.txt`.
+`img/kevin-ushey.jpg` is the personal photo Kevin supplied on September 7, 2026,
+resized to 1350 × 1800 and JPEG-compressed for the web, without retouching or
+generative edits. It replaces the earlier Posit headshot. CSS applies a square
+head-and-shoulders crop while keeping the original photograph intact. The crop
+keeps his full head and some autumn background visible at every screen size;
+adjust `.portrait img` in `css/styles.css` to change the framing.
