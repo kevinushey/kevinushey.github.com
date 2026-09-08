@@ -113,7 +113,7 @@ function campaign(initialSave = {}) {
       listen(windowListeners, type, callback),
   };
   sandbox.window = sandbox;
-  const exposed = `\nwindow.testGame = { startRun, update, updatePressure, updateGuardian, moveGuardian, portalReady, guardianCrest, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, spawnerHit, breachMesh, robot, bladeMesh, portalMesh, sceneLights, lightBurst,
+  const exposed = `\nwindow.testGame = { startRun, update, updatePressure, updateGuardian, moveGuardian, portalReady, guardianCrest, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, spawnerHit, breachMesh, robot, staffMesh, portalMesh, sceneLights, lightBurst, staffPose, staffTransform,
     projectWaypoint, updateWaypoint, perspective, view, multiply, render, frame,
     get currentVP() { return currentVP; },
     get player() { return player; }, get level() { return level; }, get enemies() { return enemies; },
@@ -1349,7 +1349,7 @@ test("bulwark armor resists frontal rifle fire and has flank, EMP and blade coun
   assert.equal(C.enemyDamage(e, 100, { x: 0, z: 2 }), 100);
 });
 
-test("the blade chains two cuts into a stronger finisher, then resets after a pause", () => {
+test("the staff chains two strikes into a stronger finisher, then resets after a pause", () => {
   const { game: g, tick } = campaign();
   g.startRun();
   g.enemies.forEach((e) => (e.health = 0));
@@ -1432,41 +1432,50 @@ test("blade contact fires once, pauses during wind-up, and cancels when switchin
   }
 });
 
-test("cutlass swings extend forward with finite geometry, unit normals and camera clearance", () => {
-  const { game: g, tick } = campaign({ reduced: false });
-  g.startRun();
-  g.enemies.forEach((e) => (e.health = 0));
-  g.player.weapon = 1;
-  const idle = g.bladeMesh(2);
-  const depth = (mesh) => {
-    let z = 0;
-    for (let i = 2; i < mesh.length; i += 12) z = Math.min(z, mesh[i]);
-    return z;
-  };
-  for (let step = 0; step < 3; step++) {
-    g.fire();
-    let furthest = 0;
-    while (g.state.bladeTimer > 0) {
-      tick(1 / 60);
-      const mesh = g.bladeMesh(2);
-      assert.ok(mesh.every(Number.isFinite));
-      furthest = Math.min(furthest, depth(mesh));
-      for (let i = 0; i < mesh.length; i += 12) {
+test("staff swings extend forward with finite geometry, unit normals and camera clearance", () => {
+  for (const [w, h] of [
+    [1280, 720],
+    [390, 680],
+  ]) {
+    for (const reduced of [false, true]) {
+      const harness = campaign({ reduced }),
+        { game: g, tick } = harness;
+      harness.viewport(w, h);
+      g.startRun();
+      g.enemies.forEach((e) => (e.health = 0));
+      g.player.weapon = 1;
+      const idle = g.staffMesh(2);
+      const depth = (mesh) => {
+        let z = 0;
+        for (let i = 2; i < mesh.length; i += 12) z = Math.min(z, mesh[i]);
+        return z;
+      };
+      for (let step = 0; step < 3; step++) {
+        g.fire();
+        let furthest = 0;
+        while (g.state.bladeTimer > 0) {
+          tick(1 / 60);
+          const mesh = g.staffMesh(2);
+          assert.ok(mesh.every(Number.isFinite));
+          furthest = Math.min(furthest, depth(mesh));
+          for (let i = 0; i < mesh.length; i += 12) {
+            assert.ok(
+              mesh[i + 2] < -0.04,
+              "weapon stays in front of the camera near plane",
+            );
+            assert.ok(
+              Math.abs(Math.hypot(mesh[i + 3], mesh[i + 4], mesh[i + 5]) - 1) <
+                1e-8,
+              "3D transforms preserve lighting normals",
+            );
+          }
+        }
         assert.ok(
-          mesh[i + 2] < -0.04,
-          "weapon stays in front of the camera near plane",
-        );
-        assert.ok(
-          Math.abs(Math.hypot(mesh[i + 3], mesh[i + 4], mesh[i + 5]) - 1) <
-            1e-8,
-          "3D transforms preserve lighting normals",
+          furthest < depth(idle) - (reduced ? 0.15 : 0.6),
+          "each strike reaches forward instead of only rotating on screen",
         );
       }
     }
-    assert.ok(
-      furthest < depth(idle) - 0.6,
-      "each cut reaches forward instead of only rotating on screen",
-    );
   }
 });
 
@@ -1540,7 +1549,7 @@ test("prism casters fire three distinct directions after a telegraphed windup", 
   assert.equal(new Set(g.bullets.map((b) => b.dz.toFixed(4))).size, 3);
 });
 
-test("all six enemy models and every cutlass combo pose produce finite geometry", () => {
+test("all six enemy models and every staff combo pose produce finite geometry", () => {
   const { game: g, tick } = campaign();
   g.startRun();
   g.enemies.forEach((e) => (e.health = 0));
@@ -1569,7 +1578,7 @@ test("all six enemy models and every cutlass combo pose produce finite geometry"
     g.fire();
     for (let j = 0; j < 3; j++) {
       tick(0.1);
-      const mesh = g.bladeMesh(2);
+      const mesh = g.staffMesh(2);
       assert.ok(mesh.length > 0 && mesh.length % 12 === 0);
       assert.ok(mesh.every(Number.isFinite));
     }
@@ -1809,7 +1818,7 @@ test("a completed contract grants exactly two upgrade choices, then resets on th
   assert.equal(g.state.upgradePicks, 0);
 });
 
-test("cutlass contracts count lethal blade strikes and arc upgrades increase their damage", () => {
+test("staff contracts count lethal staff strikes and arc upgrades increase their damage", () => {
   const { game: g, tick } = campaign();
   g.startRun();
   Object.assign(g.state.contract, {
@@ -2228,7 +2237,7 @@ function stageBreach(g) {
   return node;
 }
 
-test("rifle, timed cutlass, and reflected bolts destroy nodes without awarding enemy kills", () => {
+test("rifle, timed staff, and reflected bolts destroy nodes without awarding enemy kills", () => {
   for (const weapon of ["rifle", "blade", "reflected"]) {
     const { game: g, tick, element } = campaign(),
       node = stageBreach(g);
@@ -2538,7 +2547,7 @@ test("Bastion armor opens during attacks and recovery, while EMP interrupts all 
   }
 });
 
-test("guardians resist cutlass stagger, but cuts and returned projectiles still damage them", () => {
+test("guardians resist staff stagger, but strikes and returned projectiles still damage them", () => {
   const { game: g, tick } = guardianArena("bastion"),
     boss = g.guardian;
   Object.assign(g.player, { x: 13.5, z: 12, weapon: 1 });
@@ -3005,4 +3014,36 @@ test("objective waypoints fade smoothly on approach and immediately select card,
   g.frame(1000);
   assert.match(element("waypoint-label").textContent, /^CARD · /);
   assert.equal(element("waypoint").style.color, "#ffad66");
+});
+
+test("staff strikes alternate impact heads and keep the finisher a wide horizontal sweep", () => {
+  const { game: g } = campaign();
+  const head = (step, progress, end) =>
+    g.staffTransform(g.staffPose(step, progress, false), 0, end * 1.335, 0);
+  for (const [step, end] of [
+    [0, 1],
+    [1, -1],
+  ]) {
+    const tip = head(step, 0.42, end),
+      butt = head(step, 0.42, -end);
+    assert.ok(
+      tip[2] < butt[2] - 1.5,
+      "the correct impact head leads into the strike",
+    );
+    assert.ok(tip[2] < -2.4, "contact extends forward into the fight");
+    assert.ok(
+      Math.abs(tip[0]) < 0.3 && Math.abs(tip[1]) < 0.25,
+      "the striking end travels toward the aim point",
+    );
+  }
+  const start = head(2, 0.2, 1),
+    finish = head(2, 0.64, 1);
+  assert.ok(
+    start[0] > 1 && finish[0] < -1,
+    "the finisher crosses from right to left",
+  );
+  assert.ok(
+    Math.abs(start[1] - finish[1]) < 0.05,
+    "the sweep stays level instead of chopping downward",
+  );
 });

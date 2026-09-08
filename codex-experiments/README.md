@@ -34,20 +34,20 @@ health, adding projectiles or faster charges, and scale with floor difficulty
 and lockdown. Their distinct crowns, weapons, and colors identify each form.
 
 Boss fights have a dedicated health bar, attack warnings, combat music, and a
-red seal across the portal. Guardians resist cutlass stagger; EMP interrupts
-them for 1.4 seconds, and cutlass hits and reflected bolts bypass frontal armor.
+red seal across the portal. Guardians resist staff stagger; EMP interrupts
+them for 1.4 seconds, and staff hits and reflected bolts bypass frontal armor.
 They stay in their lift room, respect walls and furniture, and never heal when
 you retreat. Defeat releases the seal, but the gold card is still required.
 The card and boss can be handled in either order. Walking, dashing, and Use all
 check both conditions. Bosses award one kill and contract progress; the score
 still increases only when you complete the floor.
 
-Each floor also offers an optional contract: scrap a squad, earn cutlass kills,
+Each floor also offers an optional contract: scrap a squad, earn staff kills,
 or salvage two crew caches. Progress appears below the main objective. Finish
 the contract to earn two permanent upgrade choices at the lift instead of one;
 you can always leave without completing it. The lift report shows floor time,
 machines scrapped, and contract progress. **Arc welder** adds 12 damage to each
-cut and 16 damage to reflected bolts, alongside the rifle, armor, and ability
+strike and 16 damage to reflected bolts, alongside the rifle, armor, and ability
 upgrades. Contracts and their rewards reset each floor; upgrades last for the run.
 
 **Floor lockdown:** A visible countdown gives you one minute per floor in both
@@ -98,14 +98,16 @@ Room orientations and connections vary by seed. Ceilings range from 3.6 to
 provide cover and flanking routes; enemies, supplies, and objectives occupy
 separate clear floor tiles. Furniture also keeps narrow interior aisles clear.
 
-Collect supplies and scrap hostile machines. The Storm Cutlass chains a diagonal
-cut, a returning backhand, and a wide horizontal finisher, with a visible gauntlet and
-forearm driving each swing forward. Wind-up, contact, and follow-through have
-distinct poses; the edge trail follows the blade. Damage, sound, and bolt parries
-occur at contact, after the short wind-up. Switching weapons cancels a pending
-cut. Reduced motion uses a small forward gesture with the same combat timing.
-The blade ignores frontal armor and reflects incoming bolts. Cabinets and equipment cases block
-movement and attacks, with height-aware projectile collision.
+Collect supplies and scrap hostile machines. The Arc Staff has a long reinforced
+shaft, two wrapped grips, and charged impact heads at both ends. Two gauntlets
+and forearms drive a forehand strike, a returning butt-end strike, and a wide
+horizontal finisher. Wind-up, contact, and follow-through have distinct poses;
+both charged ends leave short energy trails, turning violet on the finisher.
+Damage, impact sound, and bolt parries occur at contact, after the short wind-up.
+Switching weapons cancels a pending strike. Reduced motion uses a small forward
+jab with the same combat timing. The staff bypasses frontal armor and reflects
+incoming bolts. Cabinets and equipment cases block movement and attacks, with
+height-aware projectile collision.
 Furniture stays inside rooms and leaves full-width doorways, room-side
 approaches, and hallways clear.
 Wall clearance keeps the camera outside protruding consoles and structural
@@ -117,14 +119,14 @@ Six enemy classes have distinct silhouettes and behavior: patrol drones, heavy
 sentries, melee stalkers, strafing skimmers, spread-shot prism casters, and
 bulwarks with frontal armor. Seeded traits vary size, health, speed, damage, and
 firing cadence. Swift, reinforced, and overclocked variants have visible accents
-and tradeoffs. Flank bulwarks, stun them with EMP, or use the blade.
+and tradeoffs. Flank bulwarks, stun them with EMP, or use the staff.
 
 Explorer mode reduces incoming damage. The field guide contains
 controls, sensitivity, and reduced-motion settings.
 
 - **Move:** WASD or up/down arrows; Shift to sprint; Space to dash.
 - **Look:** mouse; drag if mouse capture is unavailable; left/right arrows.
-- **Combat:** click or J to fire; R to reload; 1/2 to switch blade/rifle.
+- **Combat:** click or J to fire; R to reload; 1/2 to switch staff/rifle.
 - **EMP:** F or right click. Stuns nearby visible enemies and clears nearby bolts.
 - **Interact:** E. Gold cards and supplies are collected on contact.
 - **Map:** M or click/tap the radar. **Pause:** Escape, P, or the pause button.
@@ -145,12 +147,12 @@ when the page is hidden.
 
 The headlamp has a broad spill and a brighter central beam, with subtle metallic
 highlights and restrained bloom. Soft contact shadows ground enemies on the
-floor. Explosions, muzzle flashes, impacts, bolts, EMP, and the cutlass cast
+floor. Explosions, muzzle flashes, impacts, bolts, EMP, and the staff cast
 colored light onto nearby surfaces. Fixture lights have reserved slots so
 passing bolts do not displace them, and wall checks reject sources behind solid
 walls relative to the viewer. These are local light effects and contact shadows,
 not full shadow mapping. Transient lights have a fixed budget and expire; reduced
-motion disables their flashes while keeping steady blade and projectile glow.
+motion disables their flashes while keeping steady staff and projectile glow.
 
 Destroyed enemies burst with a layered blast, low thump, and metallic crackle.
 Heavy machines have deeper explosions; pitch varies between kills, and sounds
@@ -178,7 +180,7 @@ node --test codex-experiments/game.test.cjs
 Tests cover varied room silhouettes and heights, clear and separate spawns,
 300 generated decks and furnished routes, full-width passage
 clearance for players and enemies, cabinet collision and
-cover, ammo, shields, EMP, cutlass combos and parries, enemy traits and attacks,
+cover, ammo, shields, EMP, staff combos and parries, enemy traits and attacks,
 finite model geometry, music scheduling and voice cleanup, pause, death/retry,
 and repeated floor transitions beyond the old ending, record persistence,
 difficulty scaling, and valid spawns including floor 10,000. The
@@ -186,7 +188,7 @@ controller tests stub the browser platform; visual and input checks require a
 real browser.
 
 Additional tests cover achievable contracts, exactly-once rewards, two-stage
-fabrication, cutlass upgrades, bounded light effects, four complete soundtracks,
+fabrication, staff upgrades, bounded light effects, four complete soundtracks,
 and track changes and cleanup. Browser checks include portrait/landscape menus,
 native Web Audio rendering, and the lighting shaders.
 
@@ -198,5 +200,5 @@ ammo farming prevention, and finite visual geometry with reduced motion.
 
 Guardian tests cover 600 generated arenas including late floors, rotating forms,
 telegraphed volleys and dodgable rushes, half-health phases, armor openings,
-EMP interruption, cutlass and reflected-bolt damage, collision and arena limits,
+EMP interruption, staff and reflected-bolt damage, collision and arena limits,
 both portal-unlock orders, pause/reset behavior, and finite boss geometry.

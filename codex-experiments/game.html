@@ -1687,7 +1687,13 @@
         The pulse rifle holds 24 rounds; your suit carries at most two spare
         magazines (48 rounds), for 72 total. Start with one spare. Each lift
         supplies just 24 rounds. Ammo is scarce: check side rooms, conserve
-        shots, and use the cutlass. Excess pickup ammo stays on the floor.
+        shots, and use the staff. Excess pickup ammo stays on the floor.
+      </p>
+      <p>
+        The double-ended Arc Staff chains a forehand strike, a returning
+        butt-end strike, and a wide sideways finisher. Both charged heads can
+        deflect bolts. Time your swings to reflect shots, and use the heavy
+        third hit to stagger ordinary machines.
       </p>
       <p>
         Each floor locks down after one minute. Every 30 seconds after that,
@@ -1698,7 +1704,7 @@
       <p>
         Two violet breach nodes manufacture reinforcements throughout each
         floor, faster during lockdown. A glowing marker warns you before a
-        machine arrives. Shoot or slash the floating energy core to seal a
+        machine arrives. Shoot or strike the floating energy core to seal a
         breach permanently; EMP cancels its current spawn and disables it for
         eight seconds. These projections and their floor pads are passable.
         Spawned machines carry no spare ammo. Sealing breaches is optional; it
@@ -1709,16 +1715,16 @@
         armor to fire paired cannon bolts, the Prism Sovereign casts wide
         volleys you can dodge or parry, and the Rift Reaver charges along a
         telegraphed line. All become more dangerous below half health and
-        strengthen during lockdown. Guardians resist blade stagger, but EMP
+        strengthen during lockdown. Guardians resist staff stagger, but EMP
         interrupts their attacks for 1.4 seconds. They stay in the lift room and
         retain damage if you retreat. Defeating one releases the portal seal;
         you still need the access card.
       </p>
       <p>
-        Each floor has an optional contract: scrap machines, land cutlass kills,
+        Each floor has an optional contract: scrap machines, land staff kills,
         or salvage crew caches. Complete it for a second permanent upgrade at
         the lift. You can leave without it at any time. Arc welder upgrades your
-        blade and reflected bolts; choose a build that suits your run.
+        staff and reflected bolts; choose a build that suits your run.
       </p>
       <div class="control-grid">
         <div>
@@ -1732,7 +1738,7 @@
           <span>Fire weapon</span><span>Click / <kbd>J</kbd></span>
         </div>
         <div><span>Reload</span><kbd>R</kbd></div>
-        <div><span>Arc blade / pulse rifle</span><kbd>1 / 2</kbd></div>
+        <div><span>Arc staff / pulse rifle</span><kbd>1 / 2</kbd></div>
         <div><span>Dash</span><kbd>SPACE</kbd></div>
         <div>
           <span>EMP pulse</span><span><kbd>F</kbd> / Right click</span>
@@ -2361,7 +2367,7 @@
               kind === "caches"
                 ? "Salvage crew caches"
                 : kind === "blade"
-                  ? "Scrap machines with the cutlass"
+                  ? "Scrap machines with the staff"
                   : "Scrap hostile machines",
             progress: 0,
             completed: false,
@@ -5381,7 +5387,7 @@ gl_FragColor=vec4(col,1.);}`;
             const pulseMaxed = player.empMax <= 4 && player.dashMax <= 0.8,
               choiceRound = upgradePicks,
               floorTime = `${Math.floor(floorStats.seconds / 60)}:${String(Math.floor(floorStats.seconds % 60)).padStart(2, "0")}`;
-            content.innerHTML = `<div class="eyebrow mono">${player.floorsCompleted} FLOORS CLEARED / FLOOR ${deck + 2} AWAITS</div><h1>${contract.completed && upgradePicks === 1 ? "One more<br>advantage." : "A little more<br>dangerous."}</h1><div class="floor-report mono"><span>${floorTime} ON FLOOR</span><span>${floorStats.kills} SCRAPPED</span><span class="${contract.completed ? "secured" : ""}">${contract.completed ? "CONTRACT SECURED" : `CONTRACT ${contract.progress}/${contract.target}`}</span></div><p class="intro">${upgradePicks === 2 ? "Contract reward: choose TWO permanent upgrades, one at a time." : contract.completed ? "Bonus fabrication: choose your second permanent upgrade." : "Choose one permanent upgrade. Side contracts unlock a second."}<br>Full health & shields · +24 rounds up to your carry limit.</p><div class="upgrade-grid"><button class="upgrade" data-upgrade="damage"><span class="symbol">↯</span><strong>Hotwired</strong><small>+10 rifle damage.<br>${player.fireRate > 0.065 ? "Up to 10% faster fire rate." : "Fire rate fully tuned."}<br>Make every shot count.</small></button><button class="upgrade" data-upgrade="shield"><span class="symbol">◈</span><strong>Second skin</strong><small>+35 maximum shield.<br>+25 maximum health.<br>A little room for error.</small></button><button class="upgrade" data-upgrade="pulse" ${pulseMaxed ? "disabled" : ""}><span class="symbol">◎</span><strong>Short circuit</strong><small>${pulseMaxed ? "Fully tuned.<br>Choose another upgrade." : "Up to 45% faster EMP recharge.<br>Up to 30% faster dash recharge.<br>Keep the upper hand."}</small></button><button class="upgrade" data-upgrade="blade"><span class="symbol">⟋</span><strong>Arc welder</strong><small>+12 damage to every cut.<br>+16 reflected bolt damage.<br>Turn pressure into power.</small></button></div>`;
+            content.innerHTML = `<div class="eyebrow mono">${player.floorsCompleted} FLOORS CLEARED / FLOOR ${deck + 2} AWAITS</div><h1>${contract.completed && upgradePicks === 1 ? "One more<br>advantage." : "A little more<br>dangerous."}</h1><div class="floor-report mono"><span>${floorTime} ON FLOOR</span><span>${floorStats.kills} SCRAPPED</span><span class="${contract.completed ? "secured" : ""}">${contract.completed ? "CONTRACT SECURED" : `CONTRACT ${contract.progress}/${contract.target}`}</span></div><p class="intro">${upgradePicks === 2 ? "Contract reward: choose TWO permanent upgrades, one at a time." : contract.completed ? "Bonus fabrication: choose your second permanent upgrade." : "Choose one permanent upgrade. Side contracts unlock a second."}<br>Full health & shields · +24 rounds up to your carry limit.</p><div class="upgrade-grid"><button class="upgrade" data-upgrade="damage"><span class="symbol">↯</span><strong>Hotwired</strong><small>+10 rifle damage.<br>${player.fireRate > 0.065 ? "Up to 10% faster fire rate." : "Fire rate fully tuned."}<br>Make every shot count.</small></button><button class="upgrade" data-upgrade="shield"><span class="symbol">◈</span><strong>Second skin</strong><small>+35 maximum shield.<br>+25 maximum health.<br>A little room for error.</small></button><button class="upgrade" data-upgrade="pulse" ${pulseMaxed ? "disabled" : ""}><span class="symbol">◎</span><strong>Short circuit</strong><small>${pulseMaxed ? "Fully tuned.<br>Choose another upgrade." : "Up to 45% faster EMP recharge.<br>Up to 30% faster dash recharge.<br>Keep the upper hand."}</small></button><button class="upgrade" data-upgrade="blade"><span class="symbol">⟋</span><strong>Arc welder</strong><small>+12 damage to every strike.<br>+16 reflected bolt damage.<br>Turn pressure into power.</small></button></div>`;
             content.querySelectorAll("[data-upgrade]").forEach(
               (b) =>
                 (b.onclick = () => {
@@ -5576,7 +5582,7 @@ gl_FragColor=vec4(col,1.);}`;
           )
             return;
           if (player.reserve === 0) {
-            toast("No reserve cells · press 1 for the arc blade");
+            toast("No reserve cells · press 1 for the arc staff");
             return;
           }
           reloadTimer = player.reloadDuration;
@@ -5686,9 +5692,9 @@ gl_FragColor=vec4(col,1.);}`;
         function strikeBlade() {
           const heavy = bladeStep === 2,
             reach = heavy ? 3.25 : 2.85;
-          tone(heavy ? 110 : 230, 0.22, "sawtooth", 0.12, heavy ? 45 : 70);
+          tone(heavy ? 95 : 165, 0.22, "triangle", 0.13, heavy ? 38 : 60);
           tone(880, 0.16, "triangle", 0.06, 220);
-          noise(0.14, 0.13, 2600);
+          noise(0.18, 0.12, 1400);
           const f = forward(player.yaw);
           for (const e of [...enemies, ...spawners]) {
             const dx = e.x - player.x,
@@ -7355,35 +7361,43 @@ gl_FragColor=vec4(col,1.);}`;
           return out;
         }
         const BLADE_CONTACT = 0.42;
-        const BLADE_REST = [0.3, -0.38, -0.86, -0.18, -0.2, -0.32];
-        const BLADE_CUTS = [
+        const STAFF_REST = [0.16, -0.12, -1.28, -0.16, -0.1, -0.9];
+        const STAFF_GRIPS = [
+          { y: 0.36, side: 1 },
+          { y: -0.36, side: -1 },
+        ];
+        const STAFF_STRIKES = [
           [
-            [0.48, -0.2, -0.65, -0.12, -0.35, -0.9],
-            [0.02, -0.24, -1.1, -1.2, -0.15, 0.15],
-            [-0.38, -0.53, -0.85, -1.95, 0.4, 1.25],
+            // Lead with the forward head, then carry its weight across the body.
+            [0.42, -0.13, -1.17, -0.3, -0.28, -1.18],
+            [0.04, -0.3, -1.62, -1.27, -0.16, 0.1],
+            [-0.35, -0.32, -1.3, -0.5, 0.3, 0.98],
           ],
           [
-            [-0.4, -0.23, -0.7, -0.2, 0.3, 0.95],
-            [0.06, -0.23, -1.12, -1.25, 0.1, -0.2],
-            [0.48, -0.46, -0.85, -1.9, -0.35, -1.2],
+            // Reverse the grip's leverage to bring the butt end forward.
+            [-0.42, -0.2, -1.2, 0.25, 0.35, 1.1],
+            [0.05, 0.12, -1.65, 1.27, 0.16, -0.1],
+            [0.42, -0.28, -1.3, 0.3, -0.25, -1.05],
           ],
           [
-            // Keep the edge level as the shoulder drives a broad right-to-left sweep.
-            [0.52, -0.18, -0.8, -1.52, -1.15, 0],
-            [0.02, -0.2, -1.15, -1.52, 0, 0],
-            [-0.55, -0.23, -0.9, -1.52, 1.2, 0],
+            // A level, two-handed sweep carries the front head right to left.
+            [0.25, -0.16, -1.35, -1.52, -0.85, 0],
+            [0, -0.15, -1.52, -1.52, 0, 0],
+            [-0.3, -0.18, -1.4, -1.52, 0.95, 0],
           ],
         ];
-        function bladePose(step, progress, quiet = reduced) {
-          const p = clamp(progress, 0, 1);
+        function staffPose(step, progress, quiet = reduced) {
+          const p = clamp(progress, 0, 1),
+            narrow = clamp((1.1 - width / height) / 0.55, 0, 1),
+            // Hold the shaft more upright on phones so both heads stay in view.
+            rest = STAFF_REST.map(
+              (v, i) => v + [-0.09, 0.1, -0.42, 0, 0, 0.62][i] * narrow,
+            );
           if (quiet) {
             const thrust = Math.sin(Math.PI * Math.min(1, p / 0.75));
-            return BLADE_REST.map(
-              (v, i) =>
-                v - (i === 2 ? thrust * 0.24 : i === 3 ? thrust * 0.35 : 0),
-            );
+            return rest.map((v, i) => v - (i === 2 ? thrust * 0.24 : 0));
           }
-          const frames = [BLADE_REST, ...BLADE_CUTS[step], BLADE_REST],
+          const frames = [rest, ...STAFF_STRIKES[step], rest],
             times = [0, 0.2, BLADE_CONTACT, 0.64, 1];
           let segment = 0;
           while (segment < 3 && p > times[segment + 1]) segment++;
@@ -7394,7 +7408,7 @@ gl_FragColor=vec4(col,1.);}`;
             (v, i) => v + (frames[segment + 1][i] - v) * ease,
           );
         }
-        function bladeTransform(pose, x, y, z, normal = false) {
+        function staffTransform(pose, x, y, z, normal = false) {
           const [tx, ty, tz, pitch, yaw, roll] = pose,
             scale = normal ? 1 : 0.8,
             rx = (x * Math.cos(roll) - y * Math.sin(roll)) * scale,
@@ -7407,127 +7421,127 @@ gl_FragColor=vec4(col,1.);}`;
             -rx * Math.sin(yaw) + pz * Math.cos(yaw) + (normal ? 0 : tz),
           ];
         }
-        function bladeMesh(time) {
-          const mesh = [],
-            active = bladeTimer > 0,
-            progress = active ? 1 - bladeTimer / bladeDuration : 0,
-            heavy = bladeStep === 2;
-          const energy = active && heavy ? [0.68, 0.38, 1] : [0.18, 0.95, 0.8];
-          const B = (x, y, z, w, h, d, col, glow = 0) =>
-            box(mesh, x, y, z, w, h, d, col, glow);
-          B(0, -0.12, 0, 0.115, 0.3, 0.13, palette.dark);
-          for (let i = 0; i < 6; i++)
-            B(0, -0.245 + i * 0.045, 0.015, 0.13, 0.016, 0.14, palette.trim);
-          B(0, -0.3, 0, 0.16, 0.075, 0.17, palette.trim);
-          B(0, -0.345, 0.01, 0.075, 0.03, 0.075, energy, 1.6);
-          B(0, 0.045, 0, 0.24, 0.09, 0.19, palette.trim);
-          B(0, 0.12, 0, 0.17, 0.11, 0.135, palette.dark);
-          for (const side of [-1, 1]) {
-            B(side * 0.14, 0.05, 0, 0.08, 0.13, 0.16, [0.42, 0.31, 0.17]);
-            B(side * 0.15, 0.125, 0, 0.07, 0.025, 0.1, palette.orange, 1.2);
-          }
-          B(0.14, -0.13, -0.015, 0.045, 0.34, 0.065, palette.trim);
-          B(0.08, -0.285, -0.015, 0.15, 0.045, 0.065, palette.trim);
-          const outline = [
-            [-0.055, 0.17],
-            [0.065, 0.17],
-            [0.145, 0.49],
-            [0.19, 0.85],
-            [0.08, 1.04],
-            [-0.05, 0.76],
-            [-0.09, 0.4],
-          ];
-          function solid(points, depth, color, glow) {
-            for (const side of [-1, 1])
-              for (let i = 1; i < points.length - 1; i++)
-                quad(
-                  mesh,
-                  [
-                    [...points[0], (side * depth) / 2],
-                    [...points[i], (side * depth) / 2],
-                    [...points[i + 1], (side * depth) / 2],
-                    [...points[0], (side * depth) / 2],
-                  ],
-                  [0, 0, side],
-                  color,
-                  glow,
-                );
-            for (let i = 0; i < points.length; i++) {
-              const a = points[i],
-                b = points[(i + 1) % points.length],
-                dx = b[0] - a[0],
-                dy = b[1] - a[1],
-                l = Math.hypot(dx, dy);
+        function staffSection(out, y, length, radius, color, glow = 0) {
+          // Flat facets keep the shaft round in silhouette without a texture.
+          for (let i = 0; i < 8; i++) {
+            const a = (i * Math.PI) / 4,
+              b = ((i + 1) * Math.PI) / 4,
+              ring = (angle, height) => [
+                Math.cos(angle) * radius,
+                height,
+                Math.sin(angle) * radius,
+              ],
+              low = y - length / 2,
+              high = y + length / 2;
+            quad(
+              out,
+              [ring(a, low), ring(b, low), ring(b, high), ring(a, high)],
+              [Math.cos((a + b) / 2), 0, Math.sin((a + b) / 2)],
+              color,
+              glow,
+            );
+            for (const side of [-1, 1]) {
+              const end = y + (side * length) / 2,
+                center = [0, end, 0];
               quad(
-                mesh,
-                [
-                  [...a, -depth / 2],
-                  [...b, -depth / 2],
-                  [...b, depth / 2],
-                  [...a, depth / 2],
-                ],
-                [dy / l, -dx / l, 0],
+                out,
+                [center, ring(a, end), ring(b, end), center],
+                [0, side, 0],
                 color,
                 glow,
               );
             }
           }
-          solid(outline, 0.035, [0.035, 0.24, 0.25], 0.5);
-          solid(
-            outline.map(([x, y]) => [x * 0.7, y * 0.96]),
-            0.045,
-            energy,
-            1.25,
-          );
-          // The cutting edge is white-hot; the interior stays transparent-looking teal.
-          for (let i = 1; i < 4; i++)
-            beam(
-              mesh,
-              { x: outline[i][0], y: outline[i][1], z: 0.023 },
-              { x: outline[i + 1][0], y: outline[i + 1][1], z: 0.023 },
-              [0.8, 1, 0.94],
-              0.011,
-              2.1,
-            );
-          for (let i = 0; i < 9; i++) {
-            const y = 0.19 + i * 0.078,
-              x =
-                Math.sin(time * (reduced ? 0 : 15) + i * 1.7) * 0.019 +
-                (y > 0.5 ? (y - 0.5) * 0.14 : 0);
-            beam(
-              mesh,
-              { x, y, z: 0.03 },
-              { x: x + 0.018, y: y + 0.06, z: 0.03 },
-              [0.68, 1, 0.94],
-              0.003,
-              2.2,
-            );
+        }
+        function staffMesh(time) {
+          const mesh = [],
+            active = bladeTimer > 0,
+            progress = active ? 1 - bladeTimer / bladeDuration : 0,
+            heavy = bladeStep === 2,
+            energy = active && heavy ? [0.68, 0.38, 1] : [0.18, 0.95, 0.8],
+            B = (x, y, z, w, h, d, col, glow = 0) =>
+              box(mesh, x, y, z, w, h, d, col, glow),
+            S = (y, length, radius, col, glow = 0) =>
+              staffSection(mesh, y, length, radius, col, glow);
+          // A continuous metal shaft, two wrapped grips, and blunt charged heads.
+          S(0, 2.52, 0.047, [0.22, 0.3, 0.33]);
+          S(0, 0.15, 0.078, palette.dark);
+          S(0, 0.045, 0.08, energy, 1.4);
+          for (const { y } of STAFF_GRIPS) {
+            S(y, 0.38, 0.066, palette.dark);
+            for (let i = -3; i <= 3; i++)
+              S(y + i * 0.049, 0.016, 0.073, palette.trim);
           }
-          for (let i = 0; i < 3; i++)
-            B(-0.058, 0.23 + i * 0.07, 0, 0.026, 0.038, 0.064, palette.trim);
-          // The gauntlet grips the hilt; the forearm reaches from a fixed elbow.
-          B(0, -0.16, 0.025, 0.19, 0.22, 0.21, [0.16, 0.19, 0.21]);
-          B(0.105, -0.15, 0.04, 0.045, 0.16, 0.16, palette.trim);
-          for (let i = 0; i < 3; i++)
-            B(
-              -0.02,
-              -0.23 + i * 0.055,
-              0.14,
-              0.15,
-              0.043,
-              0.045,
-              [0.28, 0.33, 0.34],
-            );
-          const pose = bladePose(bladeStep, progress);
-          pose[0] += bxForBlade();
+          for (const side of [-1, 1]) {
+            S(side * 0.7, 0.22, 0.054, palette.trim);
+            S(side * 0.88, 0.065, 0.09, [0.46, 0.32, 0.17]);
+            S(side * 0.93, 0.03, 0.098, palette.orange, 0.7);
+            S(side * 1.1, 0.28, 0.078, energy, 1.35);
+            for (const direction of [-1, 1]) {
+              B(
+                direction * 0.081,
+                side * 1.1,
+                0,
+                0.025,
+                0.3,
+                0.055,
+                palette.dark,
+              );
+              B(
+                0,
+                side * 1.1,
+                direction * 0.081,
+                0.055,
+                0.3,
+                0.025,
+                palette.dark,
+              );
+            }
+            S(side * 1.27, 0.085, 0.102, palette.trim);
+            S(side * 1.335, 0.045, 0.077, [0.75, 1, 0.93], 1.8);
+            // Small electrical filaments crawl over each impact head.
+            for (let i = 0; i < 5; i++) {
+              const phase = (reduced ? 0 : time * 12) + i * 1.7 + side,
+                x = Math.cos(phase) * 0.084,
+                z = Math.sin(phase) * 0.084,
+                y = side * (0.98 + i * 0.043);
+              beam(
+                mesh,
+                { x, y, z },
+                { x: x * 0.7, y: y + side * 0.04, z: z * 0.7 },
+                [0.78, 1, 0.94],
+                0.004,
+                2,
+              );
+            }
+          }
+          // Both gauntlets wrap the shaft; their wrists stay attached throughout.
+          for (const { y, side } of STAFF_GRIPS) {
+            B(0, y, 0.055, 0.18, 0.23, 0.19, [0.16, 0.19, 0.21]);
+            B(side * 0.1, y, 0.025, 0.055, 0.14, 0.15, palette.trim);
+            for (let i = -1; i <= 1; i++)
+              B(
+                0,
+                y + i * 0.062,
+                -0.043,
+                0.16,
+                0.047,
+                0.05,
+                [0.28, 0.33, 0.34],
+              );
+            B(0, y, 0.155, 0.13, 0.11, 0.025, palette.trim);
+            B(0, y, 0.17, 0.06, 0.025, 0.012, palette.orange, 0.6);
+          }
+          const pose = staffPose(bladeStep, progress);
+          pose[0] += bxForStaff();
           for (let i = 0; i < mesh.length; i += 12) {
-            const point = bladeTransform(
+            const point = staffTransform(
                 pose,
                 mesh[i],
                 mesh[i + 1],
                 mesh[i + 2],
               ),
-              normal = bladeTransform(
+              normal = staffTransform(
                 pose,
                 mesh[i + 3],
                 mesh[i + 4],
@@ -7539,56 +7553,64 @@ gl_FragColor=vec4(col,1.);}`;
               mesh[i + 3 + axis] = normal[axis];
             }
           }
-          const wrist = bladeTransform(pose, 0, -0.29, 0.025),
-            elbow = [0.42, -0.78, -0.25],
-            delta = wrist.map((v, i) => v - elbow[i]),
-            length = Math.hypot(...delta),
-            axis = delta.map((v) => v / length),
-            sideLength = Math.hypot(axis[0], axis[2]),
-            side = [axis[2] / sideLength, 0, -axis[0] / sideLength],
-            up = [
-              axis[1] * side[2],
-              axis[2] * side[0] - axis[0] * side[2],
-              -axis[1] * side[0],
-            ],
-            sleeve = [];
-          box(sleeve, 0, 0, 0, 0.16, length, 0.18, [0.12, 0.17, 0.19]);
-          for (let i = 0; i < sleeve.length; i += 12) {
-            const p = sleeve.slice(i, i + 3),
-              n = sleeve.slice(i + 3, i + 6);
-            for (let j = 0; j < 3; j++) {
-              sleeve[i + j] =
-                (wrist[j] + elbow[j]) / 2 +
-                side[j] * p[0] +
-                axis[j] * p[1] +
-                up[j] * p[2];
-              sleeve[i + 3 + j] =
-                side[j] * n[0] + axis[j] * n[1] + up[j] * n[2];
+          for (const { y, side: hand } of STAFF_GRIPS) {
+            const wrist = staffTransform(pose, 0, y - 0.07, 0.15),
+              elbow = [hand * 0.44, -0.86, -0.5],
+              delta = wrist.map((v, i) => v - elbow[i]),
+              length = Math.hypot(...delta),
+              axis = delta.map((v) => v / length),
+              sideLength = Math.hypot(axis[0], axis[2]),
+              side = [axis[2] / sideLength, 0, -axis[0] / sideLength],
+              up = [
+                axis[1] * side[2],
+                axis[2] * side[0] - axis[0] * side[2],
+                -axis[1] * side[0],
+              ],
+              sleeve = [];
+            box(sleeve, 0, 0, 0, 0.13, length, 0.15, [0.12, 0.17, 0.19]);
+            for (let i = 0; i < sleeve.length; i += 12) {
+              const p = sleeve.slice(i, i + 3),
+                n = sleeve.slice(i + 3, i + 6);
+              for (let j = 0; j < 3; j++) {
+                sleeve[i + j] =
+                  (wrist[j] + elbow[j]) / 2 +
+                  side[j] * p[0] +
+                  axis[j] * p[1] +
+                  up[j] * p[2];
+                sleeve[i + 3 + j] =
+                  side[j] * n[0] + axis[j] * n[1] + up[j] * n[2];
+              }
             }
+            mesh.push(...sleeve);
           }
-          mesh.push(...sleeve);
-          // A short edge trail follows the actual blade path through depth.
+          // Each charged end leaves its own short trail along the actual swing.
           if (active && !reduced && progress > 0.2 && progress < 0.76) {
             const end = Math.min(0.64, progress),
               begin = Math.max(0.2, progress - 0.12);
-            for (let i = 0; i < 7; i++) {
-              const a = bladePose(bladeStep, begin + ((end - begin) * i) / 7),
-                b = bladePose(bladeStep, begin + ((end - begin) * (i + 1)) / 7),
-                one = bladeTransform(a, 0.08, 1.04, 0),
-                two = bladeTransform(b, 0.08, 1.04, 0);
-              beam(
-                mesh,
-                { x: one[0], y: one[1], z: one[2] },
-                { x: two[0], y: two[1], z: two[2] },
-                energy.map((v) => v * (0.25 + i * 0.08)),
-                0.006 + i * 0.0015,
-                0.8,
-              );
-            }
+            for (const tip of [-1.335, 1.335])
+              for (let i = 0; i < 7; i++) {
+                const a = staffPose(bladeStep, begin + ((end - begin) * i) / 7),
+                  b = staffPose(
+                    bladeStep,
+                    begin + ((end - begin) * (i + 1)) / 7,
+                  );
+                a[0] += bxForStaff();
+                b[0] += bxForStaff();
+                const one = staffTransform(a, 0, tip, 0),
+                  two = staffTransform(b, 0, tip, 0);
+                beam(
+                  mesh,
+                  { x: one[0], y: one[1], z: one[2] },
+                  { x: two[0], y: two[1], z: two[2] },
+                  energy.map((v) => v * (0.25 + i * 0.08)),
+                  0.006 + i * 0.0015,
+                  0.8,
+                );
+              }
           }
           return mesh;
         }
-        function bxForBlade() {
+        function bxForStaff() {
           return reduced ? 0 : Math.sin(bob) * 0.008 * walkAmount;
         }
         function weaponMesh(time) {
@@ -7614,7 +7636,7 @@ gl_FragColor=vec4(col,1.);}`;
               glow,
               angle,
             );
-          if (player.weapon === 1) return bladeMesh(time);
+          if (player.weapon === 1) return staffMesh(time);
           B(0.31, -0.32, -0.63, 0.2, 0.19, 0.52, [0.13, 0.18, 0.21]);
           B(0.31, -0.23, -0.69, 0.23, 0.065, 0.58, [0.33, 0.41, 0.43]);
           B(0.31, -0.31, -0.93, 0.14, 0.12, 0.27, palette.dark);
@@ -8206,9 +8228,7 @@ gl_FragColor=vec4(col,1.);}`;
             $("shield-meter").style.width =
               (player.shield / player.maxShield) * 100 + "%";
             $("weapon-name").textContent =
-              player.weapon === 2
-                ? "P–24 / PULSE RIFLE"
-                : "A–03 / STORM CUTLASS";
+              player.weapon === 2 ? "P–24 / PULSE RIFLE" : "A–03 / ARC STAFF";
             $("ammo").innerHTML =
               player.weapon === 2
                 ? `${String(player.ammo).padStart(2, "0")}<small>${player.reserve} / ${C.AMMO.reserve}<span>RESERVE</span></small>`
@@ -8219,7 +8239,7 @@ gl_FragColor=vec4(col,1.);}`;
                 : player.weapon === 2
                   ? isTouch
                     ? "TAP RLD TO RELOAD"
-                    : "[R] RELOAD · [1] ARC BLADE"
+                    : "[R] RELOAD · [1] ARC STAFF"
                   : isTouch
                     ? "3-HIT COMBO · DEFLECT BOLTS"
                     : "3-HIT COMBO · DEFLECT · [2] RIFLE";
