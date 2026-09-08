@@ -70,7 +70,7 @@ function campaign(initialSave = {}) {
         },
         querySelector: () => element("first-button"),
         querySelectorAll: () =>
-          ["damage", "shield", "pulse"].map((type) => {
+          ["damage", "shield", "pulse", "blade"].map((type) => {
             const b = element(`upgrade-${type}`);
             b.dataset.upgrade = type;
             return b;
@@ -113,10 +113,10 @@ function campaign(initialSave = {}) {
       listen(windowListeners, type, callback),
   };
   sandbox.window = sandbox;
-  const exposed = `\nwindow.testGame = { startRun, update, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, robot, bladeMesh, portalMesh,
+  const exposed = `\nwindow.testGame = { startRun, update, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, robot, bladeMesh, portalMesh, sceneLights, lightBurst,
     get player() { return player; }, get level() { return level; }, get enemies() { return enemies; },
     get pickups() { return pickups; }, get bullets() { return bullets; },
-    get state() { return { mode, deck, cardTaken, portalCharge, transitTimer, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords }; },
+    get state() { return { mode, deck, cardTaken, portalCharge, transitTimer, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords, contract, floorStats, upgradePicks, lightBursts }; },
     get interaction() { return interaction; }, set interaction(v) { interaction = v; },
     get keys() { return keys; }, toggleMap };\n})();`;
   vm.runInNewContext(
@@ -1710,4 +1710,238 @@ test("the soundtrack keeps a playable tempo even on extremely late floors", () =
       times[i] - times[i - 1] > 0.08,
       "notes keep audible spacing between steps",
     );
+});
+
+test("side contracts are deterministic, achievable and award completion once", () => {
+  const kinds = new Set();
+  for (let seed = 0; seed < 80; seed++) {
+    const level = C.generateDeck(seed, seed % 6);
+    const args = [
+      seed,
+      seed % 6,
+      level.enemies.length,
+      level.pickups.filter((p) => p.type === "cache").length,
+    ];
+    const contract = C.makeContract(...args);
+    assert.equal(
+      JSON.stringify(contract),
+      JSON.stringify(C.makeContract(...args)),
+    );
+    kinds.add(contract.kind);
+    assert.ok(
+      contract.target > 0 &&
+        contract.target <= (contract.kind === "caches" ? args[3] : args[2]),
+    );
+    assert.equal(C.advanceContract(contract, "unrelated"), false);
+    assert.equal(contract.progress, 0);
+    for (let i = 1; i <= contract.target; i++)
+      assert.equal(
+        C.advanceContract(contract, contract.kind),
+        i === contract.target,
+      );
+    assert.equal(C.advanceContract(contract, contract.kind), false);
+    assert.equal(contract.progress, contract.target);
+  }
+  assert.equal(kinds.size, 3);
+});
+
+test("a completed contract grants exactly two upgrade choices, then resets on the next floor", () => {
+  const { game: g, tick, element } = campaign();
+  g.startRun();
+  const target = g.state.contract.target;
+  for (let i = 0; i < target; i++) {
+    g.enemies[i].health = 1;
+    g.enemyHit(g.enemies[i], 10, true);
+    g.enemyHit(g.enemies[i], 10, true);
+  }
+  assert.equal(
+    g.state.contract.progress,
+    target,
+    "corpses cannot farm progress",
+  );
+  assert.equal(g.state.floorStats.kills, target);
+  g.updateHUD();
+  assert.match(element("contract-label").textContent, /SECURED/);
+  g.enemies.forEach((e) => (e.health = 0));
+  Object.assign(g.player, g.level.card);
+  tick(0.05);
+  Object.assign(g.player, g.level.exit);
+  tick(0.05);
+  g.interact();
+  tick(C.PORTAL.duration + 0.05);
+  assert.equal(g.state.upgradePicks, 2);
+  assert.equal(g.player.floorsCompleted, 1);
+  const firstChoice = element("upgrade-blade").onclick;
+  firstChoice();
+  firstChoice();
+  assert.equal(
+    g.state.upgradePicks,
+    1,
+    "stale clicks cannot consume the bonus selection",
+  );
+  assert.equal(g.player.bladeDamage, 12);
+  assert.equal(g.player.parryDamage, 80);
+  assert.equal(g.player.upgrades.length, 1);
+  assert.equal(g.state.mode, "upgrade");
+  element("upgrade-shield").onclick();
+  assert.equal(g.state.mode, "playing");
+  assert.equal(g.state.deck, 1);
+  assert.equal(g.player.floorsCompleted, 1);
+  assert.equal(g.player.upgrades.length, 2);
+  assert.equal(g.player.health, g.player.maxHealth);
+  assert.ok(g.player.ammo + g.player.reserve <= 72);
+  assert.equal(g.state.contract.progress, 0);
+  assert.equal(g.state.floorStats.kills, 0);
+  g.damage(1e9);
+  g.startRun();
+  assert.equal(g.player.bladeDamage, 0);
+  assert.equal(g.player.parryDamage, 64);
+  assert.equal(g.state.upgradePicks, 0);
+});
+
+test("cutlass contracts count lethal blade strikes and arc upgrades increase their damage", () => {
+  const { game: g, tick } = campaign();
+  g.startRun();
+  Object.assign(g.state.contract, {
+    kind: "blade",
+    target: 2,
+    progress: 0,
+    completed: false,
+  });
+  g.enemies.forEach((e) => (e.health = 0));
+  g.player.weapon = 1;
+  g.player.yaw = Math.PI / 2;
+  C.upgrade(g.player, "blade");
+  const e = g.enemies[0];
+  Object.assign(e, {
+    x: g.player.x + 1.5,
+    z: g.player.z,
+    health: 58,
+    stun: 99,
+  });
+  g.fire();
+  tick(0.15);
+  assert.equal(e.health, 0);
+  assert.equal(g.state.contract.progress, 1);
+  e.health = 1;
+  g.enemyHit(e, 2, true, "parry");
+  assert.equal(
+    g.state.contract.progress,
+    1,
+    "reflected and rifle kills are not blade kills",
+  );
+});
+
+test("cache contracts advance only when supplies are actually salvaged", () => {
+  const { game: g } = campaign();
+  g.startRun();
+  Object.assign(g.state.contract, {
+    kind: "caches",
+    target: 2,
+    progress: 0,
+    completed: false,
+  });
+  const cache = g.pickups.find((p) => p.type === "cache");
+  g.interaction = { type: "cache", item: cache };
+  g.player.reserve = C.AMMO.reserve;
+  g.interact();
+  assert.equal(g.state.contract.progress, 0);
+  g.player.reserve -= 8;
+  g.interact();
+  g.interact();
+  assert.equal(g.state.contract.progress, 1);
+  assert.equal(g.state.floorStats.caches, 1);
+});
+
+test("transient lighting stays bounded, expires, and respects reduced motion", () => {
+  for (const reduced of [false, true]) {
+    const { game: g, tick } = campaign({ reduced });
+    g.startRun();
+    g.enemies.forEach((e) => (e.health = 0));
+    for (let i = 0; i < 40; i++)
+      g.lightBurst(g.player.x, 1.2, g.player.z, [1, 0.4, 0.1], 4, 0.3);
+    assert.equal(g.state.lightBursts.length, reduced ? 0 : 12);
+    const sources = g.sceneLights([g.player.x, 1.55, g.player.z]);
+    assert.ok(sources.length > 0 && sources.length <= 10);
+    assert.ok(
+      sources.every((l) =>
+        [l.x, l.y, l.z, l.power, ...l.color].every(Number.isFinite),
+      ),
+    );
+    tick(0.4);
+    assert.equal(g.state.lightBursts.length, 0);
+  }
+});
+
+test("four distinct soundtracks contain complete, finite arrangements", () => {
+  const arrangements = new Set();
+  assert.equal(M.tracks.length, 4);
+  for (let track = 0; track < 4; track++) {
+    const notes = [],
+      voices = new Set();
+    for (let step = 0; step < 512; step++) {
+      for (const event of M.score(step, 3, step >= 256, track)) {
+        assert.ok(
+          [event.note, event.length, event.volume, event.pan].every(
+            Number.isFinite,
+          ),
+        );
+        assert.ok(event.note === 0 || (event.note >= 36 && event.note <= 100));
+        assert.ok(event.volume > 0 && event.volume <= 0.5);
+        assert.ok(event.length > 0 && event.length <= 7);
+        voices.add(event.voice);
+        notes.push(event);
+      }
+    }
+    assert.ok(
+      voices.has("lead") &&
+        voices.has("bass") &&
+        voices.has("arp") &&
+        voices.has("kick") &&
+        voices.has("snare"),
+    );
+    arrangements.add(JSON.stringify(notes));
+    assert.equal(M.trackFor(track), track);
+    assert.equal(M.trackFor(track + 4), track);
+  }
+  assert.equal(arrangements.size, 4);
+});
+
+test("radio changes tracks on bar boundaries and cleans up every arrangement on pause", () => {
+  const c = new FakeAudio(),
+    music = new M.Player(c, c.node());
+  music.tick({ enabled: true, track: 0 });
+  assert.ok(music.step > 0 && music.step < 16);
+  music.tick({ enabled: true, track: 1 });
+  assert.equal(music.track, 0, "manual selection waits for the bar line");
+  for (let i = 0; i < 100; i++) {
+    c.advance(0.025);
+    music.tick({ enabled: true, track: 1 });
+  }
+  assert.equal(music.track, 1);
+  for (let track = 0; track < 4; track++) {
+    music.stop();
+    c.advance(2);
+    for (let i = 0; i < 180; i++) {
+      music.tick({ enabled: true, track, extraction: true, deck: 8 });
+      c.advance(0.025);
+      assert.ok(music.voices.size < 70);
+    }
+    assert.equal(music.track, track);
+    music.tick({ enabled: false });
+    c.advance(2);
+    assert.equal(music.voices.size, 0);
+  }
+});
+
+test("soundtrack selection persists safely before the audio context exists", () => {
+  const s = campaign();
+  s.element("music-track").onchange({ target: { value: "2" } });
+  assert.equal(s.saved.musicTrack, 2);
+  assert.equal(s.element("music-title").textContent, "REACTOR RUN");
+  const restored = campaign(s.saved);
+  assert.equal(restored.element("music-track").value, "2");
+  restored.element("music-track").onchange({ target: { value: "1000" } });
+  assert.equal(restored.saved.musicTrack, -1);
+  assert.equal(restored.element("music-title").textContent, "ION RUNNER");
 });

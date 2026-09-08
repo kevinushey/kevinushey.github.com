@@ -291,22 +291,102 @@
         background: #060d13b8;
         backdrop-filter: blur(9px);
         justify-content: center;
+        align-items: safe center;
+        overflow-y: auto;
       }
       .centered .menu-content {
-        margin: 60px 24px;
-        width: min(660px, 90vw);
+        margin: 76px 24px 70px;
+        width: min(800px, 90vw);
       }
       .centered h1 {
-        font-size: clamp(45px, 7vw, 82px);
+        font-size: clamp(45px, 6vw, 72px);
+        margin: 20px 0;
         line-height: 0.98;
         letter-spacing: -0.055em;
       }
       .centered .intro {
-        max-width: 540px;
+        max-width: 700px;
+        font-size: 14px;
+        line-height: 1.6;
+        margin-bottom: 20px;
+      }
+      .menu.centered .station-id,
+      .menu.centered .menu-footer,
+      .menu.centered ~ .global-tools .sound-label {
+        display: none;
+      }
+      .menu.centered ~ .global-tools {
+        top: 24px;
+        bottom: auto !important;
+        right: 30px !important;
+      }
+      .floor-report {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 22px;
+        font-size: 10px;
+        color: var(--muted);
+        padding: 14px 0;
+        margin: 12px 0;
+        border-block: 1px solid var(--line);
+      }
+      .secured {
+        color: var(--mint) !important;
+      }
+      .contract {
+        margin-top: 16px;
+        max-width: 270px;
+        color: #a6b8bd;
+      }
+      .contract small {
+        font-size: 8px;
+        letter-spacing: 1.2px;
+      }
+      .contract strong {
+        display: block;
+        font-size: 11px;
+        font-weight: 400;
+        margin: 5px 0 7px;
+      }
+      .contract-track {
+        height: 2px;
+        background: #54707855;
+        width: 180px;
+      }
+      .contract-track span {
+        display: block;
+        width: 0;
+        height: 100%;
+        background: var(--mint);
+        transition: width 0.25s;
+      }
+      @media (max-width: 650px) {
+        .upgrade-grid {
+          grid-template-columns: repeat(2, 1fr) !important;
+        }
+        .contract {
+          max-width: 210px;
+          margin-top: 10px;
+        }
+        .contract strong {
+          font-size: 10px;
+        }
+      }
+      @media (max-height: 580px) {
+        .contract {
+          margin-top: 6px;
+        }
+        .contract-track {
+          display: none;
+        }
+        .floor-report {
+          padding: 7px 0;
+          margin: 6px 0;
+        }
       }
       .upgrade-grid {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 12px;
         margin-top: 28px;
       }
@@ -315,8 +395,8 @@
         border: 1px solid #52707866;
         border-radius: 5px;
         text-align: left;
-        min-height: 200px;
-        padding: 22px 18px;
+        min-height: 190px;
+        padding: 18px 15px;
         transition:
           transform 0.15s,
           border-color 0.15s;
@@ -330,10 +410,10 @@
         cursor: default;
       }
       .upgrade .symbol {
-        font-size: 30px;
+        font-size: 24px;
         color: var(--orange);
         display: block;
-        margin-bottom: 24px;
+        margin-bottom: 14px;
       }
       .upgrade strong {
         font-size: 15px;
@@ -341,8 +421,8 @@
         margin-bottom: 10px;
       }
       .upgrade small {
-        font-size: 12px;
-        line-height: 1.7;
+        font-size: 11px;
+        line-height: 1.6;
         color: #9eafb0;
         display: block;
       }
@@ -863,8 +943,19 @@
       }
       .settings label {
         display: flex;
+        flex-wrap: wrap;
+        max-width: 100%;
         gap: 12px;
         align-items: center;
+      }
+      .settings select {
+        font: inherit;
+        color: var(--mint);
+        background: #10232b;
+        padding: 7px;
+        border: 1px solid #42616b;
+        border-radius: 4px;
+        max-width: 230px;
       }
       .settings input {
         accent-color: var(--orange);
@@ -1220,6 +1311,12 @@
             <small>CURRENT OBJECTIVE</small
             ><strong id="objective">Recover the deck access card</strong>
           </div>
+          <div id="contract" class="contract">
+            <small id="contract-label" class="mono"
+              >OPTIONAL / BONUS UPGRADE</small
+            ><strong id="contract-progress"></strong>
+            <div class="contract-track"><span id="contract-meter"></span></div>
+          </div>
         </div>
         <div class="map-stack">
           <button
@@ -1388,6 +1485,12 @@
         supplies just 24 rounds. Ammo is scarce: check side rooms, conserve
         shots, and use the cutlass. Excess pickup ammo stays on the floor.
       </p>
+      <p>
+        Each floor has an optional contract: scrap machines, land cutlass kills,
+        or salvage crew caches. Complete it for a second permanent upgrade at
+        the lift. You can leave without it at any time. Arc welder upgrades your
+        blade and reflected bolts; choose a build that suits your run.
+      </p>
       <div class="control-grid">
         <div>
           <span>Move / sprint</span
@@ -1417,15 +1520,25 @@
         </div>
       </div>
       <p class="music-credit">
-        <span class="mono">NOW TRANSMITTING</span><br /><strong
+        <span class="mono">NOW TRANSMITTING</span><br /><strong id="music-title"
           >ION RUNNER</strong
         >
-        · Original 8-bit space score<br /><small
-          >Pulse leads, triangle bass, noise drums. More layers when trouble
-          finds you.</small
+        · Four original 8-bit space scores<br /><small
+          >Pulse leads, triangle bass, drifting pads, noise drums. New music on
+          each floor; combat and extraction intensify the arrangement.</small
         >
       </p>
       <div class="settings">
+        <label
+          >Soundtrack
+          <select id="music-track" aria-label="Soundtrack">
+            <option value="-1">Auto · changes each floor</option>
+            <option value="0">Ion Runner</option>
+            <option value="1">Glass Orbit</option>
+            <option value="2">Reactor Run</option>
+            <option value="3">Last Transmission</option>
+          </select></label
+        >
         <label
           ><input id="music-enabled" type="checkbox" checked /> Music</label
         >
@@ -1811,6 +1924,40 @@
           }
           return props;
         }
+        function makeContract(seed, deck, enemyCount, cacheCount) {
+          const random = rng(seed ^ Math.imul(deck + 1, 0x6c8e9cf5)),
+            kind =
+              deck === 0
+                ? "kills"
+                : ["kills", "blade", "caches"][Math.floor(random() * 3)],
+            target =
+              kind === "caches"
+                ? Math.min(2, cacheCount)
+                : kind === "blade"
+                  ? Math.min(3 + Math.floor(Math.min(deck, 12) / 6), enemyCount)
+                  : Math.min(
+                      6 + Math.floor(Math.min(deck, 12) / 3),
+                      enemyCount,
+                    );
+          return {
+            kind,
+            target,
+            label:
+              kind === "caches"
+                ? "Salvage crew caches"
+                : kind === "blade"
+                  ? "Scrap machines with the cutlass"
+                  : "Scrap hostile machines",
+            progress: 0,
+            completed: false,
+          };
+        }
+        function advanceContract(contract, kind) {
+          if (contract.completed || contract.kind !== kind) return false;
+          contract.progress = Math.min(contract.target, contract.progress + 1);
+          contract.completed = contract.progress === contract.target;
+          return contract.completed;
+        }
         function generateDeck(seed, deck = 0) {
           const random = rng(seed + deck * 7919),
             map = Array.from({ length: SIZE }, () => Array(SIZE).fill(1)),
@@ -2141,6 +2288,8 @@
           magSize: AMMO.magazine,
           reserve: AMMO.startingReserve,
           damage: 24,
+          bladeDamage: 0,
+          parryDamage: 64,
           fireRate: 0.16,
           reloadDuration: 1.25,
           empMax: 12,
@@ -2173,6 +2322,10 @@
           if (type === "damage") {
             p.damage += 10;
             p.fireRate = Math.max(0.065, p.fireRate * 0.9);
+          }
+          if (type === "blade") {
+            p.bladeDamage += 12;
+            p.parryDamage += 16;
           }
           if (type === "shield") {
             p.maxShield += 35;
@@ -2211,6 +2364,8 @@
           makeEnemy,
           enemyDamage,
           stationProps,
+          makeContract,
+          advanceContract,
           rayBox,
           rayScene,
           wall,
@@ -2230,7 +2385,7 @@
     </script>
     <script id="orbit-music">
       "use strict";
-      // ION RUNNER: an original 32-bar chip score. Notes are authored as sixteenth-note events.
+      // Four original 32-bar chip scores, authored as sixteenth-note events.
       const OrbitMusic = (() => {
         const lead = [
           [
@@ -2325,7 +2480,262 @@
           null,
         ];
         const roots = [45, 41, 48, 43];
-        function score(step, deck = 0, combat = false) {
+        const tracks = [
+          { title: "ION RUNNER", bpm: 128 },
+          {
+            title: "GLASS ORBIT",
+            bpm: 112,
+            roots: [50, 46, 53, 48],
+            motifs: [
+              [
+                24,
+                null,
+                null,
+                31,
+                null,
+                null,
+                34,
+                null,
+                36,
+                null,
+                null,
+                34,
+                31,
+                null,
+                27,
+                null,
+              ],
+              [
+                31,
+                null,
+                29,
+                null,
+                null,
+                24,
+                null,
+                null,
+                27,
+                null,
+                31,
+                null,
+                29,
+                null,
+                24,
+                null,
+              ],
+            ],
+            bridge: [
+              36,
+              null,
+              null,
+              null,
+              34,
+              null,
+              null,
+              31,
+              null,
+              null,
+              29,
+              null,
+              27,
+              null,
+              null,
+              null,
+            ],
+          },
+          {
+            title: "REACTOR RUN",
+            bpm: 142,
+            roots: [40, 43, 38, 45],
+            motifs: [
+              [
+                24,
+                24,
+                null,
+                31,
+                36,
+                null,
+                34,
+                31,
+                27,
+                null,
+                31,
+                34,
+                36,
+                34,
+                31,
+                null,
+              ],
+              [
+                36,
+                null,
+                38,
+                36,
+                31,
+                34,
+                null,
+                31,
+                27,
+                24,
+                null,
+                22,
+                24,
+                null,
+                31,
+                27,
+              ],
+            ],
+            bridge: [
+              24,
+              null,
+              31,
+              null,
+              34,
+              null,
+              36,
+              null,
+              38,
+              null,
+              36,
+              null,
+              34,
+              null,
+              31,
+              null,
+            ],
+          },
+          {
+            title: "LAST TRANSMISSION",
+            bpm: 120,
+            roots: [45, 48, 41, 43],
+            motifs: [
+              [
+                31,
+                null,
+                null,
+                29,
+                27,
+                null,
+                24,
+                null,
+                null,
+                27,
+                null,
+                31,
+                34,
+                null,
+                31,
+                null,
+              ],
+              [
+                36,
+                null,
+                34,
+                null,
+                31,
+                null,
+                null,
+                27,
+                29,
+                null,
+                null,
+                31,
+                27,
+                null,
+                24,
+                null,
+              ],
+            ],
+            bridge: [
+              36,
+              null,
+              null,
+              null,
+              null,
+              34,
+              null,
+              null,
+              31,
+              null,
+              null,
+              null,
+              29,
+              null,
+              27,
+              null,
+            ],
+          },
+        ];
+        const trackFor = (deck) =>
+          Math.max(0, Math.floor(deck)) % tracks.length;
+        function alternateScore(step, track, combat) {
+          const song = tracks[track],
+            bar = Math.floor(step / 16) % 32,
+            tick = step % 16,
+            chord = Math.floor(bar / 2) % 4,
+            root = song.roots[chord],
+            middle = bar >= 16 && bar < 24,
+            driving = track === 2,
+            sparse = track === 1,
+            triad =
+              chord === 0 || (driving && chord === 3) ? [0, 3, 7] : [0, 4, 7],
+            melody = middle
+              ? song.bridge
+              : song.motifs[Math.floor(bar / 4) % 2],
+            events = [],
+            add = (voice, note, length, volume, pan = 0) =>
+              events.push({ voice, note, length, volume, pan });
+          if ((driving ? [0, 3, 6, 8, 10, 14] : [0, 6, 8, 14]).includes(tick))
+            add("bass", root + (tick === 14 ? 12 : 0), driving ? 1.5 : 3, 0.18);
+          if (tick % (sparse && !combat ? 4 : 2) === 0)
+            add(
+              "arp",
+              root + 24 + triad[(tick / 2 + bar) % 3] + (bar >= 24 ? 12 : 0),
+              0.7,
+              driving ? 0.042 : 0.032,
+              tick % 4 ? 0.5 : -0.5,
+            );
+          if (melody[tick] !== null && (bar >= 2 || combat))
+            add(
+              "lead",
+              root + melody[tick],
+              middle ? 3.5 : driving ? 1.1 : 2.2,
+              driving ? 0.085 : 0.07,
+              -0.15,
+            );
+          if (!driving && tick % 8 === 0)
+            add("pad", root + 12 + (tick === 8 ? 7 : 0), 7, 0.027, 0.25);
+          if (
+            tick === 0 ||
+            tick === 8 ||
+            (combat && (tick === 3 || tick === 11))
+          )
+            add("kick", 36, 0.8, driving ? 0.42 : 0.3);
+          if (tick === 4 || tick === 12)
+            add("snare", 0, 0.8, middle ? 0.12 : driving ? 0.21 : 0.16);
+          if (tick % 2 === 0 || (driving && combat))
+            add(
+              "hat",
+              0,
+              tick === 14 ? 1.1 : 0.25,
+              tick % 4 ? 0.035 : 0.055,
+              0.35,
+            );
+          if (bar % 8 === 7 && tick >= 12) {
+            add(
+              "fill",
+              root + 24 + [12, 7, 3, 7][tick - 12],
+              0.7,
+              0.055,
+              -0.35,
+            );
+            if (driving && tick % 2) add("snare", 0, 0.45, 0.12);
+          }
+          return events;
+        }
+        function score(step, deck = 0, combat = false, track = 0) {
+          if (track > 0 && tracks[track])
+            return alternateScore(step, track, combat);
           const bar = Math.floor(step / 16) % 32,
             tick = step % 16,
             chord = Math.floor(bar / 2) % 4,
@@ -2385,6 +2795,7 @@
             this.context = context;
             this.voices = new Set();
             this.step = 0;
+            this.track = 0;
             this.next = 0;
             this.active = false;
             this.volume = -1;
@@ -2443,15 +2854,29 @@
             // No accumulated notes are played on resume after a hidden tab or pause.
             this.next = 0;
           }
-          tick({ enabled, deck = 0, combat = false, volume = 0.55 }) {
+          tick({
+            enabled,
+            deck = 0,
+            combat = false,
+            extraction = false,
+            track = -1,
+            volume = 0.55,
+          }) {
             if (!enabled || this.context.state !== "running") {
               this.stop();
               return;
             }
             const now = this.context.currentTime,
-              stepLength = 60 / Math.min(164, 128 + deck * 6) / 4;
+              requested =
+                Number.isInteger(track) && track >= 0 && track < tracks.length
+                  ? track
+                  : trackFor(deck);
             if (!this.active) {
               this.active = true;
+              if (this.track !== requested) {
+                this.track = requested;
+                this.step = 0;
+              }
               this.next = now + 0.04;
             }
             if (volume !== this.volume) {
@@ -2462,7 +2887,25 @@
             if (this.next < now - 0.15) this.next = now + 0.03;
             let budget = 0;
             while (this.next < now + 0.13 && budget++ < 4) {
-              for (const event of score(this.step, deck, combat))
+              // Change songs on a bar line, without cutting a phrase mid-note.
+              if (this.step % 16 === 0 && this.track !== requested) {
+                this.track = requested;
+                this.step = 0;
+              }
+              const bpm = Math.min(
+                  172,
+                  tracks[this.track].bpm +
+                    Math.min(deck, 8) * 3 +
+                    (extraction ? 8 : 0),
+                ),
+                stepLength = 60 / bpm / 4;
+              this.echo.delayTime.setTargetAtTime(stepLength * 3, now, 0.08);
+              for (const event of score(
+                this.step,
+                deck,
+                combat || extraction,
+                this.track,
+              ))
                 this.note(event, this.next, stepLength);
               this.next += stepLength;
               this.step = (this.step + 1) % 512;
@@ -2474,7 +2917,10 @@
               duration = length * stepLength;
             const gain = c.createGain();
             gain.gain.setValueAtTime(0.0001, time);
-            gain.gain.linearRampToValueAtTime(volume, time + 0.004);
+            gain.gain.linearRampToValueAtTime(
+              volume,
+              time + (voice === "pad" ? 0.045 : 0.004),
+            );
             gain.gain.exponentialRampToValueAtTime(
               0.0001,
               time + Math.max(0.02, duration),
@@ -2483,7 +2929,8 @@
             panner.pan.value = pan;
             gain.connect(panner);
             panner.connect(this.gain);
-            if (voice === "lead" || voice === "fill") gain.connect(this.echo);
+            if (voice === "lead" || voice === "fill" || voice === "pad")
+              gain.connect(this.echo);
             let source,
               filter = null;
             if (voice === "hat" || voice === "snare") {
@@ -2498,7 +2945,8 @@
             } else {
               source = c.createOscillator();
               const hz = 440 * 2 ** ((note - 69) / 12);
-              if (voice === "bass") source.type = "triangle";
+              if (voice === "pad") source.type = "sine";
+              else if (voice === "bass") source.type = "triangle";
               else if (voice === "kick") source.type = "sine";
               else source.setPeriodicWave(this.pulses[voice === "arp" ? 1 : 0]);
               source.frequency.setValueAtTime(
@@ -2521,7 +2969,7 @@
             source.stop(time + Math.max(0.025, duration) + 0.015);
           }
         }
-        return { score, Player };
+        return { score, Player, tracks, trackFor };
       })();
     </script>
     <script id="orbit-game">
@@ -2559,6 +3007,7 @@
         const vertex = `attribute vec3 aPosition;attribute vec3 aNormal;attribute vec3 aColor;attribute float aGlow;attribute vec2 aUV;uniform mat4 uVP;varying vec3 vPosition;varying vec3 vNormal;varying vec3 vColor;varying float vGlow;varying vec2 vUV;void main(){vPosition=aPosition;vNormal=aNormal;vColor=aColor;vGlow=aGlow;vUV=aUV;gl_Position=uVP*vec4(aPosition,1.);}`;
         const fragment = `precision mediump float;varying vec3 vPosition;varying vec3 vNormal;varying vec3 vColor;varying float vGlow;varying vec2 vUV;uniform vec3 uEye;uniform vec3 uForward;uniform vec4 uLights[10];uniform vec3 uColors[10];uniform sampler2D uAtlas;uniform float uTime;uniform float uFlash;
 uniform vec2 uPortal;
+uniform vec4 uShadows[6];
 vec3 portalField(vec2 uv) {
   vec2 p = (uv - .5) * 2.;
   float t = uTime * uPortal.y;
@@ -2589,12 +3038,49 @@ if(vGlow < -.5){
   gl_FragColor = vec4(pow(max(col,vec3(0.)),vec3(.8)),1.);
   return;
 }
-vec3 n=normalize(vNormal);vec3 delta=vPosition-uEye;float dist=length(delta);vec3 toEye=-delta/max(.001,dist);float grain=sin(vPosition.x*39.3+vPosition.z*31.7+vPosition.y*33.1)*.008;vec3 base=vColor*texture2D(uAtlas,vUV).rgb;vec3 lighting=vec3(.19,.26,.3)+max(0.,n.y)*vec3(.1,.12,.13);float cone=smoothstep(.65,.96,dot(-toEye,uForward));lighting+=vec3(.58,.66,.64)*cone*max(.1,dot(n,toEye))*7./(3.+dist*dist*.17);for(int i=0;i<10;i++){vec3 l=uLights[i].xyz-vPosition;float d=length(l);lighting+=uColors[i]*uLights[i].w*max(.07,dot(n,l/max(d,.01)))/(1.+d*d*.25);}lighting+=vec3(1.,.38,.1)*uFlash/(1.+dist*dist);vec3 col=base*(lighting+grain)+base*vGlow;float fog=1.-exp(-dist*.027);col=mix(col,vec3(.022,.045,.055),fog);col=pow(max(col,vec3(0.)),vec3(.8));gl_FragColor=vec4(col,1.);}`;
+vec3 n=normalize(vNormal);
+vec3 delta=vPosition-uEye;
+float dist=length(delta);
+vec3 toEye=-delta/max(.001,dist);
+float grain=sin(vPosition.x*39.3+vPosition.z*31.7+vPosition.y*33.1)*.008;
+vec3 base=vColor*texture2D(uAtlas,vUV).rgb;
+vec3 lighting=vec3(.14,.20,.235)+max(0.,n.y)*vec3(.07,.095,.11);
+float aim=dot(-toEye,uForward);
+float cone=.35*smoothstep(.64,.92,aim)+.85*smoothstep(.92,.99,aim);
+lighting+=vec3(.57,.66,.68)*cone*max(.1,dot(n,toEye))*4.2/(2.5+dist*dist*.16);
+vec3 sheen=vec3(0.);
+for(int i=0;i<10;i++){
+  vec3 l=uLights[i].xyz-vPosition;
+  float d=length(l);
+  vec3 direction=l/max(d,.01);
+  float attenuation=uLights[i].w/(1.+d*d*.32);
+  float diffuse=max(.025,dot(n,direction));
+  lighting+=uColors[i]*attenuation*diffuse;
+  vec3 halfVector=normalize(direction+toEye+vec3(.00001));
+  float specular=pow(max(0.,dot(n,halfVector)),mix(42.,24.,abs(n.y)));
+  sheen+=uColors[i]*attenuation*specular*.2*max(0.,dot(n,direction));
+}
+float shadow=0.;
+if(vPosition.y>-.03 && vPosition.y<.08 && n.y>.8){
+  for(int i=0;i<6;i++){
+    vec2 offset=vPosition.xz-uShadows[i].xz;
+    float radius=uShadows[i].w;
+    shadow+=step(.01,radius)*exp(-dot(offset,offset)/max(.01,radius*radius*.45))*.34;
+  }
+}
+lighting+=vec3(1.,.38,.1)*uFlash/(1.+dist*dist);
+vec3 col=base*(lighting+grain)*(1.-min(.48,shadow))+sheen+base*vGlow;
+float fog=1.-exp(-dist*.027);
+col=mix(col,vec3(.017,.03,.055),fog);
+col=col/(vec3(1.)+col*.25);
+col=pow(max(col,vec3(0.)),vec3(.8));
+gl_FragColor=vec4(col,1.);}
+`;
         const postVertex = `attribute vec2 aPosition;varying vec2 vUV;void main(){vUV=aPosition*.5+.5;gl_Position=vec4(aPosition,0.,1.);}`;
         const postFragment = `precision mediump float;varying vec2 vUV;uniform sampler2D uScene;uniform vec2 uPixel;uniform float uTime;uniform float uHurt;uniform float uPulse;uniform float uMotion;uniform float uTransit;void main(){float warp=sin(uTransit*3.14159)*uMotion;
 vec2 delta=vUV-.5;
 vec2 uv=.5+delta/(1.+warp*.65);
-uv+=delta*sin(length(delta)*24.-uTransit*9.)*warp*.012;vec3 col=texture2D(uScene,uv).rgb;vec3 bloom=vec3(0.);for(int i=0;i<8;i++){float a=float(i)*.785398;vec2 offset=vec2(cos(a),sin(a))*uPixel*6.;bloom+=max(vec3(0.),texture2D(uScene,uv+offset).rgb-.68);bloom+=max(vec3(0.),texture2D(uScene,uv+offset*2.5).rgb-.75)*.5;}col+=bloom*.12;float vig=smoothstep(.85,.2,length((uv-.5)*vec2(1.,.85)));col*=.66+.34*vig;float noise=fract(sin(dot(uv,vec2(12.9898,78.233))+uTime)*43758.5453);col+=(noise-.5)*.025*uMotion;col+=vec3(.05,.26,.23)*uPulse*(1.-vig);col=mix(col,col*vec3(1.4,.68,.55),uHurt*(1.-vig)*.7);if(uTransit>0.){float streak=pow(.5+.5*sin(atan(delta.y,delta.x+.00001)*43.+1.4),30.)*smoothstep(.07,.5,length(delta));
+uv+=delta*sin(length(delta)*24.-uTransit*9.)*warp*.012;vec3 col=texture2D(uScene,uv).rgb;vec3 bloom=vec3(0.);for(int i=0;i<8;i++){float a=float(i)*.785398;vec2 offset=vec2(cos(a),sin(a))*uPixel*6.;bloom+=max(vec3(0.),texture2D(uScene,uv+offset).rgb-.78);bloom+=max(vec3(0.),texture2D(uScene,uv+offset*2.5).rgb-.85)*.4;}col+=bloom*.11;float vig=smoothstep(.85,.2,length((uv-.5)*vec2(1.,.85)));col*=.66+.34*vig;float noise=fract(sin(dot(uv,vec2(12.9898,78.233))+uTime)*43758.5453);col+=(noise-.5)*.025*uMotion;col+=vec3(.05,.26,.23)*uPulse*(1.-vig);col=mix(col,col*vec3(1.4,.68,.55),uHurt*(1.-vig)*.7);if(uTransit>0.){float streak=pow(.5+.5*sin(atan(delta.y,delta.x+.00001)*43.+1.4),30.)*smoothstep(.07,.5,length(delta));
 col+=vec3(.3,.8,.95)*streak*warp*.7;
 col=mix(col,vec3(.55,.94,.86),smoothstep(0.,.6,uTransit)*.7*uMotion);
 col*=1.-smoothstep(.5,1.,uTransit);}
@@ -2635,6 +3121,7 @@ gl_FragColor=vec4(col,1.);}`;
           "Forward",
           "Lights",
           "Colors",
+          "Shadows",
           "Atlas",
           "Time",
           "Flash",
@@ -3017,6 +3504,12 @@ gl_FragColor=vec4(col,1.);}`;
             }),
           ),
           musicEnabled = saved.musicEnabled !== false,
+          musicTrack =
+            Number.isInteger(saved.musicTrack) &&
+            saved.musicTrack >= 0 &&
+            saved.musicTrack < OrbitMusic.tracks.length
+              ? saved.musicTrack
+              : -1,
           musicVolume = clamp(
             Number.isFinite(saved.musicVolume) ? saved.musicVolume : 0.55,
             0,
@@ -3032,6 +3525,7 @@ gl_FragColor=vec4(col,1.);}`;
                 sensitivity,
                 floorRecords,
                 musicEnabled,
+                musicTrack,
                 musicVolume,
               }),
             );
@@ -3085,6 +3579,8 @@ gl_FragColor=vec4(col,1.);}`;
               mode !== "transit" &&
               !mapOpen,
             deck,
+            track: musicTrack,
+            extraction: mode === "playing" && cardTaken,
             combat:
               mode === "playing" &&
               enemies.some(
@@ -3095,6 +3591,11 @@ gl_FragColor=vec4(col,1.);}`;
               ),
             volume: musicVolume * (mode === "title" ? 0.65 : 1),
           });
+          $("music-title").textContent =
+            OrbitMusic.tracks[
+              music?.track ??
+                (musicTrack >= 0 ? musicTrack : OrbitMusic.trackFor(deck))
+            ].title;
         }
         function tone(
           freq,
@@ -3283,12 +3784,16 @@ gl_FragColor=vec4(col,1.);}`;
           pickups = [],
           bullets = [],
           particles = [],
+          lightBursts = [],
           traces = [],
           lights = [],
           staticCount = 0,
           cardTaken = false,
           portalCharge = 0,
-          transitTimer = 0;
+          transitTimer = 0,
+          contract = null,
+          floorStats = null,
+          upgradePicks = 0;
         let keys = new Set(),
           fireHeld = false,
           touchFire = false,
@@ -3909,12 +4414,21 @@ gl_FragColor=vec4(col,1.);}`;
         }
         function makeLevel(preview = false) {
           level = C.generateDeck(preview ? 6417 : runSeed, deck);
+          contract = C.makeContract(
+            level.seed,
+            deck,
+            level.enemies.length,
+            level.pickups.filter((p) => p.type === "cache").length,
+          );
+          floorStats = { started: gameTime, seconds: 0, kills: 0, caches: 0 };
+          upgradePicks = 0;
           cardTaken = false;
           portalCharge = 0;
           transitTimer = 0;
           seen.fill(0);
           bullets = [];
           particles = [];
+          lightBursts = [];
           traces = [];
           flowTimer = 0;
           flow = null;
@@ -4078,18 +4592,26 @@ gl_FragColor=vec4(col,1.);}`;
             };
           }
           if (type === "upgrade") {
-            const pulseMaxed = player.empMax <= 4 && player.dashMax <= 0.8;
-            content.innerHTML = `<div class="eyebrow mono">${player.floorsCompleted} FLOORS CLEARED / FLOOR ${deck + 2} AWAITS</div><h1>A little more<br>dangerous.</h1><p class="intro">Pick a permanent upgrade. Health and shields restored.<br>Fabricator: +24 rounds, up to your carry limit. Make them count.</p><div class="upgrade-grid"><button class="upgrade" data-upgrade="damage"><span class="symbol">↯</span><strong>Hotwired</strong><small>+10 rifle damage.<br>${player.fireRate > 0.065 ? "Up to 10% faster fire rate." : "Fire rate fully tuned."}<br>Make every shot count.</small></button><button class="upgrade" data-upgrade="shield"><span class="symbol">◈</span><strong>Second skin</strong><small>+35 maximum shield.<br>+25 maximum health.<br>A little room for error.</small></button><button class="upgrade" data-upgrade="pulse" ${pulseMaxed ? "disabled" : ""}><span class="symbol">◎</span><strong>Short circuit</strong><small>${pulseMaxed ? "Fully tuned.<br>Choose another upgrade." : "Up to 45% faster EMP recharge.<br>Up to 30% faster dash recharge.<br>Keep the upper hand."}</small></button></div>`;
+            const pulseMaxed = player.empMax <= 4 && player.dashMax <= 0.8,
+              choiceRound = upgradePicks,
+              floorTime = `${Math.floor(floorStats.seconds / 60)}:${String(Math.floor(floorStats.seconds % 60)).padStart(2, "0")}`;
+            content.innerHTML = `<div class="eyebrow mono">${player.floorsCompleted} FLOORS CLEARED / FLOOR ${deck + 2} AWAITS</div><h1>${contract.completed && upgradePicks === 1 ? "One more<br>advantage." : "A little more<br>dangerous."}</h1><div class="floor-report mono"><span>${floorTime} ON FLOOR</span><span>${floorStats.kills} SCRAPPED</span><span class="${contract.completed ? "secured" : ""}">${contract.completed ? "CONTRACT SECURED" : `CONTRACT ${contract.progress}/${contract.target}`}</span></div><p class="intro">${upgradePicks === 2 ? "Contract reward: choose TWO permanent upgrades, one at a time." : contract.completed ? "Bonus fabrication: choose your second permanent upgrade." : "Choose one permanent upgrade. Side contracts unlock a second."}<br>Full health & shields · +24 rounds up to your carry limit.</p><div class="upgrade-grid"><button class="upgrade" data-upgrade="damage"><span class="symbol">↯</span><strong>Hotwired</strong><small>+10 rifle damage.<br>${player.fireRate > 0.065 ? "Up to 10% faster fire rate." : "Fire rate fully tuned."}<br>Make every shot count.</small></button><button class="upgrade" data-upgrade="shield"><span class="symbol">◈</span><strong>Second skin</strong><small>+35 maximum shield.<br>+25 maximum health.<br>A little room for error.</small></button><button class="upgrade" data-upgrade="pulse" ${pulseMaxed ? "disabled" : ""}><span class="symbol">◎</span><strong>Short circuit</strong><small>${pulseMaxed ? "Fully tuned.<br>Choose another upgrade." : "Up to 45% faster EMP recharge.<br>Up to 30% faster dash recharge.<br>Keep the upper hand."}</small></button><button class="upgrade" data-upgrade="blade"><span class="symbol">⟋</span><strong>Arc welder</strong><small>+12 damage to every cut.<br>+16 reflected bolt damage.<br>Turn pressure into power.</small></button></div>`;
             content.querySelectorAll("[data-upgrade]").forEach(
               (b) =>
                 (b.onclick = () => {
                   if (
                     mode !== "upgrade" ||
+                    upgradePicks !== choiceRound ||
                     b.disabled ||
                     (b.dataset.upgrade === "pulse" && pulseMaxed)
                   )
                     return;
                   C.upgrade(player, b.dataset.upgrade);
+                  upgradePicks--;
+                  if (upgradePicks > 0) {
+                    menuScreen("upgrade");
+                    return;
+                  }
                   deck = player.floorsCompleted;
                   C.resupply(player);
                   makeLevel();
@@ -4150,6 +4672,19 @@ gl_FragColor=vec4(col,1.);}`;
         $("reduced-motion").checked = reduced;
         $("reduced-motion").onchange = (e) => {
           reduced = e.target.checked;
+          save();
+        };
+        $("music-track").value = String(musicTrack);
+        $("music-track").onchange = (e) => {
+          const selected = Number(e.target.value);
+          musicTrack =
+            Number.isInteger(selected) &&
+            selected >= 0 &&
+            selected < OrbitMusic.tracks.length
+              ? selected
+              : -1;
+          soundInit();
+          syncMusic();
           save();
         };
         $("music-enabled").checked = musicEnabled;
@@ -4261,7 +4796,30 @@ gl_FragColor=vec4(col,1.);}`;
           reloadTimer = player.reloadDuration;
           tone(260, 0.12, "triangle", 0.12, 110);
         }
-        function enemyHit(e, damage, bypass = false) {
+        function lightBurst(x, y, z, color, power = 2, duration = 0.2) {
+          if (reduced) return;
+          lightBursts.push({
+            x,
+            y,
+            z,
+            color,
+            power,
+            life: duration,
+            max: duration,
+          });
+          if (lightBursts.length > 12) lightBursts.shift();
+        }
+        function progressContract(kind) {
+          if (!C.advanceContract(contract, kind)) return;
+          toast("CONTRACT COMPLETE / BONUS UPGRADE SECURED", 4);
+          radio(
+            "Side contract complete. I've unlocked a second fabrication choice at the lift.",
+            5,
+          );
+          tone(523, 0.15, "triangle", 0.09, 784);
+          tone(1046, 0.35, "sine", 0.07, 1568);
+        }
+        function enemyHit(e, damage, bypass = false, source = "pulse") {
           if (e.health <= 0) return;
           e.health -= C.enemyDamage(e, damage, player, bypass);
           e.hit = 0.16;
@@ -4281,6 +4839,10 @@ gl_FragColor=vec4(col,1.);}`;
             );
             sparks(e.x, e.y, e.z, palette.orange, 24, 5);
             explosionSound(e);
+            lightBurst(e.x, e.y, e.z, palette.orange, 5, 0.5);
+            floorStats.kills++;
+            progressContract("kills");
+            if (source === "blade") progressContract("blade");
             if (Math.random() < C.AMMO.dropChance)
               pickups.push({
                 x: e.x,
@@ -4309,7 +4871,12 @@ gl_FragColor=vec4(col,1.);}`;
               (dx * f.x + dz * f.z) / Math.max(d, 0.01) > 0.18 &&
               lineClear(player, e)
             ) {
-              enemyHit(e, [46, 52, 78][bladeStep], true);
+              enemyHit(
+                e,
+                [46, 52, 78][bladeStep] + player.bladeDamage,
+                true,
+                "blade",
+              );
               e.stun = heavy ? 1.2 : 0.45;
               e.charge = 0;
               if (d > 0.01)
@@ -4337,7 +4904,7 @@ gl_FragColor=vec4(col,1.);}`;
               b.dy = -b.dy;
               b.dz = -b.dz;
               b.speed *= 1.45;
-              b.damage = 64;
+              b.damage = player.parryDamage;
               b.life = 3;
               reflected++;
               sparks(b.x, b.y, b.z, palette.mint, 12, 4);
@@ -4390,6 +4957,14 @@ gl_FragColor=vec4(col,1.);}`;
           tone(170, 0.12, "sawtooth", 0.1, 38);
           const dir = forward(player.yaw, player.pitch),
             origin = { x: player.x, y: 1.55, z: player.z };
+          lightBurst(
+            origin.x + dir.x * 0.4,
+            1.45,
+            origin.z + dir.z * 0.4,
+            palette.orange,
+            1.6,
+            0.075,
+          );
           let distance = sceneHit(origin, dir, 60);
           let target = null;
           for (const e of enemies) {
@@ -4422,6 +4997,7 @@ gl_FragColor=vec4(col,1.);}`;
             life: 0.07,
           });
           sparks(end.x, end.y, end.z, palette.orange, 5, 2);
+          lightBurst(end.x, end.y, end.z, palette.orange, 1.2, 0.15);
           if (target) enemyHit(target, player.damage);
           if (player.ammo === 0 && player.reserve > 0) reloadWeapon();
         }
@@ -4501,6 +5077,8 @@ gl_FragColor=vec4(col,1.);}`;
             );
             radio(terminalLogs[(player.caches - 1) % terminalLogs.length], 8);
             tone(660, 0.25, "sine", 0.14, 990);
+            floorStats.caches++;
+            progressContract("caches");
           }
         }
         function beginTransit() {
@@ -4509,6 +5087,8 @@ gl_FragColor=vec4(col,1.);}`;
           transitTimer = 0;
           portalCharge = 1;
           player.floorsCompleted++;
+          floorStats.seconds = gameTime - floorStats.started;
+          upgradePicks = contract.completed ? 2 : 1;
           recordFloors();
           clearInput();
           interaction = null;
@@ -4755,6 +5335,8 @@ gl_FragColor=vec4(col,1.);}`;
           player.elapsed += dt;
           portalCharge = Math.min(1, portalCharge + (cardTaken ? dt * 1.6 : 0));
           bladeTimer = Math.max(0, bladeTimer - dt);
+          for (const light of lightBursts) light.life -= dt;
+          lightBursts = lightBursts.filter((light) => light.life > 0);
           if (bladePending && player.weapon !== 1) bladePending = false;
           if (
             bladePending &&
@@ -5019,6 +5601,14 @@ gl_FragColor=vec4(col,1.);}`;
               } else enemyHit(target, b.damage, true);
             } else if (wall < distance) {
               b.life = 0;
+              lightBurst(
+                b.x + b.dx * wall,
+                b.y + b.dy * wall,
+                b.z + b.dz * wall,
+                b.friendly ? palette.mint : palette.red,
+                1.1,
+                0.16,
+              );
               sparks(
                 b.x + b.dx * wall,
                 b.y + b.dy * wall,
@@ -5057,7 +5647,9 @@ gl_FragColor=vec4(col,1.);}`;
             cardTaken = true;
             toast("ACCESS CARD ACQUIRED / TRANSIT PORTAL ONLINE", 4);
             radio(
-              "Access accepted. The portal is stable. Step through when you're ready.",
+              contract.completed
+                ? "Access accepted. Bonus fabrication secured. The lift is ready."
+                : "Portal online. Your side contract is still open. Stay for the bonus, or take the lift—your call.",
               5,
             );
             tone(523, 0.15, "sine", 0.15, 1046);
@@ -5148,16 +5740,6 @@ gl_FragColor=vec4(col,1.);}`;
               e.hit > 0 ? [0.8, 0.85, 0.78] : (e.color ?? [0.26, 0.35, 0.39]),
             eye =
               e.stun > 0 ? palette.mint : e.charge > 0 ? palette.red : accent;
-          box(
-            out,
-            e.x,
-            0.031,
-            e.z,
-            1.05 * scale,
-            0.008,
-            0.8 * scale,
-            [0.035, 0.055, 0.06],
-          );
           if (e.type === "skimmer") {
             B(0, 0, 0, 0.48, 0.28, 0.7, armor);
             B(0, 0.16, 0.12, 0.34, 0.09, 0.35, palette.dark);
@@ -6054,6 +6636,84 @@ gl_FragColor=vec4(col,1.);}`;
           }
         }
         let currentVP = null;
+        function sceneLights(eye, preview = false) {
+          const distance = (l) =>
+            (l.x - eye[0]) ** 2 + (l.y - eye[1]) ** 2 + (l.z - eye[2]) ** 2;
+          const visible = (l) => {
+            const dx = l.x - eye[0],
+              dz = l.z - eye[2],
+              d = Math.hypot(dx, dz);
+            return (
+              d < 0.1 ||
+              C.rayWall(level.map, eye[0], eye[2], dx / d, dz / d, d) >=
+                d - 0.15
+            );
+          };
+          const near = lights
+            .map((l) => ({ ...l, d: distance(l) }))
+            .sort((a, b) => a.d - b.d)
+            .slice(0, 18)
+            .filter(visible)
+            .slice(0, 6);
+          // Reserve fixture slots so passing projectiles cannot make ceiling lights pop.
+          const effects = lightBursts.map((l) => ({
+            ...l,
+            power: l.power * (l.life / l.max) ** 2,
+          }));
+          if (preview)
+            effects.push({
+              x: level.start.x + 1,
+              y: 2.2,
+              z: level.start.z + 3,
+              color: [1, 0.38, 0.09],
+              power: 2.5,
+            });
+          else {
+            if (!cardTaken)
+              effects.push({
+                x: level.card.x,
+                y: 1.6,
+                z: level.card.z,
+                color: [1, 0.6, 0.2],
+                power: 2,
+              });
+            if (pulseTimer > 0 && !reduced)
+              effects.push({
+                x: player.x,
+                y: 1.6,
+                z: player.z,
+                color: palette.mint,
+                power: pulseTimer * 5,
+              });
+            for (const b of bullets)
+              effects.push({
+                x: b.x,
+                y: b.y,
+                z: b.z,
+                color: b.friendly ? palette.mint : (b.color ?? palette.red),
+                power: 0.75,
+              });
+            if (player.weapon === 1) {
+              const f = forward(player.yaw);
+              effects.push({
+                x: player.x + f.x * 0.8,
+                y: 1.15,
+                z: player.z + f.z * 0.8,
+                color:
+                  bladeTimer > 0 && bladeStep === 2
+                    ? [0.68, 0.38, 1]
+                    : palette.mint,
+                power: 0.5,
+              });
+            }
+          }
+          effects.sort(
+            (a, b) =>
+              b.power / (1 + distance(b) * 0.2) -
+              a.power / (1 + distance(a) * 0.2),
+          );
+          return near.concat(effects.slice(0, 16).filter(visible).slice(0, 4));
+        }
         function render(time) {
           if (contextLost) return;
           const preview = mode === "title",
@@ -6093,7 +6753,7 @@ gl_FragColor=vec4(col,1.);}`;
           gl.uniform3fv(U.Eye, eye);
           gl.uniform3f(U.Forward, f.x, f.y, f.z);
           gl.uniform1f(U.Time, time);
-          gl.uniform1f(U.Flash, reduced ? 0 : flashTimer * 8);
+          gl.uniform1f(U.Flash, 0);
           gl.uniform2f(U.Portal, portalCharge, motion);
           for (const lamp of lights) {
             lamp.intensity = C.lightIntensity(lamp.flicker, time, reduced);
@@ -6104,43 +6764,38 @@ gl_FragColor=vec4(col,1.);}`;
               );
             }
           }
-          const near = lights
-            .map((l) => ({
-              ...l,
-              d: (l.x - eye[0]) ** 2 + (l.z - eye[2]) ** 2,
-            }))
-            .sort((a, b) => a.d - b.d)
-            .slice(0, 8);
-          if (preview)
-            near.push({
-              x: level.start.x + 1,
-              y: 2.2,
-              z: level.start.z + 3,
-              color: [1, 0.38, 0.09],
-              power: 2.5,
-            });
-          else if (!cardTaken)
-            near.push({
-              x: level.card.x,
-              y: 1.6,
-              z: level.card.z,
-              color: [1, 0.6, 0.2],
-              power: 2,
-            });
-          if (pulseTimer > 0)
-            near.push({
-              x: player.x,
-              y: 1.6,
-              z: player.z,
-              color: [0.18, 1, 0.72],
-              power: pulseTimer * 5,
-            });
-          const positions = new Float32Array(40),
-            colors = new Float32Array(30);
-          near.slice(0, 10).forEach((l, i) => {
+          const near = sceneLights(eye, preview),
+            positions = new Float32Array(40),
+            colors = new Float32Array(30),
+            shadows = new Float32Array(24);
+          near.forEach((l, i) => {
             positions.set([l.x, l.y, l.z, l.power * (l.intensity ?? 1)], i * 4);
             colors.set(l.color, i * 3);
           });
+          const grounded = preview
+            ? [
+                {
+                  x: level.start.x + 1.7,
+                  z: level.start.z - 1.5,
+                  y: 1.4,
+                  scale: 1.5,
+                },
+              ]
+            : enemies
+                .filter((e) => e.health > 0)
+                .sort(
+                  (a, b) =>
+                    Math.hypot(a.x - eye[0], a.z - eye[2]) -
+                    Math.hypot(b.x - eye[0], b.z - eye[2]),
+                )
+                .slice(0, 6);
+          grounded.forEach((e, i) =>
+            shadows.set(
+              [e.x, 0, e.z, 0.45 + (e.scale ?? 1) * 0.28 + e.y * 0.12],
+              i * 4,
+            ),
+          );
+          gl.uniform4fv(U.Shadows, shadows);
           gl.uniform4fv(U.Lights, positions);
           gl.uniform3fv(U.Colors, colors);
           gl.activeTexture(gl.TEXTURE0);
@@ -6160,6 +6815,8 @@ gl_FragColor=vec4(col,1.);}`;
             );
             gl.uniform3f(U.Eye, 0, 0, 0);
             gl.uniform3f(U.Forward, 0, 0, -1);
+            gl.uniform1f(U.Flash, reduced ? 0 : flashTimer * 6);
+            gl.uniform4fv(U.Shadows, new Float32Array(24));
             positions.fill(0);
             colors.fill(0);
             positions.set([-0.5, 1, -1, 1.2]);
@@ -6282,6 +6939,8 @@ gl_FragColor=vec4(col,1.);}`;
             player.floorsCompleted,
             floorRecords[difficulty],
             cardTaken,
+            contract.progress,
+            contract.completed,
             Math.ceil(player.health),
             Math.ceil(player.shield),
             player.ammo,
@@ -6301,6 +6960,14 @@ gl_FragColor=vec4(col,1.);}`;
             $("objective").textContent = cardTaken
               ? "Reach the transit lift"
               : "Recover the deck access card";
+            $("contract-label").textContent = contract.completed
+              ? "BONUS UPGRADE SECURED"
+              : "OPTIONAL / BONUS UPGRADE";
+            $("contract-progress").textContent =
+              `${contract.label} · ${contract.progress}/${contract.target}`;
+            $("contract-meter").style.width =
+              `${(100 * contract.progress) / Math.max(1, contract.target)}%`;
+            $("contract").classList.toggle("secured", contract.completed);
             $("health-value").textContent = Math.ceil(player.health);
             $("shield-value").textContent = Math.ceil(player.shield);
             $("health-meter").style.width =
