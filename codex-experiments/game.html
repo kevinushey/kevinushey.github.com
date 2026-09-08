@@ -1472,6 +1472,9 @@
           cache: 8,
           fabricator: 24,
         };
+        // Consoles project 0.315 m from the grid wall, supports 0.28 m.
+        // Leave room for the camera's near plane even when looking along a wall.
+        const WALL_CLEARANCE = 0.44;
         const PORTAL = {
           halfWidth: 0.88,
           bottom: 0.12,
@@ -2003,11 +2006,12 @@
         const wall = (map, x, z) =>
           map[Math.floor(z / CELL)]?.[Math.floor(x / CELL)] !== 0;
         function fits(map, x, z, r = 0.28, props = []) {
+          const wallRadius = Math.max(r, WALL_CLEARANCE);
           for (const [dx, dz] of [
-            [-r, -r],
-            [-r, r],
-            [r, -r],
-            [r, r],
+            [-wallRadius, -wallRadius],
+            [-wallRadius, wallRadius],
+            [wallRadius, -wallRadius],
+            [wallRadius, wallRadius],
           ])
             if (wall(map, x + dx, z + dz)) return false;
           for (const p of props) {
@@ -2194,6 +2198,7 @@
           CELL,
           SIZE,
           AMMO,
+          WALL_CLEARANCE,
           PORTAL,
           crossesPortal,
           clamp,

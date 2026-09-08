@@ -42,6 +42,8 @@ frontal armor, and reflects incoming bolts. Cabinets and equipment cases block
 movement and attacks, with height-aware projectile collision.
 Furniture stays inside rooms and leaves full-width doorways, room-side
 approaches, and hallways clear.
+Wall clearance keeps the camera outside protruding consoles and structural
+supports, including during dashes and when sliding along a wall.
 About 7% of ceiling lights have occasional, independently timed voltage dips.
 The tube and its cast light dim together; reduced motion keeps them steady.
 

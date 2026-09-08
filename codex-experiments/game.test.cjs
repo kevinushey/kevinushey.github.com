@@ -315,6 +315,89 @@ test("collision substeps prevent dash tunnelling, and allow sliding along walls"
   assert.ok(body.x > 5.27 && body.z > 5.27);
 });
 
+test("wall clearance excludes protruding consoles on every face without enlarging furniture collision", () => {
+  const map = Array.from({ length: C.SIZE }, () => Array(C.SIZE).fill(1));
+  for (let z = 2; z < 8; z++) for (let x = 2; x < 8; x++) map[z][x] = 0;
+  for (const [dx, dz] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ]) {
+    const point = (distance) => ({
+      x: dx ? (dx > 0 ? 20 - distance : 5 + distance) : 10,
+      z: dz ? (dz > 0 ? 20 - distance : 5 + distance) : 10,
+    });
+    const clipped = point(0.3),
+      safe = point(0.45);
+    assert.equal(
+      C.fits(map, clipped.x, clipped.z),
+      false,
+      "old clearance put the camera inside a console's 0.315 m projection",
+    );
+    assert.equal(C.fits(map, safe.x, safe.z), true);
+    assert.equal(
+      C.fits(map, safe.x, safe.z, 0.75),
+      false,
+      "larger bodies still respect their own radius",
+    );
+  }
+  const cabinet = { x: 10, z: 10, w: 0.5, d: 1 };
+  assert.equal(C.fits(map, 10.55, 10, 0.28, [cabinet]), true);
+  assert.equal(C.fits(map, 10.5, 10, 0.28, [cabinet]), false);
+});
+
+test("walking, sprinting and dashing stop outside wall decorations and still slide", () => {
+  const { game: g, tick } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  g.level.props = [];
+  g.level.map = Array.from({ length: C.SIZE }, () => Array(C.SIZE).fill(1));
+  for (let z = 2; z < 8; z++) for (let x = 2; x < 8; x++) g.level.map[z][x] = 0;
+  for (const [dx, dz] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ]) {
+    g.keys.clear();
+    tick(3);
+    g.player.x = dx ? (dx > 0 ? 19.25 : 5.75) : 10;
+    g.player.z = dz ? (dz > 0 ? 19.25 : 5.75) : 10;
+    g.player.yaw = Math.atan2(dx, -dz);
+    g.keys.add("KeyW");
+    const clearance = () =>
+      dx
+        ? dx > 0
+          ? 20 - g.player.x
+          : g.player.x - 5
+        : dz > 0
+          ? 20 - g.player.z
+          : g.player.z - 5;
+    for (const action of [
+      () => {},
+      () => g.keys.add("ShiftLeft"),
+      () => g.dash(),
+    ]) {
+      action();
+      tick(0.4);
+      assert.ok(clearance() >= 0.44 - 1e-8);
+      assert.ok(
+        clearance() - 0.315 > 0.12,
+        "camera remains clear of the console face",
+      );
+    }
+    const before = { x: g.player.x, z: g.player.z };
+    g.keys.add("KeyD");
+    tick(0.4);
+    assert.ok(
+      Math.hypot(g.player.x - before.x, g.player.z - before.z) > 1,
+      "pressing into the wall still allows movement along it",
+    );
+    assert.ok(C.fits(g.level.map, g.player.x, g.player.z));
+  }
+});
+
 test("wall rays handle cardinal directions, diagonal rays and occupied origins", () => {
   const map = Array.from({ length: C.SIZE }, () => Array(C.SIZE).fill(1));
   map[3][3] = 0;
