@@ -168,6 +168,13 @@ Destroyed enemies burst with a layered blast, low thump, and metallic crackle.
 Heavy machines have deeper explosions; pitch varies between kills, and sounds
 fade with distance and pan toward the enemy. All effects respect master mute.
 
+EMP releases a cyan electric sphere that expands from the activation point,
+with broken lightning filaments, a bright floor ring, and a traveling glow on
+walls and props. Brief discharge arcs connect to affected machines. The visual
+pulse lasts one second and stays behind when you move; damage and stun still
+apply immediately with the existing range and cover checks. Reduced motion
+replaces the expansion and flash with a small, stationary halo that fades out.
+
 A red arc around the crosshair points toward the most recent incoming hit,
 including damage absorbed by shields. Front hits appear above the crosshair,
 rear hits below, and side hits to the left or right. The marker rotates with

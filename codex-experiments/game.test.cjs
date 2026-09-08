@@ -114,13 +114,13 @@ function campaign(initialSave = {}) {
   };
   sandbox.window = sandbox;
   const exposed = `\nwindow.testGame = { startRun, update, updatePressure, updateGuardian, moveGuardian, portalReady, guardianCrest, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, spawnerHit, breachMesh, robot, staffMesh, rifleMesh, portalMesh, sceneLights, lightBurst, staffPose, staffTransform,
-    projectWaypoint, updateWaypoint, perspective, view, multiply, render, frame,
+    projectWaypoint, updateWaypoint, perspective, view, multiply, render, frame, empVisual, empMesh,
     get currentVP() { return currentVP; },
     get player() { return player; }, get level() { return level; }, get enemies() { return enemies; },
     get pickups() { return pickups; }, get bullets() { return bullets; },
     get spawners() { return spawners; },
     get guardian() { return guardian; },
-    get state() { return { mode, deck, cardTaken, portalCharge, transitTimer, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords, contract, floorStats, upgradePicks, lightBursts, lockdownTier, lastDamage }; },
+    get state() { return { mode, deck, cardTaken, portalCharge, transitTimer, reloadTimer, empTimer, pulseTimer, empWave, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords, contract, floorStats, upgradePicks, lightBursts, lockdownTier, lastDamage }; },
     get interaction() { return interaction; }, set interaction(v) { interaction = v; },
     get keys() { return keys; }, toggleMap };\n})();`;
   vm.runInNewContext(
@@ -644,6 +644,169 @@ test("EMP stuns visible enemies, clears bolts and cannot fire during cooldown", 
   g.emp();
   assert.equal(e.health, 66);
   assert.equal(g.state.empTimer, g.player.empMax);
+});
+
+test("EMP discharge links only affected targets and snapshots the cast position", () => {
+  const { game: g } = campaign();
+  g.startRun();
+  g.level.map = Array.from({ length: C.SIZE }, (_, z) =>
+    Array.from({ length: C.SIZE }, (_, x) =>
+      x > 1 && x < 20 && z > 1 && z < 20 ? 0 : 1,
+    ),
+  );
+  g.level.props = [{ x: 12, y: 1, z: 13.5, w: 1, h: 2, d: 0.25 }];
+  Object.assign(g.player, { x: 12, z: 12 });
+  g.enemies.forEach((e) => (e.health = 0));
+  g.spawners.forEach((e) => (e.health = 0));
+  const [near, covered, far] = g.enemies;
+  Object.assign(near, { x: 14, y: 1.1, z: 12, health: 100 });
+  Object.assign(covered, { x: 12, y: 1, z: 15, health: 100 });
+  Object.assign(far, { x: 22, y: 1, z: 12, health: 100 });
+  const [node, coveredNode] = g.spawners;
+  Object.assign(node, { x: 15, y: 0.6, z: 11, health: 100 });
+  Object.assign(coveredNode, { x: 12, y: 0.6, z: 16, health: 100 });
+  g.emp();
+  const wave = g.state.empWave;
+  assert.deepEqual(
+    Array.from(wave.targets, (p) => ({ ...p })),
+    [
+      { x: 14, y: 1.1, z: 12 },
+      { x: 15, y: 0.6, z: 11 },
+    ],
+  );
+  assert.equal(near.health, 66);
+  assert.equal(node.health, 66);
+  assert.equal(covered.health, 100);
+  assert.equal(coveredNode.health, 100);
+  assert.equal(far.health, 100);
+  g.player.x += 1;
+  near.x += 1;
+  g.emp();
+  assert.equal(g.state.empWave, wave, "cooldown cannot replace an active wave");
+  assert.equal(g.empVisual().x, 12, "moving does not drag the sphere");
+  assert.equal(
+    wave.targets[0].x,
+    14,
+    "discharge endpoints stay at the hit location",
+  );
+  assert.ok(
+    g
+      .sceneLights([13, 1.55, 12])
+      .some((l) => l.x === 12 && l.y === 1 && l.z === 12 && l.power === 5),
+    "the flash stays at the cast origin too",
+  );
+});
+
+test("EMP wave pauses with simulation, expires, and clears through transit and retry", () => {
+  const s = campaign(),
+    g = s.game;
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  g.spawners.forEach((e) => (e.health = 0));
+  g.emp();
+  s.tick(0.2);
+  const radius = g.empVisual().radius;
+  g.toggleMap();
+  s.tick(2);
+  g.emp();
+  assert.equal(g.empVisual().radius, radius);
+  g.toggleMap();
+  g.pause();
+  s.tick(2);
+  assert.equal(g.empVisual().radius, radius);
+  g.setPlaying(false);
+  s.setHidden(true);
+  s.tick(2);
+  assert.equal(g.empVisual().radius, radius);
+  s.setHidden(false);
+  g.setPlaying(false);
+  s.tick(0.81);
+  assert.equal(g.empVisual(), null);
+  assert.equal(g.state.empWave, null);
+  s.tick(12);
+  Object.assign(g.player, g.level.card);
+  s.tick(0.05);
+  Object.assign(g.player, g.level.exit);
+  s.tick(0.05);
+  g.emp();
+  assert.ok(g.state.empWave);
+  g.interact();
+  assert.equal(g.state.mode, "transit");
+  assert.equal(g.state.empWave, null);
+  s.tick(C.PORTAL.duration + 0.05);
+  s.element("upgrade-blade").onclick();
+  assert.equal(g.empVisual(), null);
+  g.emp();
+  assert.ok(g.empVisual());
+  g.damage(1e9);
+  g.startRun();
+  assert.equal(g.empVisual(), null);
+  assert.equal(g.state.empWave, null);
+});
+
+test("EMP geometry stays finite and bounded, with a stationary reduced-motion halo", () => {
+  for (const reduced of [false, true]) {
+    const { game: g } = campaign({ reduced });
+    g.startRun();
+    g.enemies.forEach((e) => (e.health = 0));
+    g.spawners.forEach((e) => (e.health = 0));
+    // More targets than the visual budget must not change the gameplay hit budget.
+    const template = g.enemies[0];
+    g.enemies.length = 0;
+    for (let i = 0; i < 20; i++)
+      g.enemies.push({
+        ...template,
+        x: g.player.x + 1,
+        z: g.player.z,
+        y: 1,
+        health: 100,
+      });
+    const idle = [];
+    g.empMesh(idle);
+    assert.equal(idle.length, 0);
+    g.emp();
+    assert.equal(g.state.empWave.targets.length, 12);
+    assert.ok(g.enemies.every((e) => e.health === 66));
+    g.enemies.forEach((e) => (e.health = 0));
+    let previousRadius = 0,
+      previousAlpha = 1;
+    for (let i = 0; i < 25; i++) {
+      const wave = g.empVisual(),
+        mesh = [];
+      assert.ok(wave.radius >= previousRadius && wave.radius <= 9);
+      assert.ok(wave.alpha >= 0 && wave.alpha <= 1);
+      if (reduced) {
+        assert.equal(wave.radius, 2.4);
+        assert.ok(wave.alpha <= previousAlpha && wave.alpha <= 0.35);
+      }
+      previousRadius = wave.radius;
+      previousAlpha = wave.alpha;
+      g.empMesh(mesh);
+      assert.equal(mesh.length % 36, 0);
+      assert.ok(
+        mesh.length / 12 < 7000,
+        "bounded vertices independent of crowd size",
+      );
+      assert.ok(mesh.every(Number.isFinite));
+      if (i > 0 || reduced) assert.ok(mesh.length > 0);
+      for (let j = 0; j < mesh.length; j += 12) {
+        assert.ok(
+          Math.abs(Math.hypot(mesh[j + 3], mesh[j + 4], mesh[j + 5]) - 1) <
+            1e-8,
+        );
+        if (reduced)
+          assert.ok(
+            Math.abs(mesh[j + 1] - 0.055) < 0.02,
+            "no vertical cage or target arcs in reduced motion",
+          );
+      }
+      g.update(0.04);
+    }
+    assert.equal(g.empVisual(), null);
+    const expired = [];
+    g.empMesh(expired);
+    assert.equal(expired.length, 0);
+  }
 });
 
 test("shield regeneration has a five-second damage delay", () => {

@@ -3488,6 +3488,8 @@
         const fragment = `precision mediump float;varying vec3 vPosition;varying vec3 vNormal;varying vec3 vColor;varying float vGlow;varying vec2 vUV;uniform vec3 uEye;uniform vec3 uForward;uniform vec4 uLights[10];uniform vec3 uColors[10];uniform sampler2D uAtlas;uniform float uTime;uniform float uFlash;
 uniform vec2 uPortal;
 uniform vec4 uShadows[6];
+uniform vec4 uEmp;
+uniform float uEmpPower;
 vec3 portalField(vec2 uv) {
   vec2 p = (uv - .5) * 2.;
   float t = uTime * uPortal.y;
@@ -3550,6 +3552,13 @@ if(vPosition.y>-.03 && vPosition.y<.08 && n.y>.8){
 }
 lighting+=vec3(1.,.38,.1)*uFlash/(1.+dist*dist);
 vec3 col=base*(lighting+grain)*(1.-min(.48,shadow))+sheen+base*vGlow;
+// The expanding sphere leaves a narrow luminous intersection on solid surfaces.
+if(uEmpPower>.001){
+  float empDistance=abs(length(vPosition-uEmp.xyz)-uEmp.w);
+  float empBand=(1.-smoothstep(.035,.32,empDistance))*uEmpPower;
+  float empEdge=(1.-smoothstep(.015,.07,empDistance))*uEmpPower;
+  col+=vec3(.08,.5,.47)*empBand+vec3(.12,.42,.5)*empEdge;
+}
 float fog=1.-exp(-dist*.027);
 col=mix(col,vec3(.017,.03,.055),fog);
 col=col/(vec3(1.)+col*.25);
@@ -3606,6 +3615,8 @@ gl_FragColor=vec4(col,1.);}`;
           "Time",
           "Flash",
           "Portal",
+          "Emp",
+          "EmpPower",
         ])
           U[n] = loc(sceneProgram, "u" + n);
         const P = {};
@@ -4309,6 +4320,7 @@ gl_FragColor=vec4(col,1.);}`;
           hitTimer = 0,
           flashTimer = 0,
           pulseTimer = 0,
+          empWave = null,
           lastHurt = -20,
           combo = 0,
           lastKill = -20,
@@ -4954,6 +4966,7 @@ gl_FragColor=vec4(col,1.);}`;
           lastHurt = gameTime - 20;
           lastDamage = null;
           $("damage-direction").hidden = true;
+          empWave = null;
           player.x = level.start.x;
           player.z = level.start.z;
           player.yaw = Math.PI / 2;
@@ -5851,6 +5864,13 @@ gl_FragColor=vec4(col,1.);}`;
           if (mode !== "playing" || mapOpen || empTimer > 0) return;
           empTimer = player.empMax;
           pulseTimer = 1;
+          empWave = {
+            x: player.x,
+            y: 1,
+            z: player.z,
+            phase: gameTime * 3.7 + (level.seed % 97),
+            targets: [],
+          };
           noise(0.5, 0.27, 700);
           tone(55, 0.6, "sine", 0.3, 440);
           for (const e of enemies)
@@ -5862,6 +5882,8 @@ gl_FragColor=vec4(col,1.);}`;
               e.stun = e.boss ? 1.4 : 3.2;
               e.charge = 0;
               if (e.boss) e.rush = 0;
+              if (empWave.targets.length < 12)
+                empWave.targets.push({ x: e.x, y: e.y, z: e.z });
               enemyHit(e, 34, true);
             }
           for (const node of spawners)
@@ -5870,6 +5892,8 @@ gl_FragColor=vec4(col,1.);}`;
               Math.hypot(node.x - player.x, node.z - player.z) < 9 &&
               lineClear(player, node)
             ) {
+              if (empWave.targets.length < 12)
+                empWave.targets.push({ x: node.x, y: node.y, z: node.z });
               spawnerHit(node, 34);
               node.stun = 8;
               node.pending = null;
@@ -5973,6 +5997,7 @@ gl_FragColor=vec4(col,1.);}`;
           clearInput();
           interaction = null;
           hurtTimer = flashTimer = pulseTimer = 0;
+          empWave = null;
           lastDamage = null;
           $("damage").style.opacity = "0";
           $("hud").hidden = true;
@@ -6242,6 +6267,7 @@ gl_FragColor=vec4(col,1.);}`;
           hitTimer = Math.max(0, hitTimer - dt);
           flashTimer = Math.max(0, flashTimer - dt);
           pulseTimer = Math.max(0, pulseTimer - dt);
+          if (pulseTimer === 0) empWave = null;
           radioTimer = Math.max(0, radioTimer - dt);
           toastTimer = Math.max(0, toastTimer - dt);
           if (reloadTimer > 0) {
@@ -7169,8 +7195,125 @@ gl_FragColor=vec4(col,1.);}`;
             }
           }
         }
+        function empVisual() {
+          if (!empWave || pulseTimer <= 0) return null;
+          const progress = clamp(1 - pulseTimer, 0, 1);
+          return {
+            ...empWave,
+            progress,
+            radius: reduced ? 2.4 : 0.3 + 8.7 * (1 - (1 - progress) ** 1.25),
+            alpha: reduced
+              ? pulseTimer * 0.35
+              : clamp(progress / 0.035, 0, 1) * clamp(pulseTimer / 0.28, 0, 1),
+          };
+        }
+        function empMesh(out) {
+          const wave = empVisual();
+          if (!wave || wave.alpha <= 0.001) return;
+          const { x, y, z, radius, progress, alpha, phase } = wave,
+            arc = (a, b, strength = alpha) => {
+              if (a.y < 0.035 && b.y < 0.035) return;
+              beam(
+                out,
+                a,
+                b,
+                [0.28 * strength, 0.88 * strength, strength],
+                0.014 * strength,
+                2,
+              );
+            };
+          // The low ring marks the sphere's intersection with the deck.
+          const floorRadius = reduced
+            ? radius
+            : Math.sqrt(Math.max(0, radius * radius - (y - 0.055) ** 2));
+          if (floorRadius > 0.1)
+            for (let i = 0; i < 72; i++) {
+              const point = (angle) => ({
+                x: x + Math.cos(angle) * floorRadius,
+                y: 0.055,
+                z: z + Math.sin(angle) * floorRadius,
+              });
+              arc(point((i * Math.PI) / 36), point(((i + 1) * Math.PI) / 36));
+            }
+          // Reduced motion keeps a small, stationary activation halo.
+          if (reduced) return;
+          const shellPoint = (longitude, latitude) => {
+            const jitter =
+                Math.sin(
+                  longitude * 13 + latitude * 9 + phase + progress * 16,
+                ) *
+                (0.035 + radius * 0.008),
+              r = radius + jitter,
+              lon = longitude + Math.sin(latitude * 17 + phase) * 0.026,
+              lat =
+                latitude +
+                Math.sin(longitude * 15 + phase + progress * 12) * 0.018;
+            return {
+              x: x + Math.cos(lon) * Math.cos(lat) * r,
+              y: y + Math.sin(lat) * r,
+              z: z + Math.sin(lon) * Math.cos(lat) * r,
+            };
+          };
+          for (const latitude of [-0.42, 0, 0.52])
+            for (let i = 0; i < 64; i++) {
+              if (latitude !== 0 && i % 9 === 0) continue;
+              arc(
+                shellPoint((i * Math.PI) / 32, latitude),
+                shellPoint(((i + 1) * Math.PI) / 32, latitude),
+                alpha * (latitude === 0 ? 0.8 : 0.42),
+              );
+            }
+          // Broken meridians turn the flat shock ring into a charged sphere.
+          for (let meridian = 0; meridian < 6; meridian++)
+            for (let i = 0; i < 32; i++) {
+              if ((i + meridian * 3) % 7 === 0) continue;
+              const longitude = (meridian * Math.PI) / 3 + phase * 0.02;
+              arc(
+                shellPoint(longitude, -Math.PI / 2 + (i * Math.PI) / 32),
+                shellPoint(longitude, -Math.PI / 2 + ((i + 1) * Math.PI) / 32),
+                alpha * 0.58,
+              );
+            }
+          // Only affected actors get discharge links; snapshots keep the arcs
+          // attached to the original blast, even if a target moves or dies.
+          const discharge = clamp(1 - progress / 0.24, 0, 1);
+          if (discharge <= 0) return;
+          wave.targets.forEach((target, index) => {
+            const dx = target.x - x,
+              dz = target.z - z,
+              length = Math.hypot(dx, dz);
+            if (length < 0.01) return;
+            const point = (step) => {
+              const t = step / 8,
+                wobble = Math.sin(t * Math.PI) * 0.18,
+                bend =
+                  Math.sin(phase + index * 2.3 + step * 2.7 + progress * 12) *
+                  wobble;
+              return {
+                x: x + dx * t - (dz / length) * bend,
+                y:
+                  y +
+                  (target.y - y) * t +
+                  Math.cos(step * 3.9 + phase) * wobble,
+                z: z + dz * t + (dx / length) * bend,
+              };
+            };
+            for (let i = 0; i < 8; i++) {
+              const a = point(i),
+                b = point(i + 1);
+              arc(a, b, discharge);
+              if (i === 4)
+                arc(
+                  a,
+                  { x: a.x + dx * 0.09, y: a.y + 0.26, z: a.z + dz * 0.09 },
+                  discharge * 0.5,
+                );
+            }
+          });
+        }
         function actors(time, preview = false) {
           const out = [];
+          if (!preview) empMesh(out);
           if (!preview)
             for (const node of spawners) breachMesh(out, node, time);
           // Only faulty lamp tubes join the dynamic mesh; their housings stay static.
@@ -8110,11 +8253,11 @@ gl_FragColor=vec4(col,1.);}`;
                 color: [1, 0.6, 0.2],
                 power: 2,
               });
-            if (pulseTimer > 0 && !reduced)
+            if (empWave && pulseTimer > 0 && !reduced)
               effects.push({
-                x: player.x,
-                y: 1.6,
-                z: player.z,
+                x: empWave.x,
+                y: empWave.y,
+                z: empWave.z,
                 color: palette.mint,
                 power: pulseTimer * 5,
               });
@@ -8188,6 +8331,15 @@ gl_FragColor=vec4(col,1.);}`;
           gl.uniform1f(U.Time, time);
           gl.uniform1f(U.Flash, 0);
           gl.uniform2f(U.Portal, portalCharge, motion);
+          const wave = preview ? null : empVisual();
+          gl.uniform4f(
+            U.Emp,
+            wave?.x ?? 0,
+            wave?.y ?? 0,
+            wave?.z ?? 0,
+            wave?.radius ?? 0,
+          );
+          gl.uniform1f(U.EmpPower, wave && !reduced ? wave.alpha : 0);
           for (const lamp of lights) {
             lamp.intensity = C.lightIntensity(lamp.flicker, time, reduced);
             if (lamp.portal) {
@@ -8241,6 +8393,7 @@ gl_FragColor=vec4(col,1.);}`;
           gl.drawArrays(gl.TRIANGLES, 0, dynamicCount);
           if (!preview && mode !== "transit") {
             gl.clear(gl.DEPTH_BUFFER_BIT);
+            gl.uniform1f(U.EmpPower, 0);
             gl.uniformMatrix4fv(
               U.VP,
               false,
