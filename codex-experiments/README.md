@@ -18,6 +18,14 @@ Your score is floors completed, saved at each lift; dying on floor 7 scores 6.
 Standard and Explorer have separate local records. Old point-based records
 are not reused as floor counts, and audio/accessibility preferences carry over.
 
+Each floor also offers an optional contract: scrap a squad, earn cutlass kills,
+or salvage two crew caches. Progress appears below the main objective. Finish
+the contract to earn two permanent upgrade choices at the lift instead of one;
+you can always leave without completing it. The lift report shows floor time,
+machines scrapped, and contract progress. **Arc welder** adds 12 damage to each
+cut and 16 damage to reflected bolts, alongside the rifle, armor, and ability
+upgrades. Contracts and their rewards reset each floor; upgrades last for the run.
+
 **Ammo:** 24 rounds loaded, at most 48 in reserve (72 total). Runs start with
 24 loaded and one spare magazine. Each floor has two 12-round stashes; machines
 have a 20% chance to drop six rounds, and crew caches supply eight. Pickups and
@@ -37,11 +45,18 @@ Room orientations and connections vary by seed. Ceilings range from 3.6 to
 provide cover and flanking routes; enemies, supplies, and objectives occupy
 separate clear floor tiles. Furniture also keeps narrow interior aisles clear.
 
-Collect supplies and scrap hostile machines. The Storm Cutlass chains three cuts into a heavy finisher, ignores
-frontal armor, and reflects incoming bolts. Cabinets and equipment cases block
+Collect supplies and scrap hostile machines. The Storm Cutlass chains a diagonal
+cut, a returning backhand, and an overhead finisher, with a visible gauntlet and
+forearm driving each swing forward. Wind-up, contact, and follow-through have
+distinct poses; the edge trail follows the blade. Damage, sound, and bolt parries
+occur at contact, after the short wind-up. Switching weapons cancels a pending
+cut. Reduced motion uses a small forward gesture with the same combat timing.
+The blade ignores frontal armor and reflects incoming bolts. Cabinets and equipment cases block
 movement and attacks, with height-aware projectile collision.
 Furniture stays inside rooms and leaves full-width doorways, room-side
 approaches, and hallways clear.
+Wall clearance keeps the camera outside protruding consoles and structural
+supports, including during dashes and when sliding along a wall.
 About 7% of ceiling lights have occasional, independently timed voltage dips.
 The tube and its cast light dim together; reduced motion keeps them steady.
 
@@ -64,11 +79,29 @@ controls, sensitivity, and reduced-motion settings.
   again. P or the Resume button resumes and requests mouse capture immediately.
 - **Touch:** movement joystick, drag to look, and dedicated action buttons.
 
-**Music:** “Ion Runner” is an original 32-bar chiptune, synthesized with pulse
-leads, arpeggios, triangle bass, and LFSR noise drums. Combat adds layers; later
-floors increase the tempo up to 164 BPM. Music has independent enable/volume controls in the
-field guide. The master mute affects music and effects. Playback begins after a
-user gesture and pauses with the game or when the page is hidden.
+**Music:** Four original 32-bar chiptunes rotate with the floors: “Ion Runner,”
+the airy “Glass Orbit,” the driving “Reactor Run,” and “Last Transmission.”
+They have distinct melodies, rhythms, and chord progressions, synthesized with
+pulse leads, arpeggios, triangle bass, drifting sine pads, and LFSR noise drums.
+Combat adds layers, and collecting the card intensifies the extraction music.
+Tempo stays capped at 172 BPM. The field guide lets you choose a particular
+track or automatic rotation, with independent music enable/volume controls.
+Track changes wait for a bar boundary. The master mute affects music and
+effects. Playback begins after a user gesture and pauses with the game or
+when the page is hidden.
+
+The headlamp has a broad spill and a brighter central beam, with subtle metallic
+highlights and restrained bloom. Soft contact shadows ground enemies on the
+floor. Explosions, muzzle flashes, impacts, bolts, EMP, and the cutlass cast
+colored light onto nearby surfaces. Fixture lights have reserved slots so
+passing bolts do not displace them, and wall checks reject sources behind solid
+walls relative to the viewer. These are local light effects and contact shadows,
+not full shadow mapping. Transient lights have a fixed budget and expire; reduced
+motion disables their flashes while keeping steady blade and projectile glow.
+
+Destroyed enemies burst with a layered blast, low thump, and metallic crackle.
+Heavy machines have deeper explosions; pitch varies between kills, and sounds
+fade with distance and pan toward the enemy. All effects respect master mute.
 
 All geometry, lighting, effects, signage, and Web Audio sound are generated in
 `game.html`. Station geometry is batched into a WebGL mesh; simulation uses a
@@ -90,3 +123,8 @@ and repeated floor transitions beyond the old ending, record persistence,
 difficulty scaling, and valid spawns including floor 10,000. The
 controller tests stub the browser platform; visual and input checks require a
 real browser.
+
+Additional tests cover achievable contracts, exactly-once rewards, two-stage
+fabrication, cutlass upgrades, bounded light effects, four complete soundtracks,
+and track changes and cleanup. Browser checks include portrait/landscape menus,
+native Web Audio rendering, and the lighting shaders.
