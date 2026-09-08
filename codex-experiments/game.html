@@ -3175,6 +3175,91 @@ gl_FragColor=vec4(col,1.);}`;
           tone(240, 0.14, "triangle", 0.17, 55);
           tone(720, 0.17, "square", 0.055, 170);
         }
+        function explosionSound(enemy) {
+          if (!audio || muted) return;
+          const t = audio.currentTime,
+            heavy = enemy.type === "sentry" || enemy.type === "bulwark",
+            pitch = (heavy ? 0.72 : 1) * (0.9 + Math.random() * 0.2),
+            duration = heavy ? 0.65 : 0.5,
+            dx = enemy.x - player.x,
+            dz = enemy.z - player.z,
+            distance = Math.hypot(dx, dz),
+            bus = audio.createGain(),
+            pan = audio.createStereoPanner();
+          bus.gain.value = 1 / (1 + distance * 0.07);
+          pan.pan.value =
+            (0.75 * (dx * Math.cos(player.yaw) + dz * Math.sin(player.yaw))) /
+            Math.max(1, distance);
+          bus.connect(pan);
+          pan.connect(master);
+
+          // A broad impact narrows into sputtering electrical debris.
+          const buffer = audio.createBuffer(
+              1,
+              Math.ceil(audio.sampleRate * duration),
+              audio.sampleRate,
+            ),
+            data = buffer.getChannelData(0);
+          for (let i = 0; i < data.length; i++) {
+            const time = i / audio.sampleRate,
+              crackle = Math.sin(time * 173) * Math.sin(time * 293);
+            data[i] =
+              (Math.random() * 2 - 1) *
+              (time < 0.075 ? 1 : crackle > 0.25 ? 1 : 0.18);
+          }
+          const source = audio.createBufferSource(),
+            filter = audio.createBiquadFilter(),
+            gain = audio.createGain();
+          source.buffer = buffer;
+          filter.type = "lowpass";
+          filter.Q.value = 0.7;
+          filter.frequency.setValueAtTime(7000 * pitch, t);
+          filter.frequency.exponentialRampToValueAtTime(
+            450 * pitch,
+            t + duration,
+          );
+          gain.gain.setValueAtTime(0.0001, t);
+          gain.gain.linearRampToValueAtTime(0.7, t + 0.004);
+          gain.gain.exponentialRampToValueAtTime(0.22, t + 0.09);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+          source.connect(filter);
+          filter.connect(gain);
+          gain.connect(bus);
+          source.onended = () => {
+            source.disconnect();
+            filter.disconnect();
+            gain.disconnect();
+            bus.disconnect();
+            pan.disconnect();
+          };
+          source.start(t);
+          source.stop(t + duration);
+
+          function fragment(start, end, length, volume, type) {
+            const oscillator = audio.createOscillator(),
+              envelope = audio.createGain();
+            oscillator.type = type;
+            oscillator.frequency.setValueAtTime(start * pitch, t);
+            oscillator.frequency.exponentialRampToValueAtTime(
+              end * pitch,
+              t + length,
+            );
+            envelope.gain.setValueAtTime(0.0001, t);
+            envelope.gain.linearRampToValueAtTime(volume, t + 0.004);
+            envelope.gain.exponentialRampToValueAtTime(0.0001, t + length);
+            oscillator.connect(envelope);
+            envelope.connect(bus);
+            oscillator.onended = () => {
+              oscillator.disconnect();
+              envelope.disconnect();
+            };
+            oscillator.start(t);
+            oscillator.stop(t + length);
+          }
+          fragment(150, 32, duration * 0.8, 0.5, "sine");
+          fragment(960, 190, 0.19, 0.085, "square");
+          fragment(1570, 410, 0.27, 0.055, "triangle");
+        }
         const deckNames = [
           "DOCKING RING",
           "RESEARCH WING",
@@ -4190,7 +4275,7 @@ gl_FragColor=vec4(col,1.);}`;
               1.5,
             );
             sparks(e.x, e.y, e.z, palette.orange, 24, 5);
-            noise(0.2, 0.19, 650);
+            explosionSound(e);
             if (Math.random() < C.AMMO.dropChance)
               pickups.push({
                 x: e.x,
