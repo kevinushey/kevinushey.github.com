@@ -26,6 +26,35 @@ machines scrapped, and contract progress. **Arc welder** adds 12 damage to each
 cut and 16 damage to reflected bolts, alongside the rifle, armor, and ability
 upgrades. Contracts and their rewards reset each floor; upgrades last for the run.
 
+**Floor lockdown:** A visible countdown gives you three minutes per floor
+(four in Explorer). At zero, every surviving machine begins hunting you and
+gains health, damage, speed, and firing cadence. Another overclock surge arrives
+every 45 seconds. Health and damage keep increasing; movement and attack rates
+stay bounded. Wounded enemies retain their health percentage. A warning plays
+30 seconds before lockdown, and the music gains its combat layers. The lift
+remains usable: the deadline adds pressure rather than ending the run. The
+countdown and production pause with the game, tactical map, and hidden tab;
+each new floor gets a fresh timer.
+
+**Breach nodes:** Two violet energy cores occupy reserved room centers, away
+from the starting room, card, and lift. Their floor emitters and projections
+are passable, preserving all furnished routes. Each node starts producing after
+30–43 seconds, then waits 35 seconds between spawn charges. Lockdown shortens
+that interval to a minimum of ten seconds. A visible marker charges for 2.4
+seconds before each reinforcement arrives, followed by a short attack delay.
+Spawn positions are checked again at arrival, stay inside rooms, clear of walls,
+furniture, actors, and supplies, and at least four meters from the player.
+Blocked pads retry later without accumulating a backlog. Population stays
+capped at 48 live machines, and old corpses are pruned to bound storage.
+
+Shoot or slash a core to seal its breach permanently; reflected bolts work too.
+EMP cancels the pending spawn and disables production for eight seconds before
+the node resumes its cooldown. Nodes have health bars, status labels, local
+lighting, and explored-map icons. Sealing every breach stops reinforcements but
+does not stop the lockdown clock. Destroying a node does not award enemy kills
+or contract progress. Reinforcements count toward combat contracts, but carry
+no ammo drops, keeping supplies scarce.
+
 **Ammo:** 24 rounds loaded, at most 48 in reserve (72 total). Runs start with
 24 loaded and one spare magazine. Each floor has two 12-round stashes; machines
 have a 20% chance to drop six rounds, and crew caches supply eight. Pickups and
@@ -128,3 +157,9 @@ Additional tests cover achievable contracts, exactly-once rewards, two-stage
 fabrication, cutlass upgrades, bounded light effects, four complete soundtracks,
 and track changes and cleanup. Browser checks include portrait/landscape menus,
 native Web Audio rendering, and the lighting shaders.
+
+Lockdown tests cover both deadlines, successive surges, wounded/dead enemies,
+pause and reset behavior, extraction during lockdown, and bounded attack rates.
+Breach tests cover 300 deterministic layouts, spawn clearance and revalidation,
+population/storage limits, spawn warnings, all weapon interactions, EMP and cover,
+ammo farming prevention, and finite visual geometry with reduced motion.

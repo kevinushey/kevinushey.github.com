@@ -360,6 +360,42 @@
         background: var(--mint);
         transition: width 0.25s;
       }
+      .floor-pressure {
+        margin-top: 12px;
+        padding-left: 9px;
+        border-left: 2px solid #9af5d370;
+        color: #a6b8bd;
+        font-size: 9px;
+        letter-spacing: 0.7px;
+        line-height: 1.8;
+        font-variant-numeric: tabular-nums;
+      }
+      .floor-pressure strong {
+        color: var(--mint);
+        font-size: 12px;
+      }
+      .floor-pressure small {
+        display: block;
+        font-size: 8px;
+      }
+      .floor-pressure.warning {
+        border-color: #ffad66;
+      }
+      .floor-pressure.warning strong {
+        color: #ffad66;
+      }
+      .floor-pressure.lockdown {
+        border-color: #ff776b;
+      }
+      .floor-pressure.lockdown strong {
+        color: #ff9388;
+      }
+      @media (max-height: 580px) {
+        .floor-pressure {
+          margin-top: 6px;
+          line-height: 1.45;
+        }
+      }
       @media (max-width: 650px) {
         .upgrade-grid {
           grid-template-columns: repeat(2, 1fr) !important;
@@ -783,6 +819,7 @@
       }
       #map-panel {
         position: absolute;
+        z-index: 6;
         left: 50%;
         top: 50%;
         transform: translate(-50%, -50%);
@@ -801,16 +838,20 @@
       }
       #map-full {
         display: block;
-        width: min(430px, 65vw);
+        width: min(430px, 65vw, calc(100dvh - 170px));
         height: auto;
       }
       .legend {
         display: flex;
-        gap: 20px;
+        flex-wrap: wrap;
+        gap: 8px 14px;
         font-size: 9px;
         letter-spacing: 1px;
         color: #8aa1a2;
         margin-top: 18px;
+      }
+      .legend span {
+        white-space: nowrap;
       }
       .legend span:first-child {
         color: var(--orange);
@@ -826,6 +867,9 @@
       }
       body.touch-playing #touch {
         display: block;
+      }
+      body:has(#map-panel:not([hidden])) #touch {
+        visibility: hidden;
       }
       .stick {
         position: absolute;
@@ -1317,6 +1361,11 @@
             ><strong id="contract-progress"></strong>
             <div class="contract-track"><span id="contract-meter"></span></div>
           </div>
+          <div id="floor-pressure" class="floor-pressure mono">
+            <span id="pressure-label">LOCKDOWN IN</span>
+            <strong id="pressure-time">03:00</strong>
+            <small id="breach-status">2 BREACH NODES ONLINE</small>
+          </div>
         </div>
         <div class="map-stack">
           <button
@@ -1396,10 +1445,11 @@
           id="map-full"
           width="500"
           height="500"
-          aria-label="Explored deck map with access card and lift locations"
+          aria-label="Explored deck map with breach nodes, access card and lift locations"
         ></canvas>
         <div class="legend">
-          <span>◇ ACCESS CARD</span><span>□ LIFT</span><span>● YOU</span>
+          <span>◇ ACCESS CARD</span><span>□ LIFT</span
+          ><span style="color: #ce91ff">⊕ BREACH</span><span>● YOU</span>
         </div>
         <p
           class="mono"
@@ -1484,6 +1534,21 @@
         magazines (48 rounds), for 72 total. Start with one spare. Each lift
         supplies just 24 rounds. Ammo is scarce: check side rooms, conserve
         shots, and use the cutlass. Excess pickup ammo stays on the floor.
+      </p>
+      <p>
+        Each floor locks down after three minutes (four in Explorer). Every 45
+        seconds after that, surviving enemies gain health, damage, speed, and
+        aggression. The lift stays available. The timer pauses with the game and
+        tactical map, and resets at the next floor.
+      </p>
+      <p>
+        Two violet breach nodes manufacture reinforcements throughout each
+        floor, faster during lockdown. A glowing marker warns you before a
+        machine arrives. Shoot or slash the floating energy core to seal a
+        breach permanently; EMP cancels its current spawn and disables it for
+        eight seconds. These projections and their floor pads are passable.
+        Spawned machines carry no spare ammo. Sealing breaches is optional; it
+        stops production but cannot stop lockdown.
       </p>
       <p>
         Each floor has an optional contract: scrap machines, land cutlass kills,
@@ -1752,6 +1817,116 @@
             cadence: 1 + Math.min(2.2, deck * 0.1),
             squadSize: Math.min(5, 1 + Math.floor(deck / 3)),
           };
+        }
+        const LOCKDOWN = { standard: 180, explorer: 240, step: 45 };
+        const BREACH = {
+          charge: 2.4,
+          interval: 35,
+          activeCap: 48,
+          historyCap: 64,
+        };
+        function floorClock(seconds, difficulty = "standard") {
+          const limit = LOCKDOWN[difficulty] ?? LOCKDOWN.standard,
+            overtime = Math.max(0, seconds - limit),
+            tier =
+              seconds < limit ? 0 : 1 + Math.floor(overtime / LOCKDOWN.step);
+          return {
+            tier,
+            remaining: Math.max(0, limit - seconds),
+            next: tier
+              ? LOCKDOWN.step - (overtime % LOCKDOWN.step)
+              : limit - seconds,
+          };
+        }
+        function strengthenEnemy(enemy, tier) {
+          if (enemy.health <= 0 || enemy.lockdownTier === tier) return;
+          const base = (enemy.baseStats ??= Object.fromEntries(
+            [
+              "maxHealth",
+              "damage",
+              "speed",
+              "interval",
+              "windup",
+              "boltSpeed",
+              "range",
+            ].map((key) => [key, enemy[key]]),
+          ));
+          const fraction = enemy.health / enemy.maxHealth,
+            strength = 1 + tier * 0.25 + tier * tier * 0.035,
+            haste = 1 + Math.min(1.2, tier * 0.14);
+          enemy.maxHealth = Math.round(base.maxHealth * strength);
+          enemy.health = enemy.maxHealth * fraction;
+          enemy.damage = Math.round(base.damage * strength);
+          enemy.speed = Math.max(base.speed, Math.min(7, base.speed * haste));
+          enemy.interval = Math.max(0.3, base.interval / haste);
+          enemy.windup = base.windup ? Math.max(0.22, base.windup / haste) : 0;
+          enemy.boltSpeed = Math.min(26, base.boltSpeed * (1 + tier * 0.05));
+          enemy.range =
+            enemy.type === "stalker"
+              ? base.range
+              : Math.max(3.5, base.range / haste);
+          enemy.lockdownTier = tier;
+          if (tier) enemy.alert = true;
+        }
+        function reinforcementSpot(
+          level,
+          node,
+          enemy,
+          player,
+          enemies,
+          offset = 0,
+        ) {
+          // A visible pad telegraphs the exact spawn location. Check again when
+          // materializing: bodies and the player can move into it during charge.
+          for (const radius of [1.7, 2.6, 3.5])
+            for (let i = 0; i < 12; i++) {
+              const angle = offset + (i * Math.PI) / 6,
+                p = {
+                  x: node.x + Math.sin(angle) * radius,
+                  z: node.z + Math.cos(angle) * radius,
+                };
+              if (
+                validReinforcementSpot(level, p, enemy, player, enemies, node)
+              )
+                return p;
+            }
+          return null;
+        }
+        function validReinforcementSpot(
+          level,
+          p,
+          enemy,
+          player,
+          enemies,
+          node,
+        ) {
+          const room = level.rooms[node.room],
+            tx = Math.floor(p.x / CELL),
+            tz = Math.floor(p.z / CELL);
+          return (
+            tx >= room.x &&
+            tx < room.x + room.w &&
+            tz >= room.z &&
+            tz < room.z + room.h &&
+            fits(
+              level.map,
+              p.x,
+              p.z,
+              enemy.collisionRadius + 0.15,
+              level.props,
+            ) &&
+            visible(level.map, node, p, level.props) &&
+            Math.hypot(p.x - player.x, p.z - player.z) >= 4 &&
+            [level.start, level.exit, level.card, ...level.pickups].every(
+              (item) => Math.hypot(p.x - item.x, p.z - item.z) > 1.25,
+            ) &&
+            enemies.every(
+              (other) =>
+                other.health <= 0 ||
+                Math.hypot(p.x - other.x, p.z - other.z) >
+                  enemy.collisionRadius + other.collisionRadius + 0.45,
+            )
+          );
         }
         function makeEnemy(random, type, deck = 0) {
           const base = enemyTypes[type],
@@ -2137,6 +2312,36 @@
                 type: "cache",
               });
           }
+          // Centers are reserved by ordinary spawning. These energy projections
+          // have flush floor pads, so every existing walking route stays open.
+          const breachRandom = rng(seed ^ Math.imul(deck + 1, 0x45d9f3b)),
+            breachRooms = rooms
+              .slice(1)
+              .filter(
+                (room) => room.index !== exit.room && room.index !== card.room,
+              );
+          for (let i = breachRooms.length - 1; i > 0; i--) {
+            const j = Math.floor(breachRandom() * (i + 1));
+            [breachRooms[i], breachRooms[j]] = [breachRooms[j], breachRooms[i]];
+          }
+          const spawners = breachRooms.slice(0, 2).map((room, i) => ({
+            ...center(room),
+            room: room.index,
+            id: i,
+            y: 1.3,
+            name: "Breach node",
+            type: "breach",
+            trait: "standard",
+            spawner: true,
+            health: 132 + Math.min(120, deck * 8),
+            maxHealth: 132 + Math.min(120, deck * 8),
+            hitRadius: 0.65,
+            cooldown: 30 + i * 13,
+            charge: 0,
+            stun: 0,
+            hit: 0,
+            pending: null,
+          }));
           return {
             map,
             rooms,
@@ -2146,6 +2351,7 @@
             enemies,
             pickups,
             props,
+            spawners,
             seed,
             deck,
           };
@@ -2360,6 +2566,12 @@
           distances,
           generateDeck,
           floorPressure,
+          LOCKDOWN,
+          BREACH,
+          floorClock,
+          strengthenEnemy,
+          reinforcementSpot,
+          validReinforcementSpot,
           enemyTypes,
           makeEnemy,
           enemyDamage,
@@ -3583,12 +3795,13 @@ gl_FragColor=vec4(col,1.);}`;
             extraction: mode === "playing" && cardTaken,
             combat:
               mode === "playing" &&
-              enemies.some(
-                (e) =>
-                  e.health > 0 &&
-                  e.alert &&
-                  Math.hypot(e.x - player.x, e.z - player.z) < 16,
-              ),
+              (lockdownTier > 0 ||
+                enemies.some(
+                  (e) =>
+                    e.health > 0 &&
+                    e.alert &&
+                    Math.hypot(e.x - player.x, e.z - player.z) < 16,
+                )),
             volume: musicVolume * (mode === "title" ? 0.65 : 1),
           });
           $("music-title").textContent =
@@ -3781,6 +3994,11 @@ gl_FragColor=vec4(col,1.);}`;
           runSeed = 0,
           runBestAtStart = 0,
           enemies = [],
+          spawners = [],
+          nextEnemyId = 0,
+          breachRandom = C.rng(1),
+          lockdownTier = 0,
+          lockdownWarned = false,
           pickups = [],
           bullets = [],
           particles = [],
@@ -4421,6 +4639,11 @@ gl_FragColor=vec4(col,1.);}`;
             level.pickups.filter((p) => p.type === "cache").length,
           );
           floorStats = { started: gameTime, seconds: 0, kills: 0, caches: 0 };
+          lockdownTier = 0;
+          lockdownWarned = false;
+          nextEnemyId = 0;
+          breachRandom = C.rng(level.seed ^ Math.imul(deck + 1, 0x119de1f3));
+          spawners = level.spawners.map((node) => ({ ...node }));
           upgradePicks = 0;
           cardTaken = false;
           portalCharge = 0;
@@ -4452,23 +4675,130 @@ gl_FragColor=vec4(col,1.);}`;
           player.z = level.start.z;
           player.yaw = Math.PI / 2;
           player.pitch = 0;
-          enemies = level.enemies.map((e, i) => ({
-            ...e,
-            id: i,
-            y: e.type === "stalker" ? 0.65 * e.scale : 1.2,
-            angle: 0,
-            phase: e.hoverPhase,
-            alert: false,
-            cooldown: (1 + i * 0.05) / Math.min(2.5, 1 + deck * 0.1),
-            charge: 0,
-            stun: 0,
-            hit: 0,
-            homeX: e.x,
-            homeZ: e.z,
-          }));
+          enemies = level.enemies.map((e) => activateEnemy(e));
           pickups = level.pickups.map((p) => ({ ...p, taken: false }));
           buildStation();
           lastHud = "";
+        }
+        function activateEnemy(source, reinforcement = false) {
+          const id = nextEnemyId++,
+            enemy = {
+              ...source,
+              id,
+              reinforcement,
+              y: source.type === "stalker" ? 0.65 * source.scale : 1.2,
+              angle: 0,
+              phase: source.hoverPhase,
+              alert: reinforcement,
+              cooldown: reinforcement
+                ? 1.4
+                : (1 + id * 0.05) / Math.min(2.5, 1 + deck * 0.1),
+              charge: 0,
+              stun: reinforcement ? 0.8 : 0,
+              hit: 0,
+              homeX: source.x,
+              homeZ: source.z,
+            };
+          if (lockdownTier) C.strengthenEnemy(enemy, lockdownTier);
+          return enemy;
+        }
+        function updatePressure(dt) {
+          floorStats.seconds += dt;
+          const clock = C.floorClock(floorStats.seconds, difficulty);
+          if (!lockdownWarned && clock.remaining <= 30 && !clock.tier) {
+            lockdownWarned = true;
+            radio(
+              "Thirty seconds to lockdown. Machines will overclock. Find the card and take the lift.",
+              6,
+            );
+            tone(440, 0.25, "triangle", 0.08, 220);
+          }
+          if (clock.tier !== lockdownTier) {
+            lockdownTier = clock.tier;
+            for (const enemy of enemies) C.strengthenEnemy(enemy, lockdownTier);
+            toast(`LOCKDOWN ${lockdownTier} / HOSTILES OVERCLOCKED`, 4);
+            radio(
+              lockdownTier === 1
+                ? "Lockdown engaged. Hostiles are hunting you. Their strength will keep climbing. The lift still works."
+                : "Another overclock surge. Stronger machines. Faster production. Keep moving.",
+              6,
+            );
+            tone(160, 0.55, "sawtooth", 0.08, 70);
+          }
+          for (const node of spawners) {
+            if (node.health <= 0) continue;
+            node.hit = Math.max(0, node.hit - dt);
+            if (node.stun > 0) {
+              node.stun = Math.max(0, node.stun - dt);
+              continue;
+            }
+            const active = enemies.filter((enemy) => enemy.health > 0).length,
+              interval = Math.max(
+                10,
+                C.BREACH.interval / (1 + lockdownTier * 0.22),
+              );
+            if (node.pending) {
+              node.charge = Math.max(0, node.charge - dt);
+              if (node.charge > 0) continue;
+              const { enemy, point } = node.pending;
+              if (
+                active < C.BREACH.activeCap &&
+                C.validReinforcementSpot(
+                  level,
+                  point,
+                  enemy,
+                  player,
+                  enemies,
+                  node,
+                )
+              ) {
+                if (enemies.length >= C.BREACH.historyCap)
+                  enemies = enemies.filter((e) => e.health > 0);
+                enemies.push(activateEnemy({ ...enemy, ...point }, true));
+                sparks(point.x, 0.5, point.z, [0.78, 0.4, 1], 18, 3);
+                lightBurst(point.x, 1, point.z, [0.78, 0.4, 1], 3, 0.4);
+                if (Math.hypot(point.x - player.x, point.z - player.z) < 18)
+                  tone(110, 0.3, "triangle", 0.09, 440);
+                node.cooldown = interval;
+              } else node.cooldown = 3;
+              node.pending = null;
+              continue;
+            }
+            // No accumulated spawn debt while a pad is blocked or the cap is full.
+            if (lockdownTier) node.cooldown = Math.min(node.cooldown, interval);
+            node.cooldown = Math.max(0, node.cooldown - dt);
+            if (node.cooldown > 0) continue;
+            if (active >= C.BREACH.activeCap) {
+              node.cooldown = 3;
+              continue;
+            }
+            const types = deck
+                ? Object.keys(C.enemyTypes)
+                : ["drone", "skimmer", "stalker", "sentry"],
+              enemy = C.makeEnemy(
+                breachRandom,
+                types[Math.floor(breachRandom() * types.length)],
+                deck,
+              ),
+              point = C.reinforcementSpot(
+                level,
+                node,
+                enemy,
+                player,
+                enemies,
+                breachRandom() * Math.PI * 2,
+              );
+            if (!point) {
+              node.cooldown = 3;
+              continue;
+            }
+            node.pending = { enemy, point };
+            node.charge = C.BREACH.charge;
+            if (Math.hypot(point.x - player.x, point.z - player.z) < 18) {
+              toast("BREACH NODE / REINFORCEMENT INBOUND", 2.4);
+              tone(330, 0.4, "triangle", 0.06, 880);
+            }
+          }
         }
         function clearInput() {
           keys.clear();
@@ -4535,7 +4865,7 @@ gl_FragColor=vec4(col,1.);}`;
           makeLevel();
           setPlaying();
           radio(
-            "You’re awake. Good. The station is not. Find an access card, reach the lift, and try not to become a permanent resident.",
+            `${difficulty === "explorer" ? "Four" : "Three"} minutes before lockdown. Find the access card, then take the lift. Violet breach cores keep making machines. Cut them down if you can.`,
             9,
           );
           toast(
@@ -4821,6 +5151,10 @@ gl_FragColor=vec4(col,1.);}`;
         }
         function enemyHit(e, damage, bypass = false, source = "pulse") {
           if (e.health <= 0) return;
+          if (e.spawner) {
+            spawnerHit(e, damage);
+            return;
+          }
           e.health -= C.enemyDamage(e, damage, player, bypass);
           e.hit = 0.16;
           e.alert = true;
@@ -4843,7 +5177,7 @@ gl_FragColor=vec4(col,1.);}`;
             floorStats.kills++;
             progressContract("kills");
             if (source === "blade") progressContract("blade");
-            if (Math.random() < C.AMMO.dropChance)
+            if (!e.reinforcement && Math.random() < C.AMMO.dropChance)
               pickups.push({
                 x: e.x,
                 z: e.z,
@@ -4854,6 +5188,27 @@ gl_FragColor=vec4(col,1.);}`;
               });
           }
         }
+        function spawnerHit(node, amount) {
+          if (node.health <= 0) return;
+          node.health = Math.max(0, node.health - amount);
+          node.hit = 0.18;
+          hitTimer = 0.16;
+          sparks(node.x, node.y, node.z, [0.78, 0.4, 1], 8, 3);
+          tone(620, 0.08, "triangle", 0.06, 160);
+          if (node.health > 0) return;
+          node.pending = null;
+          node.charge = 0;
+          explosionSound({ ...node, type: "sentry" });
+          lightBurst(node.x, node.y, node.z, [0.78, 0.4, 1], 5, 0.5);
+          sparks(node.x, node.y, node.z, [0.78, 0.4, 1], 30, 5);
+          const active = spawners.filter((s) => s.health > 0).length;
+          toast(
+            active
+              ? `BREACH SEALED / ${active} NODE REMAINS`
+              : "ALL BREACHES SEALED / REINFORCEMENTS HALTED",
+            4,
+          );
+        }
         function strikeBlade() {
           const heavy = bladeStep === 2,
             reach = heavy ? 3.25 : 2.85;
@@ -4861,7 +5216,7 @@ gl_FragColor=vec4(col,1.);}`;
           tone(880, 0.16, "triangle", 0.06, 220);
           noise(0.14, 0.13, 2600);
           const f = forward(player.yaw);
-          for (const e of enemies) {
+          for (const e of [...enemies, ...spawners]) {
             const dx = e.x - player.x,
               dz = e.z - player.z,
               d = Math.hypot(dx, dz);
@@ -4877,9 +5232,9 @@ gl_FragColor=vec4(col,1.);}`;
                 true,
                 "blade",
               );
-              e.stun = heavy ? 1.2 : 0.45;
-              e.charge = 0;
-              if (d > 0.01)
+              e.stun = Math.max(e.spawner ? e.stun : 0, heavy ? 1.2 : 0.45);
+              if (!e.spawner) e.charge = 0;
+              if (!e.spawner && d > 0.01)
                 moveBody(
                   e,
                   (dx / d) * (heavy ? 0.85 : 0.25),
@@ -4967,7 +5322,7 @@ gl_FragColor=vec4(col,1.);}`;
           );
           let distance = sceneHit(origin, dir, 60);
           let target = null;
-          for (const e of enemies) {
+          for (const e of [...enemies, ...spawners]) {
             if (e.health <= 0) continue;
             const t = C.segmentSphere(
               origin,
@@ -5016,6 +5371,18 @@ gl_FragColor=vec4(col,1.);}`;
               e.stun = 3.2;
               e.charge = 0;
               enemyHit(e, 34, true);
+            }
+          for (const node of spawners)
+            if (
+              node.health > 0 &&
+              Math.hypot(node.x - player.x, node.z - player.z) < 9 &&
+              lineClear(player, node)
+            ) {
+              spawnerHit(node, 34);
+              node.stun = 8;
+              node.pending = null;
+              node.charge = 0;
+              node.cooldown = Math.max(8, node.cooldown);
             }
           bullets = bullets.filter(
             (b) => Math.hypot(b.x - player.x, b.z - player.z) > 11,
@@ -5331,8 +5698,10 @@ gl_FragColor=vec4(col,1.);}`;
             if (transitTimer >= C.PORTAL.duration) menuScreen("upgrade");
             return;
           }
+          if (mode !== "playing" || mapOpen) return;
           gameTime += dt;
           player.elapsed += dt;
+          updatePressure(dt);
           portalCharge = Math.min(1, portalCharge + (cardTaken ? dt * 1.6 : 0));
           bladeTimer = Math.max(0, bladeTimer - dt);
           for (const light of lightBursts) light.life -= dt;
@@ -5572,7 +5941,7 @@ gl_FragColor=vec4(col,1.);}`;
             let target = null,
               nearest = Math.min(wall, distance);
             if (b.friendly) {
-              for (const e of enemies) {
+              for (const e of [...enemies, ...spawners]) {
                 if (e.health <= 0) continue;
                 const t = C.segmentSphere(b, dir, e, e.hitRadius, nearest);
                 if (t !== null && t < nearest) {
@@ -6060,8 +6429,119 @@ gl_FragColor=vec4(col,1.);}`;
               );
           }
         }
+        function breachMesh(out, node, time) {
+          const alive = node.health > 0,
+            color =
+              node.hit > 0
+                ? palette.white
+                : node.stun > 0
+                  ? palette.mint
+                  : [0.78, 0.4, 1],
+            rotation = reduced ? 0 : time * 0.65 + node.id,
+            ring = (x, y, z, radius, glow, tint, tilt = 0) => {
+              for (let i = 0; i < 32; i++) {
+                const point = (angle) => ({
+                  x: x + Math.cos(angle) * radius,
+                  y: y + Math.sin(angle) * radius * Math.sin(tilt),
+                  z: z + Math.sin(angle) * radius * Math.cos(tilt),
+                });
+                beam(
+                  out,
+                  point((i * Math.PI) / 16 + rotation),
+                  point(((i + 1) * Math.PI) / 16 + rotation),
+                  tint,
+                  0.018,
+                  glow,
+                );
+              }
+            };
+          // The emitter is flush with the floor; only energy rises above it.
+          box(out, node.x, 0.025, node.z, 1.55, 0.04, 1.55, palette.dark);
+          ring(
+            node.x,
+            0.06,
+            node.z,
+            0.68,
+            alive ? 1.3 : 0,
+            alive ? color : palette.trim,
+          );
+          if (!alive) {
+            for (const sign of [-1, 1])
+              beam(
+                out,
+                { x: node.x - 0.3, y: 0.07, z: node.z + sign * 0.3 },
+                { x: node.x + 0.3, y: 0.07, z: node.z - sign * 0.3 },
+                palette.trim,
+                0.025,
+                0,
+              );
+            return;
+          }
+          const energy = node.stun > 0 ? 0.35 : 1;
+          sphere(
+            out,
+            node.x,
+            node.y,
+            node.z,
+            0.3,
+            color.map((v) => v * energy),
+            1.3,
+          );
+          ring(node.x, node.y, node.z, 0.56, energy, color, Math.PI / 2);
+          ring(node.x, node.y, node.z, 0.56, energy, color, rotation * 0.6);
+          for (let i = 0; i < 4; i++) {
+            const a = rotation + (i * Math.PI) / 2,
+              x = node.x + Math.cos(a) * 0.38,
+              z = node.z + Math.sin(a) * 0.38;
+            beam(
+              out,
+              { x, y: 0.09, z },
+              { x, y: 0.6, z },
+              color.map((v) => v * 0.45),
+              0.008,
+              energy,
+            );
+          }
+          if (node.pending) {
+            const p = node.pending.point,
+              progress = clamp(1 - node.charge / C.BREACH.charge, 0, 1),
+              radius = node.pending.enemy.collisionRadius + 0.28;
+            ring(p.x, 0.065, p.z, radius, 1.3, palette.orange);
+            ring(
+              p.x,
+              reduced ? 0.12 : 0.12 + progress * 1.7,
+              p.z,
+              radius * (1 - progress * 0.4),
+              1,
+              color,
+            );
+            beam(
+              out,
+              { x: node.x, y: 0.1, z: node.z },
+              { x: p.x, y: 0.1, z: p.z },
+              color,
+              0.014,
+              1,
+            );
+            for (let i = 0; i < 4; i++) {
+              const a = (i * Math.PI) / 2,
+                x = p.x + Math.cos(a) * radius,
+                z = p.z + Math.sin(a) * radius;
+              beam(
+                out,
+                { x, y: 0.07, z },
+                { x, y: 0.3 + progress * 1.4, z },
+                color,
+                0.012,
+                1,
+              );
+            }
+          }
+        }
         function actors(time, preview = false) {
           const out = [];
+          if (!preview)
+            for (const node of spawners) breachMesh(out, node, time);
           // Only faulty lamp tubes join the dynamic mesh; their housings stay static.
           for (const lamp of lights)
             if (lamp.flicker)
@@ -6669,6 +7149,15 @@ gl_FragColor=vec4(col,1.);}`;
               power: 2.5,
             });
           else {
+            for (const node of spawners)
+              if (node.health > 0)
+                effects.push({
+                  x: node.x,
+                  y: node.y,
+                  z: node.z,
+                  color: node.stun > 0 ? palette.mint : [0.78, 0.4, 1],
+                  power: node.stun > 0 ? 0.3 : node.pending ? 2 : 1.1,
+                });
             if (!cardTaken)
               effects.push({
                 x: level.card.x,
@@ -6891,6 +7380,29 @@ gl_FragColor=vec4(col,1.);}`;
                   : "#a99870";
             ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
           }
+          for (const node of spawners) {
+            if (
+              !seen[
+                Math.floor(node.z / CELL) * SIZE + Math.floor(node.x / CELL)
+              ]
+            )
+              continue;
+            const [x, y] = point(node);
+            ctx.strokeStyle =
+              node.health <= 0
+                ? "#576a73"
+                : node.stun > 0
+                  ? "#9af5d3"
+                  : "#ce91ff";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.moveTo(x - 6, y);
+            ctx.lineTo(x + 6, y);
+            ctx.moveTo(x, y - 6);
+            ctx.lineTo(x, y + 6);
+            ctx.stroke();
+          }
           for (const e of enemies) {
             if (
               e.health <= 0 ||
@@ -6934,7 +7446,13 @@ gl_FragColor=vec4(col,1.);}`;
           ctx.restore();
         }
         function updateHUD() {
+          const clock = C.floorClock(floorStats.seconds, difficulty),
+            activeNodes = spawners.filter((node) => node.health > 0).length,
+            countdown = Math.ceil(clock.next);
           const fingerprint = [
+            clock.tier,
+            countdown,
+            activeNodes,
             deck,
             player.floorsCompleted,
             floorRecords[difficulty],
@@ -6968,6 +7486,19 @@ gl_FragColor=vec4(col,1.);}`;
             $("contract-meter").style.width =
               `${(100 * contract.progress) / Math.max(1, contract.target)}%`;
             $("contract").classList.toggle("secured", contract.completed);
+            $("pressure-label").textContent = clock.tier
+              ? `LOCKDOWN ${clock.tier} / SURGE IN`
+              : "LOCKDOWN IN";
+            $("pressure-time").textContent =
+              `${String(Math.floor(countdown / 60)).padStart(2, "0")}:${String(countdown % 60).padStart(2, "0")}`;
+            $("floor-pressure").classList.toggle(
+              "warning",
+              !clock.tier && clock.remaining <= 30,
+            );
+            $("floor-pressure").classList.toggle("lockdown", clock.tier > 0);
+            $("breach-status").textContent = activeNodes
+              ? `${activeNodes} BREACH NODE${activeNodes === 1 ? "" : "S"} ONLINE`
+              : "ALL BREACHES SEALED";
             $("health-value").textContent = Math.ceil(player.health);
             $("shield-value").textContent = Math.ceil(player.shield);
             $("health-meter").style.width =
@@ -7014,7 +7545,7 @@ gl_FragColor=vec4(col,1.);}`;
           const dir = forward(player.yaw, player.pitch),
             origin = { x: player.x, y: 1.55, z: player.z },
             wall = sceneHit(origin, dir, 40);
-          for (const e of enemies) {
+          for (const e of [...enemies, ...spawners]) {
             if (e.health <= 0) continue;
             const hit = C.segmentSphere(
               origin,
@@ -7031,8 +7562,9 @@ gl_FragColor=vec4(col,1.);}`;
           $("target-health").hidden = !target;
           $("target-name").hidden = !target;
           if (target)
-            $("target-name").textContent =
-              `${target.trait === "standard" ? "" : target.trait + " · "}${target.name}${target.type === "bulwark" && target.stun <= 0 ? " / FRONTAL ARMOR" : ""}`;
+            $("target-name").textContent = target.spawner
+              ? `BREACH NODE / ${target.stun > 0 ? "DISRUPTED" : target.pending ? "SPAWNING" : "SHOOT CORE TO SEAL"}`
+              : `${target.lockdownTier ? "OVERCLOCKED · " : ""}${target.trait === "standard" ? "" : target.trait + " · "}${target.name}${target.type === "bulwark" && target.stun <= 0 ? " / FRONTAL ARMOR" : ""}`;
           if (target)
             $("target-health").firstElementChild.style.width =
               (target.health / target.maxHealth) * 100 + "%";

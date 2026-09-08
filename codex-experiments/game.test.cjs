@@ -113,10 +113,11 @@ function campaign(initialSave = {}) {
       listen(windowListeners, type, callback),
   };
   sandbox.window = sandbox;
-  const exposed = `\nwindow.testGame = { startRun, update, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, robot, bladeMesh, portalMesh, sceneLights, lightBurst,
+  const exposed = `\nwindow.testGame = { startRun, update, updatePressure, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, spawnerHit, breachMesh, robot, bladeMesh, portalMesh, sceneLights, lightBurst,
     get player() { return player; }, get level() { return level; }, get enemies() { return enemies; },
     get pickups() { return pickups; }, get bullets() { return bullets; },
-    get state() { return { mode, deck, cardTaken, portalCharge, transitTimer, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords, contract, floorStats, upgradePicks, lightBursts }; },
+    get spawners() { return spawners; },
+    get state() { return { mode, deck, cardTaken, portalCharge, transitTimer, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords, contract, floorStats, upgradePicks, lightBursts, lockdownTier }; },
     get interaction() { return interaction; }, set interaction(v) { interaction = v; },
     get keys() { return keys; }, toggleMap };\n})();`;
   vm.runInNewContext(
@@ -1944,4 +1945,381 @@ test("soundtrack selection persists safely before the audio context exists", () 
   restored.element("music-track").onchange({ target: { value: "1000" } });
   assert.equal(restored.saved.musicTrack, -1);
   assert.equal(restored.element("music-title").textContent, "ION RUNNER");
+});
+
+test("lockdown has a soft deadline, Explorer grace, and unbounded strength with bounded cadence", () => {
+  assert.equal(C.floorClock(179.99).tier, 0);
+  assert.equal(C.floorClock(180).tier, 1);
+  assert.equal(C.floorClock(224.99).tier, 1);
+  assert.equal(C.floorClock(225).tier, 2);
+  assert.equal(C.floorClock(180).next, 45);
+  assert.equal(C.floorClock(239.99, "explorer").tier, 0);
+  assert.equal(C.floorClock(240, "explorer").tier, 1);
+  for (const type of Object.keys(C.enemyTypes)) {
+    const e = C.makeEnemy(C.rng(99), type, 4),
+      original = { ...e };
+    e.health = e.maxHealth / 2;
+    C.strengthenEnemy(e, 1);
+    assert.ok(e.maxHealth > original.maxHealth);
+    assert.ok(e.damage > original.damage);
+    assert.ok(e.speed > original.speed);
+    assert.ok(e.interval < original.interval);
+    assert.equal(
+      e.health / e.maxHealth,
+      0.5,
+      "wounds are retained proportionally",
+    );
+    assert.equal(e.alert, true);
+    const first = { ...e };
+    C.strengthenEnemy(e, 1);
+    assert.deepEqual({ ...e }, first, "same tier never compounds stats");
+    C.strengthenEnemy(e, 1000);
+    assert.ok(e.maxHealth > first.maxHealth * 100);
+    assert.ok(e.speed <= 7 && e.boltSpeed <= 26 && e.interval >= 0.3);
+    assert.ok(e.windup === 0 || e.windup >= 0.22);
+    e.health = 0;
+    C.strengthenEnemy(e, 1001);
+    assert.equal(e.health, 0, "dead enemies are never resurrected");
+  }
+});
+
+test("every floor has two reproducible, passable breach pads away from objectives and actors", () => {
+  for (let seed = 1; seed <= 300; seed++) {
+    const deck = seed % 30,
+      level = C.generateDeck(seed, deck);
+    assert.equal(level.spawners.length, 2);
+    assert.deepEqual(level.spawners, C.generateDeck(seed, deck).spawners);
+    assert.equal(new Set(level.spawners.map((s) => s.room)).size, 2);
+    for (const node of level.spawners) {
+      assert.ok(![0, level.exit.room, level.card.room].includes(node.room));
+      assert.ok(C.fits(level.map, node.x, node.z, 0.75, level.props));
+      for (const item of [
+        ...level.enemies,
+        ...level.pickups,
+        level.start,
+        level.card,
+        level.exit,
+      ])
+        assert.ok(Math.hypot(item.x - node.x, item.z - node.z) >= C.CELL);
+      const enemy = C.makeEnemy(C.rng(seed), "bulwark", deck),
+        point = C.reinforcementSpot(
+          level,
+          node,
+          enemy,
+          level.start,
+          level.enemies,
+        );
+      assert.ok(
+        point,
+        `clear reinforcement location: seed ${seed}, room ${node.room}`,
+      );
+      assert.ok(
+        C.validReinforcementSpot(
+          level,
+          point,
+          enemy,
+          level.start,
+          level.enemies,
+          node,
+        ),
+      );
+      assert.equal(
+        C.validReinforcementSpot(
+          level,
+          point,
+          enemy,
+          point,
+          level.enemies,
+          node,
+        ),
+        false,
+      );
+      assert.equal(
+        C.validReinforcementSpot(
+          level,
+          point,
+          enemy,
+          level.start,
+          [...level.enemies, { ...enemy, ...point }],
+          node,
+        ),
+        false,
+      );
+      const blocked = {
+        ...level,
+        props: [...level.props, { ...point, y: 1, w: 1, h: 2, d: 1 }],
+      };
+      assert.equal(
+        C.validReinforcementSpot(blocked, point, enemy, level.start, [], node),
+        false,
+      );
+    }
+  }
+});
+
+test("floor clock and node production pause together and reset after lockdown extraction", () => {
+  const s = campaign(),
+    g = s.game;
+  g.startRun();
+  g.enemies.forEach((e) => {
+    e.stun = 1e6;
+  });
+  s.tick(1);
+  const seconds = g.state.floorStats.seconds,
+    cooldown = g.spawners[0].cooldown;
+  g.pause();
+  g.update(10);
+  s.tick(2);
+  assert.equal(g.state.floorStats.seconds, seconds);
+  g.setPlaying(false);
+  g.toggleMap();
+  g.update(10);
+  s.tick(2);
+  assert.equal(g.state.floorStats.seconds, seconds);
+  assert.equal(g.spawners[0].cooldown, cooldown);
+  g.toggleMap();
+  s.setHidden(true);
+  s.tick(2);
+  assert.equal(g.state.floorStats.seconds, seconds);
+  s.setHidden(false);
+  g.setPlaying(false);
+  g.state.floorStats.seconds = 179.99;
+  s.tick(0.05);
+  assert.equal(g.state.lockdownTier, 1);
+  assert.ok(g.enemies.every((e) => e.lockdownTier === 1 && e.alert));
+  const health = g.enemies[0].maxHealth;
+  g.state.floorStats.seconds = 224.99;
+  s.tick(0.05);
+  assert.equal(g.state.lockdownTier, 2);
+  assert.ok(g.enemies[0].maxHealth > health);
+  g.updateHUD();
+  assert.match(s.element("pressure-label").textContent, /LOCKDOWN 2/);
+  g.enemies.forEach((e) => (e.health = 0));
+  g.spawners.forEach((node) => g.spawnerHit(node, 1e6));
+  Object.assign(g.player, g.level.card);
+  s.tick(0.05);
+  Object.assign(g.player, g.level.exit);
+  s.tick(0.05);
+  g.interact();
+  assert.equal(g.state.mode, "transit", "lockdown never seals the lift");
+  const exitTime = g.state.floorStats.seconds;
+  s.tick(C.PORTAL.duration + 0.05);
+  assert.equal(g.state.floorStats.seconds, exitTime);
+  assert.equal(g.state.mode, "upgrade");
+  s.element("upgrade-blade").onclick();
+  assert.equal(g.state.lockdownTier, 0);
+  assert.equal(g.state.floorStats.seconds, 0);
+  assert.ok(
+    g.spawners.every((node) => node.health === node.maxHealth && !node.pending),
+  );
+  assert.ok(g.enemies.every((e) => !e.lockdownTier));
+  g.damage(1e9);
+  g.startRun();
+  assert.equal(g.state.floorStats.seconds, 0);
+  assert.equal(g.state.lockdownTier, 0);
+});
+
+test("nodes telegraph individual reinforcements, inherit lockdown, and revalidate moving blockers", () => {
+  const { game: g } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const node = g.spawners[0],
+    second = g.spawners[1];
+  second.health = 0;
+  node.cooldown = 0;
+  g.updatePressure(0.01);
+  assert.ok(node.pending);
+  assert.equal(node.charge, C.BREACH.charge);
+  const point = { ...node.pending.point },
+    count = g.enemies.length;
+  g.updatePressure(C.BREACH.charge / 2);
+  assert.equal(g.enemies.length, count, "no early materialization");
+  Object.assign(g.player, point);
+  g.updatePressure(C.BREACH.charge);
+  assert.equal(g.enemies.length, count, "player moved into marked pad");
+  assert.equal(node.pending, null);
+  assert.equal(node.cooldown, 3);
+  Object.assign(g.player, g.level.start);
+  g.state.floorStats.seconds = 225;
+  node.cooldown = 0;
+  g.updatePressure(0.01);
+  assert.equal(g.state.lockdownTier, 2);
+  assert.ok(node.pending);
+  g.updatePressure(C.BREACH.charge);
+  const e = g.enemies.at(-1);
+  assert.equal(e.reinforcement, true);
+  assert.equal(e.lockdownTier, 2);
+  assert.ok(
+    e.alert && e.stun > 0 && e.cooldown >= 1,
+    "new enemies cannot attack on arrival",
+  );
+  assert.ok(
+    node.cooldown < C.BREACH.interval,
+    "lockdown accelerates production",
+  );
+  const pickups = g.pickups.length;
+  for (let i = 0; i < 10; i++) {
+    e.health = 1;
+    g.enemyHit(e, 1e8, true);
+  }
+  assert.equal(
+    g.pickups.length,
+    pickups,
+    "reinforcements cannot farm unlimited ammo",
+  );
+});
+
+test("spawning obeys the live cap, prunes corpses, and never releases a backlog", () => {
+  const { game: g } = campaign();
+  g.startRun();
+  const sample = g.enemies[0],
+    node = g.spawners[0];
+  g.spawners[1].health = 0;
+  g.enemies.forEach((e) =>
+    Object.assign(e, { x: g.level.start.x, z: g.level.start.z }),
+  );
+  while (g.enemies.length < C.BREACH.activeCap)
+    g.enemies.push({ ...sample, id: 1000 + g.enemies.length });
+  node.cooldown = 0;
+  g.updatePressure(1000);
+  assert.equal(g.enemies.length, C.BREACH.activeCap);
+  assert.equal(node.pending, null);
+  g.enemies.forEach((e) => (e.health = 0));
+  while (g.enemies.length < C.BREACH.historyCap)
+    g.enemies.push({ ...sample, health: 0 });
+  for (let i = 0; i < 80; i++) {
+    g.enemies.forEach((e) => (e.health = 0));
+    node.cooldown = 0;
+    g.updatePressure(0.01);
+    assert.ok(node.pending);
+    g.updatePressure(C.BREACH.charge);
+    assert.equal(g.enemies.filter((e) => e.health > 0).length, 1);
+    assert.ok(g.enemies.length <= C.BREACH.historyCap);
+    assert.equal(new Set(g.enemies.map((e) => e.id)).size, g.enemies.length);
+  }
+  assert.ok(g.enemies.at(-1).id >= 80);
+});
+
+function stageBreach(g) {
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const node = g.spawners[0];
+  Object.assign(node, { x: g.player.x + 2, z: g.player.z });
+  Object.assign(g.player, { yaw: Math.PI / 2, pitch: 0 });
+  return node;
+}
+
+test("rifle, timed cutlass, and reflected bolts destroy nodes without awarding enemy kills", () => {
+  for (const weapon of ["rifle", "blade", "reflected"]) {
+    const { game: g, tick, element } = campaign(),
+      node = stageBreach(g);
+    const startX = node.x,
+      startZ = node.z,
+      health = node.health;
+    g.updateHUD();
+    assert.match(element("target-name").textContent, /BREACH NODE/);
+    if (weapon === "rifle") {
+      g.player.weapon = 2;
+      g.fire();
+      assert.equal(node.health, health - g.player.damage);
+    } else if (weapon === "blade") {
+      g.player.weapon = 1;
+      g.fire();
+      assert.equal(node.health, health);
+      tick(0.15);
+      assert.equal(node.health, health - 46);
+      assert.equal(node.x, startX);
+      assert.equal(node.z, startZ);
+    } else {
+      g.bullets.push({
+        x: g.player.x,
+        y: node.y,
+        z: node.z,
+        dx: 1,
+        dy: 0,
+        dz: 0,
+        speed: 30,
+        damage: 64,
+        life: 1,
+        friendly: true,
+      });
+      tick(0.1);
+      assert.equal(node.health, health - 64);
+    }
+    const pickups = g.pickups.length,
+      progress = g.state.contract.progress;
+    g.spawnerHit(node, 1e6);
+    g.spawnerHit(node, 1e6);
+    g.updatePressure(1000);
+    assert.equal(node.health, 0);
+    assert.equal(node.pending, null);
+    assert.equal(g.state.floorStats.kills, 0);
+    assert.equal(g.player.kills, 0);
+    assert.equal(g.state.contract.progress, progress);
+    assert.equal(g.pickups.length, pickups);
+  }
+});
+
+test("EMP cancels production for eight seconds, while walls protect breach cores", () => {
+  const { game: g, tick } = campaign(),
+    node = stageBreach(g);
+  node.pending = {
+    point: { x: node.x + 2, z: node.z },
+    enemy: C.makeEnemy(C.rng(1), "drone"),
+  };
+  node.charge = 1;
+  node.cooldown = 0;
+  g.emp();
+  assert.equal(node.health, node.maxHealth - 34);
+  assert.equal(node.pending, null);
+  assert.equal(node.stun, 8);
+  g.updatePressure(7.9);
+  assert.ok(node.stun > 0);
+  assert.equal(node.cooldown, 8);
+  tick(0.2);
+  assert.equal(node.stun, 0);
+  assert.equal(node.pending, null);
+  g.level.props.push({
+    x: g.player.x + 1,
+    z: g.player.z,
+    y: 1,
+    w: 0.25,
+    d: 2,
+    h: 2,
+  });
+  const health = node.health;
+  g.player.weapon = 2;
+  g.fire();
+  g.player.weapon = 1;
+  tick(0.2);
+  g.fire();
+  tick(0.2);
+  assert.equal(node.health, health, "cover blocks gun and blade");
+  tick(12);
+  g.emp();
+  assert.equal(node.health, health, "cover blocks EMP");
+});
+
+test("breach core and spawn warning geometry stay finite through charge, EMP, destruction and reduced motion", () => {
+  for (const reduced of [false, true]) {
+    const { game: g } = campaign({ reduced });
+    g.startRun();
+    const node = g.spawners[0];
+    node.cooldown = 0;
+    g.updatePressure(0.01);
+    assert.ok(node.pending);
+    for (const state of [
+      { charge: 2.4 },
+      { charge: 1.2 },
+      { charge: 0 },
+      { stun: 8 },
+      { health: 0 },
+    ]) {
+      Object.assign(node, state);
+      const mesh = [];
+      g.breachMesh(mesh, node, 10);
+      assert.ok(mesh.length > 100 && mesh.length < 50000);
+      assert.ok(mesh.every(Number.isFinite));
+    }
+  }
 });
