@@ -151,6 +151,14 @@ Destroyed enemies burst with a layered blast, low thump, and metallic crackle.
 Heavy machines have deeper explosions; pitch varies between kills, and sounds
 fade with distance and pan toward the enemy. All effects respect master mute.
 
+A red arc around the crosshair points toward the most recent incoming hit,
+including damage absorbed by shields. Front hits appear above the crosshair,
+rear hits below, and side hits to the left or right. The marker rotates with
+your view and fades after 1.4 seconds. Projectile direction is captured at
+impact; a passing bolt or charging enemy cannot flip the marker afterward.
+The indicator pauses with the game, resets at each floor, and remains available
+with reduced motion enabled.
+
 All geometry, lighting, effects, signage, and Web Audio sound are generated in
 `game.html`. Station geometry is batched into a WebGL mesh; simulation uses a
 bounded delta time, collision substeps, and grid pathfinding. Only preferences

@@ -795,6 +795,21 @@
         height: 2px;
         background: #ffffff25;
       }
+      #damage-direction {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: clamp(160px, 28vmin, 230px);
+        aspect-ratio: 1;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+      #damage-bearing {
+        display: block;
+        width: 100%;
+        height: 100%;
+        transform-origin: 50% 50%;
+      }
       #target-health span {
         height: 100%;
         background: #f78678;
@@ -1469,6 +1484,42 @@
       </header>
       <div id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div id="hitmarker" aria-hidden="true">×</div>
+      <div
+        id="damage-direction"
+        role="img"
+        aria-label="Incoming damage direction"
+        hidden
+      >
+        <svg id="damage-bearing" viewBox="0 0 200 200" aria-hidden="true">
+          <path
+            d="M66 27 A80 80 0 0 1 134 27"
+            fill="none"
+            stroke="#381115"
+            stroke-width="13"
+            stroke-linecap="round"
+          />
+          <path
+            d="M66 27 A80 80 0 0 1 134 27"
+            fill="none"
+            stroke="#ff7165"
+            stroke-width="8"
+            stroke-linecap="round"
+          />
+          <path
+            d="M70 25 A80 80 0 0 1 130 25"
+            fill="none"
+            stroke="#ffd6b7"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <path
+            d="M100 10 L94 19 L106 19 Z"
+            fill="#ffd6b7"
+            stroke="#381115"
+            stroke-width="1.5"
+          />
+        </svg>
+      </div>
       <div id="target-health" hidden><span></span></div>
       <div id="target-name" class="mono" hidden></div>
       <div id="waypoint">
@@ -1709,13 +1760,14 @@
         >
       </div>
       <p class="guide-tip">
-        Your shield regenerates after five seconds without damage. EMP stuns
-        nearby machines and clears incoming bolts. Chain three blade swings for
-        a heavy finisher; swing at incoming bolts to send them back. The blade
-        ignores frontal armor. Bulwarks resist rifle shots from the front—flank
-        them or use EMP. Swift, reinforced, and overclocked machines trade
-        speed, durability, and firing rate. Red eyes mean a shot is coming—keep
-        moving.
+        Your shield regenerates after five seconds without damage. A red arc
+        around the crosshair points toward the last incoming hit, including hits
+        absorbed by your shield. EMP stuns nearby machines and clears incoming
+        bolts. Chain three blade swings for a heavy finisher; swing at incoming
+        bolts to send them back. The blade ignores frontal armor. Bulwarks
+        resist rifle shots from the front—flank them or use EMP. Swift,
+        reinforced, and overclocked machines trade speed, durability, and firing
+        rate. Red eyes mean a shot is coming—keep moving.
       </p>
     </dialog>
     <script id="orbit-core">
@@ -4209,6 +4261,7 @@ gl_FragColor=vec4(col,1.);}`;
           dashTimer = 0,
           dashActive = 0,
           hurtTimer = 0,
+          lastDamage = null,
           hitTimer = 0,
           flashTimer = 0,
           pulseTimer = 0,
@@ -4855,6 +4908,8 @@ gl_FragColor=vec4(col,1.);}`;
           lastSwing = -20;
           bladePending = false;
           lastHurt = gameTime - 20;
+          lastDamage = null;
+          $("damage-direction").hidden = true;
           player.x = level.start.x;
           player.z = level.start.z;
           player.yaw = Math.PI / 2;
@@ -5018,7 +5073,7 @@ gl_FragColor=vec4(col,1.);}`;
                   ) !== null))
             ) {
               e.rushHit = true;
-              damage(e.damage);
+              damage(e.damage, before);
             }
             e.rush = traveled < speed * dt * 0.5 ? 0 : Math.max(0, e.rush - dt);
             if (!e.rush) {
@@ -5789,8 +5844,24 @@ gl_FragColor=vec4(col,1.);}`;
           dashActive = 0.17;
           dashSound();
         }
-        function damage(amount) {
-          if (mode !== "playing") return;
+        function damage(amount, source = null) {
+          if (
+            mode !== "playing" ||
+            mapOpen ||
+            !Number.isFinite(amount) ||
+            amount <= 0
+          )
+            return;
+          const dx = source?.x - player.x,
+            dz = source?.z - player.z;
+          // Save the incoming world bearing at impact, so moving attackers and
+          // passing projectiles cannot pull the marker to the wrong side.
+          lastDamage =
+            Number.isFinite(dx) &&
+            Number.isFinite(dz) &&
+            Math.hypot(dx, dz) > 0.001
+              ? { bearing: Math.atan2(dx, -dz), life: 1.4 }
+              : null;
           lastHurt = gameTime;
           hurtTimer = 0.6;
           combo = 0;
@@ -5858,6 +5929,7 @@ gl_FragColor=vec4(col,1.);}`;
           clearInput();
           interaction = null;
           hurtTimer = flashTimer = pulseTimer = 0;
+          lastDamage = null;
           $("damage").style.opacity = "0";
           $("hud").hidden = true;
           document.body.classList.remove("touch-playing");
@@ -6119,6 +6191,10 @@ gl_FragColor=vec4(col,1.);}`;
           empTimer = Math.max(0, empTimer - dt);
           dashTimer = Math.max(0, dashTimer - dt);
           hurtTimer = Math.max(0, hurtTimer - dt);
+          if (lastDamage) {
+            lastDamage.life -= dt;
+            if (lastDamage.life <= 0) lastDamage = null;
+          }
           hitTimer = Math.max(0, hitTimer - dt);
           flashTimer = Math.max(0, flashTimer - dt);
           pulseTimer = Math.max(0, pulseTimer - dt);
@@ -6298,7 +6374,7 @@ gl_FragColor=vec4(col,1.);}`;
             if (stalk) {
               if (dist < 1.65 && sight && e.cooldown <= 0) {
                 e.cooldown = e.interval;
-                damage(e.damage);
+                damage(e.damage, e);
                 if (mode !== "playing") return;
               }
             } else if (sight && dist < 21) {
@@ -6375,7 +6451,7 @@ gl_FragColor=vec4(col,1.);}`;
             if (target) {
               b.life = 0;
               if (target === player) {
-                damage(b.damage);
+                damage(b.damage, { x: player.x - b.dx, z: player.z - b.dz });
                 if (mode !== "playing") return;
               } else enemyHit(target, b.damage, true);
             } else if (wall < distance) {
@@ -8100,6 +8176,22 @@ gl_FragColor=vec4(col,1.);}`;
           $("radio").style.opacity = radioTimer > 0 ? "1" : "0";
           $("hitmarker").style.opacity = hitTimer > 0 ? "1" : "0";
           $("damage").style.opacity = reduced ? "0" : String(hurtTimer * 0.3);
+          $("damage-direction").hidden = !lastDamage;
+          if (lastDamage) {
+            const difference = lastDamage.bearing - player.yaw,
+              angle = Math.atan2(Math.sin(difference), Math.cos(difference)),
+              side = ["front", "right", "behind", "left"][
+                (Math.round(angle / (Math.PI / 2)) + 4) % 4
+              ];
+            $("damage-bearing").style.transform = `rotate(${angle}rad)`;
+            $("damage-direction").style.opacity = String(
+              Math.min(1, lastDamage.life / 0.55),
+            );
+            $("damage-direction").setAttribute(
+              "aria-label",
+              `Last hit: ${side}`,
+            );
+          }
           let target = null,
             nearest = 40;
           const dir = forward(player.yaw, player.pitch),

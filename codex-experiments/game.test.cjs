@@ -118,7 +118,7 @@ function campaign(initialSave = {}) {
     get pickups() { return pickups; }, get bullets() { return bullets; },
     get spawners() { return spawners; },
     get guardian() { return guardian; },
-    get state() { return { mode, deck, cardTaken, portalCharge, transitTimer, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords, contract, floorStats, upgradePicks, lightBursts, lockdownTier }; },
+    get state() { return { mode, deck, cardTaken, portalCharge, transitTimer, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords, contract, floorStats, upgradePicks, lightBursts, lockdownTier, lastDamage }; },
     get interaction() { return interaction; }, set interaction(v) { interaction = v; },
     get keys() { return keys; }, toggleMap };\n})();`;
   vm.runInNewContext(
@@ -2457,6 +2457,12 @@ test("the Reaver telegraphs a straight rush that can be sidestepped and hits onl
     for (let i = 0; i < 50; i++) g.updateGuardian(boss, 1 / 60);
     assert.ok(boss.x > origin.x + 5 && Math.abs(boss.z - origin.z) < 0.01);
     assert.equal(g.player.health, dodge ? health : health - boss.damage);
+    if (!dodge)
+      assert.ok(
+        Math.abs(g.state.lastDamage.bearing + Math.PI / 2) < 1e-8,
+        "the rush indicator points toward the impact origin after the boss passes the player",
+      );
+    else assert.equal(g.state.lastDamage, null);
     assert.equal(boss.rush, 0);
     assert.ok(boss.recover > 0);
   }
@@ -2665,4 +2671,165 @@ test("standing inside the Reaver cannot neutralize its charge or cause repeated 
   g.updateGuardian(boss, 0.01);
   assert.equal(g.player.health, health - boss.damage);
   assert.ok([boss.x, boss.z, boss.rushX, boss.rushZ].every(Number.isFinite));
+});
+
+test("the latest damage arc distinguishes all four directions and follows camera turns", () => {
+  const { game: g, element } = campaign();
+  g.startRun();
+  g.player.yaw = 0;
+  const health = g.player.health;
+  const rotation = () =>
+    Number(
+      element("damage-bearing").style.transform.match(/rotate\((.*)rad\)/)[1],
+    );
+  for (const [x, z, expected] of [
+    [0, -2, 0],
+    [2, 0, Math.PI / 2],
+    [0, 2, Math.PI],
+    [-2, 0, -Math.PI / 2],
+  ]) {
+    g.damage(5, { x: g.player.x + x, z: g.player.z + z });
+    g.updateHUD();
+    assert.equal(element("damage-direction").hidden, false);
+    assert.ok(Math.abs(rotation() - expected) < 1e-8);
+    assert.equal(
+      g.state.lastDamage.life,
+      1.4,
+      "a new hit replaces and refreshes the cue",
+    );
+  }
+  assert.equal(
+    g.player.health,
+    health,
+    "shield-only hits still give direction",
+  );
+  const source = { x: g.player.x + 5, z: g.player.z };
+  g.damage(5, source);
+  source.x = g.player.x - 5;
+  g.player.yaw = Math.PI / 2;
+  g.updateHUD();
+  assert.ok(
+    Math.abs(rotation()) < 1e-8,
+    "facing the hit origin moves the arc to the front",
+  );
+  g.player.yaw = -Math.PI / 2;
+  g.updateHUD();
+  assert.ok(Math.abs(Math.abs(rotation()) - Math.PI) < 1e-8);
+});
+
+test("damage direction fades on game time, survives reduced motion, and resets after transit or retry", () => {
+  for (const reduced of [false, true]) {
+    const { game: g, tick, element } = campaign({ reduced });
+    g.startRun();
+    g.enemies.forEach((e) => (e.health = 0));
+    g.damage(10, { x: g.player.x - 2, z: g.player.z });
+    tick(1);
+    g.updateHUD();
+    assert.ok(Number(element("damage-direction").style.opacity) > 0);
+    assert.ok(Number(element("damage-direction").style.opacity) < 1);
+    if (reduced) assert.equal(element("damage").style.opacity, "0");
+    const life = g.state.lastDamage.life;
+    g.toggleMap();
+    tick(3);
+    assert.equal(g.state.lastDamage.life, life);
+    g.toggleMap();
+    g.pause();
+    tick(3);
+    assert.equal(g.state.lastDamage.life, life);
+    g.setPlaying(false);
+    tick(0.5);
+    g.updateHUD();
+    assert.equal(g.state.lastDamage, null);
+    assert.equal(element("damage-direction").hidden, true);
+    Object.assign(g.player, g.level.card);
+    tick(0.05);
+    Object.assign(g.player, g.level.exit);
+    tick(0.05);
+    g.damage(5, { x: g.player.x, z: g.player.z - 2 });
+    g.interact();
+    assert.equal(g.state.mode, "transit");
+    assert.equal(g.state.lastDamage, null);
+    tick(C.PORTAL.duration + 0.05);
+    element("upgrade-blade").onclick();
+    assert.equal(g.state.lastDamage, null);
+    assert.equal(element("damage-direction").hidden, true);
+    g.damage(1e9, { x: g.player.x + 2, z: g.player.z });
+    g.startRun();
+    assert.equal(g.state.lastDamage, null);
+  }
+});
+
+test("incoming bolts and stalker attacks supply direction, while cover and friendly bolts do not", () => {
+  const { game: g, tick } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const origin = { x: g.player.x, z: g.player.z };
+  const bolt = (friendly = false) => ({
+    x: origin.x + 2,
+    y: 1.2,
+    z: origin.z,
+    dx: -1,
+    dy: 0,
+    dz: 0,
+    speed: 40,
+    damage: 5,
+    life: 1,
+    friendly,
+  });
+  g.bullets.push(bolt(true));
+  tick(0.1);
+  assert.equal(g.state.lastDamage, null);
+  g.level.props.push({
+    x: origin.x + 1,
+    y: 1,
+    z: origin.z,
+    w: 0.3,
+    h: 2,
+    d: 2,
+  });
+  g.bullets.push(bolt());
+  tick(0.1);
+  assert.equal(
+    g.state.lastDamage,
+    null,
+    "a bolt stopped by cover is not a hit",
+  );
+  g.level.props.pop();
+  g.bullets.push(bolt());
+  tick(0.1);
+  assert.ok(Math.abs(g.state.lastDamage.bearing - Math.PI / 2) < 1e-8);
+  const e = g.enemies.find((enemy) => !enemy.boss);
+  Object.assign(e, C.makeEnemy(C.rng(8), "stalker"), {
+    x: origin.x - 1.4,
+    z: origin.z,
+    cooldown: 0,
+    stun: 0,
+    alert: true,
+  });
+  tick(0.02);
+  assert.ok(Math.abs(g.state.lastDamage.bearing + Math.PI / 2) < 1e-8);
+});
+
+test("invalid hits and hits without a known direction cannot create misleading damage arcs", () => {
+  const { game: g } = campaign();
+  g.startRun();
+  const source = { x: g.player.x + 2, z: g.player.z },
+    shield = g.player.shield;
+  for (const amount of [0, -1, NaN, Infinity]) g.damage(amount, source);
+  assert.equal(g.player.shield, shield);
+  assert.equal(g.state.lastDamage, null);
+  g.toggleMap();
+  g.damage(10, source);
+  assert.equal(g.state.lastDamage, null);
+  g.toggleMap();
+  g.damage(5, source);
+  assert.ok(g.state.lastDamage);
+  g.damage(5);
+  assert.equal(g.state.lastDamage, null);
+  g.damage(5, { x: g.player.x, z: g.player.z });
+  assert.equal(
+    g.state.lastDamage,
+    null,
+    "overlapping origins have no meaningful horizontal bearing",
+  );
 });
