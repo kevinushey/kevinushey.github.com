@@ -360,6 +360,102 @@
         background: var(--mint);
         transition: width 0.25s;
       }
+      .floor-pressure {
+        margin-top: 12px;
+        padding-left: 9px;
+        border-left: 2px solid #9af5d370;
+        color: #a6b8bd;
+        font-size: 9px;
+        letter-spacing: 0.7px;
+        line-height: 1.8;
+        font-variant-numeric: tabular-nums;
+      }
+      .floor-pressure strong {
+        color: var(--mint);
+        font-size: 12px;
+      }
+      .floor-pressure small {
+        display: block;
+        font-size: 8px;
+      }
+      .floor-pressure.warning {
+        border-color: #ffad66;
+      }
+      .floor-pressure.warning strong {
+        color: #ffad66;
+      }
+      .floor-pressure.lockdown {
+        border-color: #ff776b;
+      }
+      .floor-pressure.lockdown strong {
+        color: #ff9388;
+      }
+      .boss-banner {
+        position: absolute;
+        top: 22px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(400px, 40vw);
+        padding: 10px 14px;
+        background: #0a141de0;
+        border: 1px solid #ffb36c66;
+        color: #ffc184;
+        font-size: 10px;
+        letter-spacing: 1px;
+      }
+      .boss-banner strong {
+        font-size: 12px;
+      }
+      .boss-banner small {
+        display: block;
+        margin-top: 6px;
+        font-size: 8px;
+        line-height: 1.5;
+      }
+      .boss-track {
+        height: 5px;
+        margin-top: 8px;
+        background: #ffffff1a;
+      }
+      .boss-track span {
+        display: block;
+        height: 100%;
+        background: #ffb36c;
+      }
+      .boss-banner.enraged {
+        color: #ff9b92;
+        border-color: #ff776b;
+      }
+      .boss-banner.enraged .boss-track span {
+        background: #ff776b;
+      }
+      @media (max-width: 760px) and (orientation: portrait) {
+        .boss-banner {
+          top: 150px;
+          width: calc(100vw - 40px);
+          padding: 8px 10px;
+        }
+        #hud:has(#boss-banner:not([hidden])) .contract,
+        #hud:has(#boss-banner:not([hidden])) .objective {
+          display: none;
+        }
+        #hud:has(#boss-banner:not([hidden])) #toast {
+          top: 220px;
+        }
+      }
+      @media (max-height: 580px) and (orientation: landscape) {
+        .boss-banner {
+          top: 12px;
+          width: 38vw;
+          padding: 7px 10px;
+        }
+      }
+      @media (max-height: 580px) {
+        .floor-pressure {
+          margin-top: 6px;
+          line-height: 1.45;
+        }
+      }
       @media (max-width: 650px) {
         .upgrade-grid {
           grid-template-columns: repeat(2, 1fr) !important;
@@ -699,6 +795,21 @@
         height: 2px;
         background: #ffffff25;
       }
+      #damage-direction {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: clamp(160px, 28vmin, 230px);
+        aspect-ratio: 1;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+      #damage-bearing {
+        display: block;
+        width: 100%;
+        height: 100%;
+        transform-origin: 50% 50%;
+      }
       #target-health span {
         height: 100%;
         background: #f78678;
@@ -728,17 +839,34 @@
       }
       #waypoint {
         position: absolute;
-        transform: translate(-50%, -50%);
+        left: 0;
+        top: 0;
+        width: 144px;
+        height: 28px;
+        opacity: 0;
+        will-change: transform;
         text-align: center;
         color: var(--orange);
         font-size: 10px;
         letter-spacing: 1px;
         text-shadow: 0 2px 8px #000;
       }
-      #waypoint .diamond {
-        font-size: 24px;
+      #waypoint svg {
         display: block;
-        margin-bottom: 3px;
+        width: 28px;
+        height: 28px;
+        margin: 0 auto 3px;
+        overflow: visible;
+        filter: drop-shadow(0 2px 3px #000);
+      }
+      #waypoint-arrow {
+        transform-origin: 14px 14px;
+      }
+      #waypoint-label {
+        display: block;
+        line-height: 14px;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
       }
       #radio {
         position: absolute;
@@ -783,6 +911,7 @@
       }
       #map-panel {
         position: absolute;
+        z-index: 6;
         left: 50%;
         top: 50%;
         transform: translate(-50%, -50%);
@@ -801,16 +930,20 @@
       }
       #map-full {
         display: block;
-        width: min(430px, 65vw);
+        width: min(430px, 65vw, calc(100dvh - 170px));
         height: auto;
       }
       .legend {
         display: flex;
-        gap: 20px;
+        flex-wrap: wrap;
+        gap: 8px 14px;
         font-size: 9px;
         letter-spacing: 1px;
         color: #8aa1a2;
         margin-top: 18px;
+      }
+      .legend span {
+        white-space: nowrap;
       }
       .legend span:first-child {
         color: var(--orange);
@@ -826,6 +959,9 @@
       }
       body.touch-playing #touch {
         display: block;
+      }
+      body:has(#map-panel:not([hidden])) #touch {
+        visibility: hidden;
       }
       .stick {
         position: absolute;
@@ -1295,6 +1431,20 @@
       </footer>
     </div>
     <div id="hud" class="screen" hidden>
+      <div id="boss-banner" class="boss-banner mono" hidden>
+        <strong id="boss-name"></strong>
+        <div
+          id="boss-health"
+          class="boss-track"
+          role="progressbar"
+          aria-label="Portal guardian health"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <span id="boss-meter"></span>
+        </div>
+        <small id="boss-status"></small>
+      </div>
       <header class="masthead">
         <div>
           <div class="deck-heading">
@@ -1316,6 +1466,11 @@
               >OPTIONAL / BONUS UPGRADE</small
             ><strong id="contract-progress"></strong>
             <div class="contract-track"><span id="contract-meter"></span></div>
+          </div>
+          <div id="floor-pressure" class="floor-pressure mono">
+            <span id="pressure-label">LOCKDOWN IN</span>
+            <strong id="pressure-time">01:00</strong>
+            <small id="breach-status">2 BREACH NODES ONLINE</small>
           </div>
         </div>
         <div class="map-stack">
@@ -1346,10 +1501,58 @@
       </header>
       <div id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div id="hitmarker" aria-hidden="true">×</div>
+      <div
+        id="damage-direction"
+        role="img"
+        aria-label="Incoming damage direction"
+        hidden
+      >
+        <svg id="damage-bearing" viewBox="0 0 200 200" aria-hidden="true">
+          <path
+            d="M66 27 A80 80 0 0 1 134 27"
+            fill="none"
+            stroke="#381115"
+            stroke-width="13"
+            stroke-linecap="round"
+          />
+          <path
+            d="M66 27 A80 80 0 0 1 134 27"
+            fill="none"
+            stroke="#ff7165"
+            stroke-width="8"
+            stroke-linecap="round"
+          />
+          <path
+            d="M70 25 A80 80 0 0 1 130 25"
+            fill="none"
+            stroke="#ffd6b7"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <path
+            d="M100 10 L94 19 L106 19 Z"
+            fill="#ffd6b7"
+            stroke="#381115"
+            stroke-width="1.5"
+          />
+        </svg>
+      </div>
       <div id="target-health" hidden><span></span></div>
       <div id="target-name" class="mono" hidden></div>
       <div id="waypoint">
-        <span class="diamond">◇</span><span id="waypoint-label"></span>
+        <svg
+          viewBox="0 0 28 28"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path id="waypoint-diamond" d="M14 5 L23 14 L14 23 L5 14 Z" />
+          <path id="waypoint-arrow" d="M10 6 L18 14 L10 22" />
+        </svg>
+        <span id="waypoint-label"></span>
       </div>
       <div id="interact" hidden></div>
       <div id="toast" role="status" aria-live="polite"></div>
@@ -1396,10 +1599,11 @@
           id="map-full"
           width="500"
           height="500"
-          aria-label="Explored deck map with access card and lift locations"
+          aria-label="Explored deck map with breach nodes, access card and lift locations"
         ></canvas>
         <div class="legend">
-          <span>◇ ACCESS CARD</span><span>□ LIFT</span><span>● YOU</span>
+          <span>◇ ACCESS CARD</span><span>□ LIFT</span
+          ><span style="color: #ce91ff">⊕ BREACH</span><span>● YOU</span>
         </div>
         <p
           class="mono"
@@ -1470,26 +1674,57 @@
       </div>
       <h2>Your suit has a few tricks.</h2>
       <p>
-        Find the gold access card on each deck, then walk through the glowing
-        transit portal inside the lift frame. There is no final floor. Reach
-        each lift alive to score one completed floor, then choose a permanent
-        upgrade and resupply. You can also use E or the touch Use button near
-        the portal. Enemy squads grow tougher, faster, and more numerous until
-        the station overwhelms you. Explore side rooms for supplies. Your high
-        score is floors completed; Standard and Explorer keep separate records
-        on this device.
+        Find the gold access card on each deck and defeat its portal guardian,
+        then walk through the glowing transit portal inside the lift frame.
+        There is no final floor. Reach each lift alive to score one completed
+        floor, then choose a permanent upgrade and resupply. You can also use E
+        or the touch Use button near the portal. Enemy squads grow tougher,
+        faster, and more numerous until the station overwhelms you. Explore side
+        rooms for supplies. Your high score is floors completed; Standard and
+        Explorer keep separate records on this device.
       </p>
       <p>
         The pulse rifle holds 24 rounds; your suit carries at most two spare
         magazines (48 rounds), for 72 total. Start with one spare. Each lift
         supplies just 24 rounds. Ammo is scarce: check side rooms, conserve
-        shots, and use the cutlass. Excess pickup ammo stays on the floor.
+        shots, and use the staff. Excess pickup ammo stays on the floor.
       </p>
       <p>
-        Each floor has an optional contract: scrap machines, land cutlass kills,
+        The double-ended Arc Staff chains a forehand strike, a returning
+        butt-end strike, and a wide sideways finisher. Both charged heads can
+        deflect bolts. Time your swings to reflect shots, and use the heavy
+        third hit to stagger ordinary machines.
+      </p>
+      <p>
+        Each floor locks down after one minute. Every 30 seconds after that,
+        surviving enemies gain health, damage, speed, and aggression. The lift
+        stays available. The timer pauses with the game and tactical map, and
+        resets at the next floor.
+      </p>
+      <p>
+        Two violet breach nodes manufacture reinforcements throughout each
+        floor, faster during lockdown. A glowing marker warns you before a
+        machine arrives. Shoot or strike the floating energy core to seal a
+        breach permanently; EMP cancels its current spawn and disables it for
+        eight seconds. These projections and their floor pads are passable.
+        Spawned machines carry no spare ammo. Sealing breaches is optional; it
+        stops production but cannot stop lockdown.
+      </p>
+      <p>
+        Three guardians alternate between floors: the Bastion opens its frontal
+        armor to fire paired cannon bolts, the Prism Sovereign casts wide
+        volleys you can dodge or parry, and the Rift Reaver charges along a
+        telegraphed line. All become more dangerous below half health and
+        strengthen during lockdown. Guardians resist staff stagger, but EMP
+        interrupts their attacks for 1.4 seconds. They stay in the lift room and
+        retain damage if you retreat. Defeating one releases the portal seal;
+        you still need the access card.
+      </p>
+      <p>
+        Each floor has an optional contract: scrap machines, land staff kills,
         or salvage crew caches. Complete it for a second permanent upgrade at
         the lift. You can leave without it at any time. Arc welder upgrades your
-        blade and reflected bolts; choose a build that suits your run.
+        staff and reflected bolts; choose a build that suits your run.
       </p>
       <div class="control-grid">
         <div>
@@ -1503,7 +1738,7 @@
           <span>Fire weapon</span><span>Click / <kbd>J</kbd></span>
         </div>
         <div><span>Reload</span><kbd>R</kbd></div>
-        <div><span>Arc blade / pulse rifle</span><kbd>1 / 2</kbd></div>
+        <div><span>Arc staff / pulse rifle</span><kbd>1 / 2</kbd></div>
         <div><span>Dash</span><kbd>SPACE</kbd></div>
         <div>
           <span>EMP pulse</span><span><kbd>F</kbd> / Right click</span>
@@ -1560,13 +1795,14 @@
         >
       </div>
       <p class="guide-tip">
-        Your shield regenerates after five seconds without damage. EMP stuns
-        nearby machines and clears incoming bolts. Chain three blade swings for
-        a heavy finisher; swing at incoming bolts to send them back. The blade
-        ignores frontal armor. Bulwarks resist rifle shots from the front—flank
-        them or use EMP. Swift, reinforced, and overclocked machines trade
-        speed, durability, and firing rate. Red eyes mean a shot is coming—keep
-        moving.
+        Your shield regenerates after five seconds without damage. A red arc
+        around the crosshair points toward the last incoming hit, including hits
+        absorbed by your shield. EMP stuns nearby machines and clears incoming
+        bolts. Chain three blade swings for a heavy finisher; swing at incoming
+        bolts to send them back. The blade ignores frontal armor. Bulwarks
+        resist rifle shots from the front—flank them or use EMP. Swift,
+        reinforced, and overclocked machines trade speed, durability, and firing
+        rate. Red eyes mean a shot is coming—keep moving.
       </p>
     </dialog>
     <script id="orbit-core">
@@ -1753,6 +1989,116 @@
             squadSize: Math.min(5, 1 + Math.floor(deck / 3)),
           };
         }
+        const LOCKDOWN = { standard: 60, explorer: 60, step: 30 };
+        const BREACH = {
+          charge: 2.4,
+          interval: 35,
+          activeCap: 48,
+          historyCap: 64,
+        };
+        function floorClock(seconds, difficulty = "standard") {
+          const limit = LOCKDOWN[difficulty] ?? LOCKDOWN.standard,
+            overtime = Math.max(0, seconds - limit),
+            tier =
+              seconds < limit ? 0 : 1 + Math.floor(overtime / LOCKDOWN.step);
+          return {
+            tier,
+            remaining: Math.max(0, limit - seconds),
+            next: tier
+              ? LOCKDOWN.step - (overtime % LOCKDOWN.step)
+              : limit - seconds,
+          };
+        }
+        function strengthenEnemy(enemy, tier) {
+          if (enemy.health <= 0 || enemy.lockdownTier === tier) return;
+          const base = (enemy.baseStats ??= Object.fromEntries(
+            [
+              "maxHealth",
+              "damage",
+              "speed",
+              "interval",
+              "windup",
+              "boltSpeed",
+              "range",
+            ].map((key) => [key, enemy[key]]),
+          ));
+          const fraction = enemy.health / enemy.maxHealth,
+            strength = 1 + tier * 0.25 + tier * tier * 0.035,
+            haste = 1 + Math.min(1.2, tier * 0.14);
+          enemy.maxHealth = Math.round(base.maxHealth * strength);
+          enemy.health = enemy.maxHealth * fraction;
+          enemy.damage = Math.round(base.damage * strength);
+          enemy.speed = Math.max(base.speed, Math.min(7, base.speed * haste));
+          enemy.interval = Math.max(0.3, base.interval / haste);
+          enemy.windup = base.windup ? Math.max(0.22, base.windup / haste) : 0;
+          enemy.boltSpeed = Math.min(26, base.boltSpeed * (1 + tier * 0.05));
+          enemy.range =
+            enemy.type === "stalker"
+              ? base.range
+              : Math.max(3.5, base.range / haste);
+          enemy.lockdownTier = tier;
+          if (tier) enemy.alert = true;
+        }
+        function reinforcementSpot(
+          level,
+          node,
+          enemy,
+          player,
+          enemies,
+          offset = 0,
+        ) {
+          // A visible pad telegraphs the exact spawn location. Check again when
+          // materializing: bodies and the player can move into it during charge.
+          for (const radius of [1.7, 2.6, 3.5])
+            for (let i = 0; i < 12; i++) {
+              const angle = offset + (i * Math.PI) / 6,
+                p = {
+                  x: node.x + Math.sin(angle) * radius,
+                  z: node.z + Math.cos(angle) * radius,
+                };
+              if (
+                validReinforcementSpot(level, p, enemy, player, enemies, node)
+              )
+                return p;
+            }
+          return null;
+        }
+        function validReinforcementSpot(
+          level,
+          p,
+          enemy,
+          player,
+          enemies,
+          node,
+        ) {
+          const room = level.rooms[node.room],
+            tx = Math.floor(p.x / CELL),
+            tz = Math.floor(p.z / CELL);
+          return (
+            tx >= room.x &&
+            tx < room.x + room.w &&
+            tz >= room.z &&
+            tz < room.z + room.h &&
+            fits(
+              level.map,
+              p.x,
+              p.z,
+              enemy.collisionRadius + 0.15,
+              level.props,
+            ) &&
+            visible(level.map, node, p, level.props) &&
+            Math.hypot(p.x - player.x, p.z - player.z) >= 4 &&
+            [level.start, level.exit, level.card, ...level.pickups].every(
+              (item) => Math.hypot(p.x - item.x, p.z - item.z) > 1.25,
+            ) &&
+            enemies.every(
+              (other) =>
+                other.health <= 0 ||
+                Math.hypot(p.x - other.x, p.z - other.z) >
+                  enemy.collisionRadius + other.collisionRadius + 0.45,
+            )
+          );
+        }
         function makeEnemy(random, type, deck = 0) {
           const base = enemyTypes[type],
             pressure = floorPressure(deck),
@@ -1828,8 +2174,83 @@
                   : 0.54) * scale,
           };
         }
+        const guardianTypes = [
+          {
+            boss: "bastion",
+            name: "The Bastion",
+            type: "bulwark",
+            health: 340,
+            speed: 1.05,
+            interval: 3.2,
+            windup: 1.25,
+            damage: 20,
+            accent: [1, 0.67, 0.24],
+            color: [0.39, 0.32, 0.23],
+            hint: "TWIN CANNONS / STRIKE WHEN ITS CORE OPENS",
+          },
+          {
+            boss: "sovereign",
+            name: "Prism Sovereign",
+            type: "prism",
+            health: 290,
+            speed: 1.25,
+            interval: 3.1,
+            windup: 1.35,
+            damage: 12,
+            accent: [0.8, 0.4, 1],
+            color: [0.32, 0.22, 0.42],
+            hint: "FAN VOLLEYS / DODGE THE GAPS OR PARRY",
+          },
+          {
+            boss: "reaver",
+            name: "Rift Reaver",
+            type: "stalker",
+            health: 320,
+            speed: 1.6,
+            interval: 3.1,
+            windup: 1.1,
+            damage: 28,
+            accent: [1, 0.3, 0.32],
+            color: [0.4, 0.19, 0.22],
+            hint: "CHARGING HUNTER / SIDESTEP ITS LOCKED AIM",
+          },
+        ];
+        function makeGuardian(seed, deck) {
+          const random = rng(seed ^ Math.imul(deck + 1, 0x5bd1e995)),
+            spec =
+              guardianTypes[
+                (deck + ((seed >>> 0) % guardianTypes.length)) %
+                  guardianTypes.length
+              ],
+            pressure = floorPressure(deck),
+            variation = 0.94 + random() * 0.12,
+            health = Math.round(spec.health * pressure.health * variation);
+          return {
+            ...makeEnemy(random, spec.type, deck),
+            ...spec,
+            trait: "standard",
+            scale: 1.35,
+            collisionRadius: 1.05,
+            hitRadius: 0.84,
+            health,
+            maxHealth: health,
+            speed: spec.speed * pressure.speed,
+            damage: Math.round(spec.damage * pressure.damage),
+            interval: spec.interval / Math.min(1.6, pressure.cadence),
+            windup: Math.max(
+              0.75,
+              spec.windup / Math.min(1.4, pressure.cadence),
+            ),
+            range: spec.boss === "reaver" ? 5.5 : 7,
+          };
+        }
         function enemyDamage(enemy, amount, from, bypass = false) {
-          if (bypass || enemy.type !== "bulwark" || enemy.stun > 0)
+          if (
+            bypass ||
+            enemy.type !== "bulwark" ||
+            enemy.stun > 0 ||
+            (enemy.boss && (enemy.charge > 0 || enemy.recover > 0))
+          )
             return amount;
           const dx = from.x - enemy.x,
             dz = from.z - enemy.z,
@@ -1946,7 +2367,7 @@
               kind === "caches"
                 ? "Salvage crew caches"
                 : kind === "blade"
-                  ? "Scrap machines with the cutlass"
+                  ? "Scrap machines with the staff"
                   : "Scrap hostile machines",
             progress: 0,
             completed: false,
@@ -2110,13 +2531,32 @@
             }
             // Unique, clear floor tiles keep actors and supplies out of walls and objectives.
             const spawn = () => spawnTiles.pop();
+            // Reserve a roomy position near the lift before placing its squad
+            // and supplies. The guardian replaces one ordinary enemy.
+            let guardian = null;
+            if (room.index === exit.room) {
+              const spec = makeGuardian(seed, deck),
+                candidates = spawnTiles
+                  .filter((p) =>
+                    fits(map, p.x, p.z, spec.collisionRadius, props),
+                  )
+                  .sort(
+                    (a, b) =>
+                      Math.hypot(a.x - exit.x, a.z - exit.z) -
+                      Math.hypot(b.x - exit.x, b.z - exit.z),
+                  ),
+                point = candidates[0];
+              if (!point) throw new Error("No clear portal guardian position");
+              spawnTiles.splice(spawnTiles.indexOf(point), 1);
+              guardian = { ...point, ...spec, room: room.index };
+            }
             const count = Math.min(
               6,
               floorPressure(deck).squadSize +
                 (deck > 0 && random() < 0.45 ? 1 : 0) +
                 (deck >= 2 && room.index === exit.room ? 1 : 0),
             );
-            for (let i = 0; i < count; i++)
+            for (let i = 0; i < count - (guardian ? 1 : 0); i++)
               enemies.push({
                 ...spawn(),
                 ...makeEnemy(
@@ -2125,6 +2565,7 @@
                   deck,
                 ),
               });
+            if (guardian) enemies.push(guardian);
             if (room.index % 3 === 0 || stockedRooms.has(room))
               pickups.push({
                 ...spawn(),
@@ -2137,6 +2578,36 @@
                 type: "cache",
               });
           }
+          // Centers are reserved by ordinary spawning. These energy projections
+          // have flush floor pads, so every existing walking route stays open.
+          const breachRandom = rng(seed ^ Math.imul(deck + 1, 0x45d9f3b)),
+            breachRooms = rooms
+              .slice(1)
+              .filter(
+                (room) => room.index !== exit.room && room.index !== card.room,
+              );
+          for (let i = breachRooms.length - 1; i > 0; i--) {
+            const j = Math.floor(breachRandom() * (i + 1));
+            [breachRooms[i], breachRooms[j]] = [breachRooms[j], breachRooms[i]];
+          }
+          const spawners = breachRooms.slice(0, 2).map((room, i) => ({
+            ...center(room),
+            room: room.index,
+            id: i,
+            y: 1.3,
+            name: "Breach node",
+            type: "breach",
+            trait: "standard",
+            spawner: true,
+            health: 132 + Math.min(120, deck * 8),
+            maxHealth: 132 + Math.min(120, deck * 8),
+            hitRadius: 0.65,
+            cooldown: 30 + i * 13,
+            charge: 0,
+            stun: 0,
+            hit: 0,
+            pending: null,
+          }));
           return {
             map,
             rooms,
@@ -2146,6 +2617,7 @@
             enemies,
             pickups,
             props,
+            spawners,
             seed,
             deck,
           };
@@ -2360,7 +2832,15 @@
           distances,
           generateDeck,
           floorPressure,
+          LOCKDOWN,
+          BREACH,
+          floorClock,
+          strengthenEnemy,
+          reinforcementSpot,
+          validReinforcementSpot,
           enemyTypes,
+          guardianTypes,
+          makeGuardian,
           makeEnemy,
           enemyDamage,
           stationProps,
@@ -3008,6 +3488,8 @@
         const fragment = `precision mediump float;varying vec3 vPosition;varying vec3 vNormal;varying vec3 vColor;varying float vGlow;varying vec2 vUV;uniform vec3 uEye;uniform vec3 uForward;uniform vec4 uLights[10];uniform vec3 uColors[10];uniform sampler2D uAtlas;uniform float uTime;uniform float uFlash;
 uniform vec2 uPortal;
 uniform vec4 uShadows[6];
+uniform vec4 uEmp;
+uniform float uEmpPower;
 vec3 portalField(vec2 uv) {
   vec2 p = (uv - .5) * 2.;
   float t = uTime * uPortal.y;
@@ -3070,6 +3552,13 @@ if(vPosition.y>-.03 && vPosition.y<.08 && n.y>.8){
 }
 lighting+=vec3(1.,.38,.1)*uFlash/(1.+dist*dist);
 vec3 col=base*(lighting+grain)*(1.-min(.48,shadow))+sheen+base*vGlow;
+// The expanding sphere leaves a narrow luminous intersection on solid surfaces.
+if(uEmpPower>.001){
+  float empDistance=abs(length(vPosition-uEmp.xyz)-uEmp.w);
+  float empBand=(1.-smoothstep(.035,.32,empDistance))*uEmpPower;
+  float empEdge=(1.-smoothstep(.015,.07,empDistance))*uEmpPower;
+  col+=vec3(.08,.5,.47)*empBand+vec3(.12,.42,.5)*empEdge;
+}
 float fog=1.-exp(-dist*.027);
 col=mix(col,vec3(.017,.03,.055),fog);
 col=col/(vec3(1.)+col*.25);
@@ -3126,6 +3615,8 @@ gl_FragColor=vec4(col,1.);}`;
           "Time",
           "Flash",
           "Portal",
+          "Emp",
+          "EmpPower",
         ])
           U[n] = loc(sceneProgram, "u" + n);
         const P = {};
@@ -3255,6 +3746,15 @@ gl_FragColor=vec4(col,1.);}`;
               15,
               407 + i * 27,
             );
+          // A small weapon stencil shares the generated sign atlas. Keep the
+          // white material texel at (.98, .98) clear of the printed region.
+          actx.fillStyle = "#bdc9c6";
+          actx.fillRect(724, 380, 288, 108);
+          actx.fillStyle = "#26383d";
+          actx.font = "bold 48px monospace";
+          actx.fillText("P–24", 740, 435);
+          actx.font = "14px monospace";
+          actx.fillText("PULSE ARRAY / KEPLER", 742, 467);
           gl.bindTexture(gl.TEXTURE_2D, atlas);
           gl.texImage2D(
             gl.TEXTURE_2D,
@@ -3580,15 +4080,18 @@ gl_FragColor=vec4(col,1.);}`;
               !mapOpen,
             deck,
             track: musicTrack,
-            extraction: mode === "playing" && cardTaken,
+            extraction:
+              mode === "playing" &&
+              (portalReady() || (guardian?.encountered && guardian.health > 0)),
             combat:
               mode === "playing" &&
-              enemies.some(
-                (e) =>
-                  e.health > 0 &&
-                  e.alert &&
-                  Math.hypot(e.x - player.x, e.z - player.z) < 16,
-              ),
+              (lockdownTier > 0 ||
+                enemies.some(
+                  (e) =>
+                    e.health > 0 &&
+                    e.alert &&
+                    Math.hypot(e.x - player.x, e.z - player.z) < 16,
+                )),
             volume: musicVolume * (mode === "title" ? 0.65 : 1),
           });
           $("music-title").textContent =
@@ -3781,6 +4284,12 @@ gl_FragColor=vec4(col,1.);}`;
           runSeed = 0,
           runBestAtStart = 0,
           enemies = [],
+          guardian = null,
+          spawners = [],
+          nextEnemyId = 0,
+          breachRandom = C.rng(1),
+          lockdownTier = 0,
+          lockdownWarned = false,
           pickups = [],
           bullets = [],
           particles = [],
@@ -3807,9 +4316,11 @@ gl_FragColor=vec4(col,1.);}`;
           dashTimer = 0,
           dashActive = 0,
           hurtTimer = 0,
+          lastDamage = null,
           hitTimer = 0,
           flashTimer = 0,
           pulseTimer = 0,
+          empWave = null,
           lastHurt = -20,
           combo = 0,
           lastKill = -20,
@@ -4421,6 +4932,11 @@ gl_FragColor=vec4(col,1.);}`;
             level.pickups.filter((p) => p.type === "cache").length,
           );
           floorStats = { started: gameTime, seconds: 0, kills: 0, caches: 0 };
+          lockdownTier = 0;
+          lockdownWarned = false;
+          nextEnemyId = 0;
+          breachRandom = C.rng(level.seed ^ Math.imul(deck + 1, 0x119de1f3));
+          spawners = level.spawners.map((node) => ({ ...node }));
           upgradePicks = 0;
           cardTaken = false;
           portalCharge = 0;
@@ -4448,27 +4964,325 @@ gl_FragColor=vec4(col,1.);}`;
           lastSwing = -20;
           bladePending = false;
           lastHurt = gameTime - 20;
+          lastDamage = null;
+          $("damage-direction").hidden = true;
+          empWave = null;
           player.x = level.start.x;
           player.z = level.start.z;
           player.yaw = Math.PI / 2;
           player.pitch = 0;
-          enemies = level.enemies.map((e, i) => ({
-            ...e,
-            id: i,
-            y: e.type === "stalker" ? 0.65 * e.scale : 1.2,
-            angle: 0,
-            phase: e.hoverPhase,
-            alert: false,
-            cooldown: (1 + i * 0.05) / Math.min(2.5, 1 + deck * 0.1),
-            charge: 0,
-            stun: 0,
-            hit: 0,
-            homeX: e.x,
-            homeZ: e.z,
-          }));
+          enemies = level.enemies.map((e) => activateEnemy(e));
+          guardian = enemies.find((e) => e.boss);
+          $("boss-banner").hidden = true;
           pickups = level.pickups.map((p) => ({ ...p, taken: false }));
           buildStation();
           lastHud = "";
+        }
+        function activateEnemy(source, reinforcement = false) {
+          const id = nextEnemyId++,
+            enemy = {
+              ...source,
+              id,
+              reinforcement,
+              y: source.type === "stalker" ? 0.65 * source.scale : 1.2,
+              angle: 0,
+              phase: source.hoverPhase,
+              alert: reinforcement,
+              cooldown: reinforcement
+                ? 1.4
+                : (1 + id * 0.05) / Math.min(2.5, 1 + deck * 0.1),
+              charge: 0,
+              stun: reinforcement ? 0.8 : 0,
+              hit: 0,
+              homeX: source.x,
+              homeZ: source.z,
+              encountered: false,
+              enraged: false,
+              recover: 0,
+              rush: 0,
+              rushHit: false,
+            };
+          if (lockdownTier) C.strengthenEnemy(enemy, lockdownTier);
+          return enemy;
+        }
+        function portalReady() {
+          return cardTaken && guardian?.health <= 0;
+        }
+        function moveGuardian(e, dx, dz) {
+          const room = level.rooms[e.room],
+            margin = e.collisionRadius + 0.02;
+          moveBody(
+            e,
+            clamp(
+              e.x + dx,
+              room.x * CELL + margin,
+              (room.x + room.w) * CELL - margin,
+            ) - e.x,
+            clamp(
+              e.z + dz,
+              room.z * CELL + margin,
+              (room.z + room.h) * CELL - margin,
+            ) - e.z,
+            e.collisionRadius,
+          );
+        }
+        function guardianVolley(e) {
+          const spreads =
+            e.boss === "bastion"
+              ? e.enraged
+                ? [-0.18, 0, 0.18]
+                : [-0.09, 0.09]
+              : e.enraged
+                ? [-0.54, -0.36, -0.18, 0, 0.18, 0.36, 0.54]
+                : [-0.44, -0.22, 0, 0.22, 0.44];
+          for (const angle of spreads) {
+            const cannon = e.boss === "bastion",
+              side = Math.sign(angle) * 0.48 * e.scale,
+              x =
+                e.x +
+                (cannon
+                  ? side * Math.cos(e.angle) +
+                    0.58 * e.scale * Math.sin(e.angle)
+                  : 0),
+              y = e.y + (cannon && angle ? 0.63 * e.scale : 0),
+              z =
+                e.z +
+                (cannon
+                  ? -side * Math.sin(e.angle) +
+                    0.58 * e.scale * Math.cos(e.angle)
+                  : 0),
+              ax = e.aim.x - x,
+              ay = e.aim.y - y,
+              az = e.aim.z - z,
+              length = Math.hypot(ax, ay, az) || 1,
+              c = Math.cos(angle),
+              s = Math.sin(angle);
+            bullets.push({
+              x,
+              y,
+              z,
+              dx: (ax * c + az * s) / length,
+              dy: ay / length,
+              dz: (az * c - ax * s) / length,
+              speed: e.boltSpeed,
+              damage: e.damage,
+              color: e.accent,
+              life: 5,
+            });
+          }
+          tone(e.boss === "bastion" ? 120 : 420, 0.22, "sawtooth", 0.09, 60);
+          lightBurst(e.x, e.y, e.z, e.accent, 2, 0.15);
+        }
+        function updateGuardian(e, dt) {
+          const dx = player.x - e.x,
+            dz = player.z - e.z,
+            dist = Math.hypot(dx, dz),
+            sight = dist < 24 && lineClear(e, player);
+          if (!e.encountered && ((sight && dist < 14) || e.hit > 0)) {
+            e.encountered = true;
+            e.alert = true;
+            e.cooldown = Math.max(e.cooldown, 1.5);
+            toast(`PORTAL GUARDIAN / ${e.name.toUpperCase()}`, 3.5);
+            radio(
+              `${e.name} controls this lift. ${
+                e.boss === "bastion"
+                  ? "Armor shutters open during its attack. That's your window."
+                  : e.boss === "sovereign"
+                    ? "Watch the spread. Dodge through the gaps, or send those bolts back."
+                    : "It commits to a straight charge. Let it aim, then dash sideways."
+              }`,
+              6,
+            );
+            tone(100, 0.6, "triangle", 0.1, 45);
+          }
+          if (!e.encountered) return;
+          if (!e.enraged && e.health <= e.maxHealth * 0.5) {
+            e.enraged = true;
+            toast(`${e.name.toUpperCase()} / CORE UNSTABLE`, 2.5);
+            sparks(e.x, e.y, e.z, e.accent, 18, 4);
+          }
+          if (e.stun > 0) {
+            e.charge = e.rush = 0;
+            e.recover = 0.8;
+            return;
+          }
+          e.recover = Math.max(0, e.recover - dt);
+          if (e.rush > 0) {
+            const before = { x: e.x, y: 1.2, z: e.z },
+              speed = Math.min(11, 7 + e.speed + (e.enraged ? 1.5 : 0));
+            moveGuardian(e, e.rushX * speed * dt, e.rushZ * speed * dt);
+            const traveled = Math.hypot(e.x - before.x, e.z - before.z);
+            if (
+              !e.rushHit &&
+              sight &&
+              (Math.hypot(player.x - before.x, player.z - before.z) < 1.25 ||
+                (traveled > 0 &&
+                  C.segmentSphere(
+                    before,
+                    {
+                      x: (e.x - before.x) / traveled,
+                      y: 0,
+                      z: (e.z - before.z) / traveled,
+                    },
+                    { x: player.x, y: 1.2, z: player.z },
+                    1.25,
+                    traveled,
+                  ) !== null))
+            ) {
+              e.rushHit = true;
+              damage(e.damage, before);
+            }
+            e.rush = traveled < speed * dt * 0.5 ? 0 : Math.max(0, e.rush - dt);
+            if (!e.rush) {
+              e.recover = 1;
+              e.cooldown = e.interval;
+            }
+            return;
+          }
+          if (e.charge > 0) {
+            e.angle = Math.atan2(e.aim.x - e.x, e.aim.z - e.z);
+            e.charge = Math.max(0, e.charge - dt);
+            if (e.charge === 0) {
+              if (e.boss === "reaver") {
+                const x = e.aim.x - e.x,
+                  z = e.aim.z - e.z,
+                  length = Math.hypot(x, z);
+                e.rushX = length > 0.01 ? x / length : Math.sin(e.angle);
+                e.rushZ = length > 0.01 ? z / length : Math.cos(e.angle);
+                e.rush = 0.75;
+                e.rushHit = false;
+                tone(85, 0.25, "sawtooth", 0.09, 220);
+              } else {
+                guardianVolley(e);
+                e.recover = 0.9;
+                e.cooldown = e.interval * (e.enraged ? 0.72 : 1);
+              }
+            }
+            return;
+          }
+          e.angle = Math.atan2(dx, dz);
+          e.cooldown = Math.max(0, e.cooldown - dt);
+          if (e.recover > 0) return;
+          // A guardian stays in its arena; retreating never heals it or restarts the encounter.
+          if (dist > e.range || !sight) {
+            const tx = sight ? player.x : e.homeX,
+              tz = sight ? player.z : e.homeZ,
+              vx = tx - e.x,
+              vz = tz - e.z,
+              length = Math.hypot(vx, vz);
+            if (length > 0.1)
+              moveGuardian(
+                e,
+                (vx / length) * e.speed * dt,
+                (vz / length) * e.speed * dt,
+              );
+          }
+          if (
+            sight &&
+            dist < (e.boss === "reaver" ? 9 : 21) &&
+            e.cooldown <= 0
+          ) {
+            e.aim = { x: player.x, y: 1.2, z: player.z };
+            e.charge = Math.max(0.65, e.windup * (e.enraged ? 0.8 : 1));
+          }
+        }
+        function updatePressure(dt) {
+          floorStats.seconds += dt;
+          const clock = C.floorClock(floorStats.seconds, difficulty);
+          if (!lockdownWarned && clock.remaining <= 30 && !clock.tier) {
+            lockdownWarned = true;
+            radio(
+              "Thirty seconds to lockdown. Machines will overclock. Find the card and take the lift.",
+              6,
+            );
+            tone(440, 0.25, "triangle", 0.08, 220);
+          }
+          if (clock.tier !== lockdownTier) {
+            lockdownTier = clock.tier;
+            for (const enemy of enemies) C.strengthenEnemy(enemy, lockdownTier);
+            toast(`LOCKDOWN ${lockdownTier} / HOSTILES OVERCLOCKED`, 4);
+            radio(
+              lockdownTier === 1
+                ? "Lockdown engaged. Hostiles are hunting you. Their strength will keep climbing. The lift still works."
+                : "Another overclock surge. Stronger machines. Faster production. Keep moving.",
+              6,
+            );
+            tone(160, 0.55, "sawtooth", 0.08, 70);
+          }
+          for (const node of spawners) {
+            if (node.health <= 0) continue;
+            node.hit = Math.max(0, node.hit - dt);
+            if (node.stun > 0) {
+              node.stun = Math.max(0, node.stun - dt);
+              continue;
+            }
+            const active = enemies.filter((enemy) => enemy.health > 0).length,
+              interval = Math.max(
+                10,
+                C.BREACH.interval / (1 + lockdownTier * 0.22),
+              );
+            if (node.pending) {
+              node.charge = Math.max(0, node.charge - dt);
+              if (node.charge > 0) continue;
+              const { enemy, point } = node.pending;
+              if (
+                active < C.BREACH.activeCap &&
+                C.validReinforcementSpot(
+                  level,
+                  point,
+                  enemy,
+                  player,
+                  enemies,
+                  node,
+                )
+              ) {
+                if (enemies.length >= C.BREACH.historyCap)
+                  enemies = enemies.filter((e) => e.health > 0);
+                enemies.push(activateEnemy({ ...enemy, ...point }, true));
+                sparks(point.x, 0.5, point.z, [0.78, 0.4, 1], 18, 3);
+                lightBurst(point.x, 1, point.z, [0.78, 0.4, 1], 3, 0.4);
+                if (Math.hypot(point.x - player.x, point.z - player.z) < 18)
+                  tone(110, 0.3, "triangle", 0.09, 440);
+                node.cooldown = interval;
+              } else node.cooldown = 3;
+              node.pending = null;
+              continue;
+            }
+            // No accumulated spawn debt while a pad is blocked or the cap is full.
+            if (lockdownTier) node.cooldown = Math.min(node.cooldown, interval);
+            node.cooldown = Math.max(0, node.cooldown - dt);
+            if (node.cooldown > 0) continue;
+            if (active >= C.BREACH.activeCap) {
+              node.cooldown = 3;
+              continue;
+            }
+            const types = deck
+                ? Object.keys(C.enemyTypes)
+                : ["drone", "skimmer", "stalker", "sentry"],
+              enemy = C.makeEnemy(
+                breachRandom,
+                types[Math.floor(breachRandom() * types.length)],
+                deck,
+              ),
+              point = C.reinforcementSpot(
+                level,
+                node,
+                enemy,
+                player,
+                enemies,
+                breachRandom() * Math.PI * 2,
+              );
+            if (!point) {
+              node.cooldown = 3;
+              continue;
+            }
+            node.pending = { enemy, point };
+            node.charge = C.BREACH.charge;
+            if (Math.hypot(point.x - player.x, point.z - player.z) < 18) {
+              toast("BREACH NODE / REINFORCEMENT INBOUND", 2.4);
+              tone(330, 0.4, "triangle", 0.06, 880);
+            }
+          }
         }
         function clearInput() {
           keys.clear();
@@ -4535,7 +5349,7 @@ gl_FragColor=vec4(col,1.);}`;
           makeLevel();
           setPlaying();
           radio(
-            "You’re awake. Good. The station is not. Find an access card, reach the lift, and try not to become a permanent resident.",
+            "One minute before lockdown. Hostiles power up every thirty seconds after that. Find the access card and defeat the portal guardian. Seal violet breach cores to stop reinforcements.",
             9,
           );
           toast(
@@ -4595,7 +5409,7 @@ gl_FragColor=vec4(col,1.);}`;
             const pulseMaxed = player.empMax <= 4 && player.dashMax <= 0.8,
               choiceRound = upgradePicks,
               floorTime = `${Math.floor(floorStats.seconds / 60)}:${String(Math.floor(floorStats.seconds % 60)).padStart(2, "0")}`;
-            content.innerHTML = `<div class="eyebrow mono">${player.floorsCompleted} FLOORS CLEARED / FLOOR ${deck + 2} AWAITS</div><h1>${contract.completed && upgradePicks === 1 ? "One more<br>advantage." : "A little more<br>dangerous."}</h1><div class="floor-report mono"><span>${floorTime} ON FLOOR</span><span>${floorStats.kills} SCRAPPED</span><span class="${contract.completed ? "secured" : ""}">${contract.completed ? "CONTRACT SECURED" : `CONTRACT ${contract.progress}/${contract.target}`}</span></div><p class="intro">${upgradePicks === 2 ? "Contract reward: choose TWO permanent upgrades, one at a time." : contract.completed ? "Bonus fabrication: choose your second permanent upgrade." : "Choose one permanent upgrade. Side contracts unlock a second."}<br>Full health & shields · +24 rounds up to your carry limit.</p><div class="upgrade-grid"><button class="upgrade" data-upgrade="damage"><span class="symbol">↯</span><strong>Hotwired</strong><small>+10 rifle damage.<br>${player.fireRate > 0.065 ? "Up to 10% faster fire rate." : "Fire rate fully tuned."}<br>Make every shot count.</small></button><button class="upgrade" data-upgrade="shield"><span class="symbol">◈</span><strong>Second skin</strong><small>+35 maximum shield.<br>+25 maximum health.<br>A little room for error.</small></button><button class="upgrade" data-upgrade="pulse" ${pulseMaxed ? "disabled" : ""}><span class="symbol">◎</span><strong>Short circuit</strong><small>${pulseMaxed ? "Fully tuned.<br>Choose another upgrade." : "Up to 45% faster EMP recharge.<br>Up to 30% faster dash recharge.<br>Keep the upper hand."}</small></button><button class="upgrade" data-upgrade="blade"><span class="symbol">⟋</span><strong>Arc welder</strong><small>+12 damage to every cut.<br>+16 reflected bolt damage.<br>Turn pressure into power.</small></button></div>`;
+            content.innerHTML = `<div class="eyebrow mono">${player.floorsCompleted} FLOORS CLEARED / FLOOR ${deck + 2} AWAITS</div><h1>${contract.completed && upgradePicks === 1 ? "One more<br>advantage." : "A little more<br>dangerous."}</h1><div class="floor-report mono"><span>${floorTime} ON FLOOR</span><span>${floorStats.kills} SCRAPPED</span><span class="${contract.completed ? "secured" : ""}">${contract.completed ? "CONTRACT SECURED" : `CONTRACT ${contract.progress}/${contract.target}`}</span></div><p class="intro">${upgradePicks === 2 ? "Contract reward: choose TWO permanent upgrades, one at a time." : contract.completed ? "Bonus fabrication: choose your second permanent upgrade." : "Choose one permanent upgrade. Side contracts unlock a second."}<br>Full health & shields · +24 rounds up to your carry limit.</p><div class="upgrade-grid"><button class="upgrade" data-upgrade="damage"><span class="symbol">↯</span><strong>Hotwired</strong><small>+10 rifle damage.<br>${player.fireRate > 0.065 ? "Up to 10% faster fire rate." : "Fire rate fully tuned."}<br>Make every shot count.</small></button><button class="upgrade" data-upgrade="shield"><span class="symbol">◈</span><strong>Second skin</strong><small>+35 maximum shield.<br>+25 maximum health.<br>A little room for error.</small></button><button class="upgrade" data-upgrade="pulse" ${pulseMaxed ? "disabled" : ""}><span class="symbol">◎</span><strong>Short circuit</strong><small>${pulseMaxed ? "Fully tuned.<br>Choose another upgrade." : "Up to 45% faster EMP recharge.<br>Up to 30% faster dash recharge.<br>Keep the upper hand."}</small></button><button class="upgrade" data-upgrade="blade"><span class="symbol">⟋</span><strong>Arc welder</strong><small>+12 damage to every strike.<br>+16 reflected bolt damage.<br>Turn pressure into power.</small></button></div>`;
             content.querySelectorAll("[data-upgrade]").forEach(
               (b) =>
                 (b.onclick = () => {
@@ -4790,7 +5604,7 @@ gl_FragColor=vec4(col,1.);}`;
           )
             return;
           if (player.reserve === 0) {
-            toast("No reserve cells · press 1 for the arc blade");
+            toast("No reserve cells · press 1 for the arc staff");
             return;
           }
           reloadTimer = player.reloadDuration;
@@ -4821,6 +5635,10 @@ gl_FragColor=vec4(col,1.);}`;
         }
         function enemyHit(e, damage, bypass = false, source = "pulse") {
           if (e.health <= 0) return;
+          if (e.spawner) {
+            spawnerHit(e, damage);
+            return;
+          }
           e.health -= C.enemyDamage(e, damage, player, bypass);
           e.hit = 0.16;
           e.alert = true;
@@ -4843,7 +5661,25 @@ gl_FragColor=vec4(col,1.);}`;
             floorStats.kills++;
             progressContract("kills");
             if (source === "blade") progressContract("blade");
-            if (Math.random() < C.AMMO.dropChance)
+            if (e.boss) {
+              e.charge = e.rush = 0;
+              toast(
+                `GUARDIAN DEFEATED / ${cardTaken ? "TRANSIT PORTAL ONLINE" : "ACCESS CARD STILL REQUIRED"}`,
+                4,
+              );
+              radio(
+                cardTaken
+                  ? "Guardian link severed. The portal is yours. Take the lift."
+                  : "Guardian down. Find the gold access card to activate its portal.",
+                5,
+              );
+              lightBurst(e.x, e.y, e.z, e.accent, 6, 0.7);
+            }
+            if (
+              !e.boss &&
+              !e.reinforcement &&
+              Math.random() < C.AMMO.dropChance
+            )
               pickups.push({
                 x: e.x,
                 z: e.z,
@@ -4854,14 +5690,35 @@ gl_FragColor=vec4(col,1.);}`;
               });
           }
         }
+        function spawnerHit(node, amount) {
+          if (node.health <= 0) return;
+          node.health = Math.max(0, node.health - amount);
+          node.hit = 0.18;
+          hitTimer = 0.16;
+          sparks(node.x, node.y, node.z, [0.78, 0.4, 1], 8, 3);
+          tone(620, 0.08, "triangle", 0.06, 160);
+          if (node.health > 0) return;
+          node.pending = null;
+          node.charge = 0;
+          explosionSound({ ...node, type: "sentry" });
+          lightBurst(node.x, node.y, node.z, [0.78, 0.4, 1], 5, 0.5);
+          sparks(node.x, node.y, node.z, [0.78, 0.4, 1], 30, 5);
+          const active = spawners.filter((s) => s.health > 0).length;
+          toast(
+            active
+              ? `BREACH SEALED / ${active} NODE REMAINS`
+              : "ALL BREACHES SEALED / REINFORCEMENTS HALTED",
+            4,
+          );
+        }
         function strikeBlade() {
           const heavy = bladeStep === 2,
             reach = heavy ? 3.25 : 2.85;
-          tone(heavy ? 110 : 230, 0.22, "sawtooth", 0.12, heavy ? 45 : 70);
+          tone(heavy ? 95 : 165, 0.22, "triangle", 0.13, heavy ? 38 : 60);
           tone(880, 0.16, "triangle", 0.06, 220);
-          noise(0.14, 0.13, 2600);
+          noise(0.18, 0.12, 1400);
           const f = forward(player.yaw);
-          for (const e of enemies) {
+          for (const e of [...enemies, ...spawners]) {
             const dx = e.x - player.x,
               dz = e.z - player.z,
               d = Math.hypot(dx, dz);
@@ -4877,9 +5734,11 @@ gl_FragColor=vec4(col,1.);}`;
                 true,
                 "blade",
               );
-              e.stun = heavy ? 1.2 : 0.45;
-              e.charge = 0;
-              if (d > 0.01)
+              if (!e.boss) {
+                e.stun = Math.max(e.spawner ? e.stun : 0, heavy ? 1.2 : 0.45);
+                if (!e.spawner) e.charge = 0;
+              }
+              if (!e.spawner && !e.boss && d > 0.01)
                 moveBody(
                   e,
                   (dx / d) * (heavy ? 0.85 : 0.25),
@@ -4967,7 +5826,7 @@ gl_FragColor=vec4(col,1.);}`;
           );
           let distance = sceneHit(origin, dir, 60);
           let target = null;
-          for (const e of enemies) {
+          for (const e of [...enemies, ...spawners]) {
             if (e.health <= 0) continue;
             const t = C.segmentSphere(
               origin,
@@ -5005,6 +5864,13 @@ gl_FragColor=vec4(col,1.);}`;
           if (mode !== "playing" || mapOpen || empTimer > 0) return;
           empTimer = player.empMax;
           pulseTimer = 1;
+          empWave = {
+            x: player.x,
+            y: 1,
+            z: player.z,
+            phase: gameTime * 3.7 + (level.seed % 97),
+            targets: [],
+          };
           noise(0.5, 0.27, 700);
           tone(55, 0.6, "sine", 0.3, 440);
           for (const e of enemies)
@@ -5013,9 +5879,26 @@ gl_FragColor=vec4(col,1.);}`;
               Math.hypot(e.x - player.x, e.z - player.z) < 9 &&
               lineClear(player, e)
             ) {
-              e.stun = 3.2;
+              e.stun = e.boss ? 1.4 : 3.2;
               e.charge = 0;
+              if (e.boss) e.rush = 0;
+              if (empWave.targets.length < 12)
+                empWave.targets.push({ x: e.x, y: e.y, z: e.z });
               enemyHit(e, 34, true);
+            }
+          for (const node of spawners)
+            if (
+              node.health > 0 &&
+              Math.hypot(node.x - player.x, node.z - player.z) < 9 &&
+              lineClear(player, node)
+            ) {
+              if (empWave.targets.length < 12)
+                empWave.targets.push({ x: node.x, y: node.y, z: node.z });
+              spawnerHit(node, 34);
+              node.stun = 8;
+              node.pending = null;
+              node.charge = 0;
+              node.cooldown = Math.max(8, node.cooldown);
             }
           bullets = bullets.filter(
             (b) => Math.hypot(b.x - player.x, b.z - player.z) > 11,
@@ -5029,8 +5912,24 @@ gl_FragColor=vec4(col,1.);}`;
           dashActive = 0.17;
           dashSound();
         }
-        function damage(amount) {
-          if (mode !== "playing") return;
+        function damage(amount, source = null) {
+          if (
+            mode !== "playing" ||
+            mapOpen ||
+            !Number.isFinite(amount) ||
+            amount <= 0
+          )
+            return;
+          const dx = source?.x - player.x,
+            dz = source?.z - player.z;
+          // Save the incoming world bearing at impact, so moving attackers and
+          // passing projectiles cannot pull the marker to the wrong side.
+          lastDamage =
+            Number.isFinite(dx) &&
+            Number.isFinite(dz) &&
+            Math.hypot(dx, dz) > 0.001
+              ? { bearing: Math.atan2(dx, -dz), life: 1.4 }
+              : null;
           lastHurt = gameTime;
           hurtTimer = 0.6;
           combo = 0;
@@ -5044,6 +5943,11 @@ gl_FragColor=vec4(col,1.);}`;
           if (interaction.type === "exit") {
             if (!cardTaken) {
               toast("Lift locked · recover the gold access card");
+              tone(120, 0.2, "square", 0.06);
+              return;
+            }
+            if (!portalReady()) {
+              toast("Lift sealed · defeat the portal guardian");
               tone(120, 0.2, "square", 0.06);
               return;
             }
@@ -5082,7 +5986,7 @@ gl_FragColor=vec4(col,1.);}`;
           }
         }
         function beginTransit() {
-          if (mode !== "playing" || mapOpen || !cardTaken) return;
+          if (mode !== "playing" || mapOpen || !portalReady()) return;
           mode = "transit";
           transitTimer = 0;
           portalCharge = 1;
@@ -5093,6 +5997,8 @@ gl_FragColor=vec4(col,1.);}`;
           clearInput();
           interaction = null;
           hurtTimer = flashTimer = pulseTimer = 0;
+          empWave = null;
+          lastDamage = null;
           $("damage").style.opacity = "0";
           $("hud").hidden = true;
           document.body.classList.remove("touch-playing");
@@ -5331,9 +6237,14 @@ gl_FragColor=vec4(col,1.);}`;
             if (transitTimer >= C.PORTAL.duration) menuScreen("upgrade");
             return;
           }
+          if (mode !== "playing" || mapOpen) return;
           gameTime += dt;
           player.elapsed += dt;
-          portalCharge = Math.min(1, portalCharge + (cardTaken ? dt * 1.6 : 0));
+          updatePressure(dt);
+          portalCharge = Math.min(
+            1,
+            portalCharge + (portalReady() ? dt * 1.6 : 0),
+          );
           bladeTimer = Math.max(0, bladeTimer - dt);
           for (const light of lightBursts) light.life -= dt;
           lightBursts = lightBursts.filter((light) => light.life > 0);
@@ -5349,9 +6260,14 @@ gl_FragColor=vec4(col,1.);}`;
           empTimer = Math.max(0, empTimer - dt);
           dashTimer = Math.max(0, dashTimer - dt);
           hurtTimer = Math.max(0, hurtTimer - dt);
+          if (lastDamage) {
+            lastDamage.life -= dt;
+            if (lastDamage.life <= 0) lastDamage = null;
+          }
           hitTimer = Math.max(0, hitTimer - dt);
           flashTimer = Math.max(0, flashTimer - dt);
           pulseTimer = Math.max(0, pulseTimer - dt);
+          if (pulseTimer === 0) empWave = null;
           radioTimer = Math.max(0, radioTimer - dt);
           toastTimer = Math.max(0, toastTimer - dt);
           if (reloadTimer > 0) {
@@ -5390,7 +6306,10 @@ gl_FragColor=vec4(col,1.);}`;
               speed *
               dt,
           );
-          if (cardTaken && C.crossesPortal(beforeMove, player, level.exit)) {
+          if (
+            portalReady() &&
+            C.crossesPortal(beforeMove, player, level.exit)
+          ) {
             beginTransit();
             return;
           }
@@ -5432,6 +6351,11 @@ gl_FragColor=vec4(col,1.);}`;
                     (e.type === "skimmer" ? 0.23 : 0.12);
             e.hit = Math.max(0, e.hit - dt);
             e.stun = Math.max(0, e.stun - dt);
+            if (e.boss) {
+              updateGuardian(e, dt);
+              if (mode !== "playing") return;
+              continue;
+            }
             if (e.stun > 0) continue;
             const dx = player.x - e.x,
               dz = player.z - e.z,
@@ -5508,18 +6432,19 @@ gl_FragColor=vec4(col,1.);}`;
                   (oz / d) * dt * 0.6,
                   e.collisionRadius,
                 );
-                moveBody(
-                  other,
-                  (-ox / d) * dt * 0.6,
-                  (-oz / d) * dt * 0.6,
-                  other.collisionRadius,
-                );
+                if (!other.boss)
+                  moveBody(
+                    other,
+                    (-ox / d) * dt * 0.6,
+                    (-oz / d) * dt * 0.6,
+                    other.collisionRadius,
+                  );
               }
             }
             if (stalk) {
               if (dist < 1.65 && sight && e.cooldown <= 0) {
                 e.cooldown = e.interval;
-                damage(e.damage);
+                damage(e.damage, e);
                 if (mode !== "playing") return;
               }
             } else if (sight && dist < 21) {
@@ -5572,7 +6497,7 @@ gl_FragColor=vec4(col,1.);}`;
             let target = null,
               nearest = Math.min(wall, distance);
             if (b.friendly) {
-              for (const e of enemies) {
+              for (const e of [...enemies, ...spawners]) {
                 if (e.health <= 0) continue;
                 const t = C.segmentSphere(b, dir, e, e.hitRadius, nearest);
                 if (t !== null && t < nearest) {
@@ -5596,7 +6521,7 @@ gl_FragColor=vec4(col,1.);}`;
             if (target) {
               b.life = 0;
               if (target === player) {
-                damage(b.damage);
+                damage(b.damage, { x: player.x - b.dx, z: player.z - b.dz });
                 if (mode !== "playing") return;
               } else enemyHit(target, b.damage, true);
             } else if (wall < distance) {
@@ -5645,11 +6570,16 @@ gl_FragColor=vec4(col,1.);}`;
             Math.hypot(player.x - level.card.x, player.z - level.card.z) < 1.4
           ) {
             cardTaken = true;
-            toast("ACCESS CARD ACQUIRED / TRANSIT PORTAL ONLINE", 4);
+            toast(
+              `ACCESS CARD ACQUIRED / ${portalReady() ? "TRANSIT PORTAL ONLINE" : "DEFEAT THE PORTAL GUARDIAN"}`,
+              4,
+            );
             radio(
-              contract.completed
-                ? "Access accepted. Bonus fabrication secured. The lift is ready."
-                : "Portal online. Your side contract is still open. Stay for the bonus, or take the lift—your call.",
+              !portalReady()
+                ? "Access accepted, but a guardian still controls the lift. Defeat it to open the portal."
+                : contract.completed
+                  ? "Access accepted. Bonus fabrication secured. The lift is ready."
+                  : "Portal online. Your side contract is still open. Stay for the bonus, or take the lift—your call.",
               5,
             );
             tone(523, 0.15, "sine", 0.15, 1046);
@@ -5949,13 +6879,98 @@ gl_FragColor=vec4(col,1.);}`;
               );
             }
         }
+        function guardianCrest(out, e, time) {
+          const glow =
+              e.stun > 0 ? palette.mint : e.enraged ? palette.red : e.accent,
+            c = Math.cos(e.angle),
+            s = Math.sin(e.angle),
+            scale = e.scale,
+            B = (x, y, z, w, h, d, color, power = 0, angle = 0) =>
+              box(
+                out,
+                e.x + (x * c + z * s) * scale,
+                e.y + y * scale,
+                e.z + (-x * s + z * c) * scale,
+                w * scale,
+                h * scale,
+                d * scale,
+                color,
+                power,
+                e.angle + angle,
+              );
+          if (e.boss === "bastion") {
+            const open = e.charge > 0 || e.recover > 0 || e.stun > 0;
+            for (const side of [-1, 1]) {
+              B(side * 0.48, 0.63, 0.05, 0.32, 0.28, 0.9, e.color);
+              B(side * 0.48, 0.63, 0.53, 0.2, 0.16, 0.08, glow, 2);
+              B(
+                side * (open ? 0.3 : 0.075),
+                0.1,
+                0.44,
+                0.16,
+                0.4,
+                0.06,
+                e.color,
+                0,
+                open ? side * 0.35 : 0,
+              );
+            }
+            for (const x of [-0.3, 0, 0.3])
+              B(
+                x,
+                0.96 + (x === 0 ? 0.1 : 0),
+                -0.1,
+                0.12,
+                0.32,
+                0.18,
+                glow,
+                0.8,
+              );
+            B(0, 0.1, 0.39, 0.28, 0.35, 0.035, open ? palette.mint : glow, 2);
+          } else if (e.boss === "sovereign") {
+            for (let i = 0; i < 8; i++) {
+              const a = (reduced ? 0 : time * 0.3) + (i * Math.PI) / 4;
+              B(
+                Math.cos(a) * 0.66,
+                0.72,
+                Math.sin(a) * 0.66,
+                0.1,
+                0.3,
+                0.1,
+                glow,
+                1.3,
+                a,
+              );
+            }
+            B(0, -0.72, 0, 0.3, 0.18, 0.3, glow, 1.5);
+          } else {
+            for (const side of [-1, 1]) {
+              B(
+                side * 0.3,
+                0.19,
+                0.59,
+                0.1,
+                0.25,
+                0.46,
+                glow,
+                1.2,
+                side * 0.25,
+              );
+              B(side * 0.23, 0.38, -0.07, 0.1, 0.28, 0.55, e.color);
+              B(side * 0.23, 0.54, -0.07, 0.08, 0.04, 0.45, glow, 1.8);
+            }
+          }
+        }
         function portalMesh(out, time) {
           const e = level.exit,
             { halfWidth: w, bottom, top } = C.PORTAL,
             t = reduced ? 0 : time,
-            color = palette.orange.map(
-              (v, i) => v + (palette.mint[i] - v) * portalCharge,
-            );
+            color =
+              guardian?.health > 0
+                ? palette.red
+                : palette.orange.map(
+                    (v, i) => v + (palette.mint[i] - v) * portalCharge,
+                  );
           // A distinct material in the shared shader gives the aperture depth
           // without another render pass or transparent geometry sorting.
           quad(
@@ -6043,7 +7058,18 @@ gl_FragColor=vec4(col,1.);}`;
                 );
               }
           }
-          if (!cardTaken) {
+          if (guardian?.health > 0) {
+            for (const side of [-1, 1])
+              beam(
+                out,
+                { x: e.x - w * 0.8, y: side > 0 ? 0.7 : 2.4, z: e.z + 0.035 },
+                { x: e.x + w * 0.8, y: side > 0 ? 2.4 : 0.7, z: e.z + 0.035 },
+                palette.red,
+                0.025,
+                1.2,
+              );
+          }
+          if (!portalReady()) {
             box(out, e.x, 1.32, e.z, 0.18, 0.22, 0.06, palette.orange, 0.7);
             box(out, e.x, 1.48, e.z, 0.12, 0.035, 0.06, palette.orange, 0.7);
             for (const s of [-1, 1])
@@ -6060,8 +7086,236 @@ gl_FragColor=vec4(col,1.);}`;
               );
           }
         }
+        function breachMesh(out, node, time) {
+          const alive = node.health > 0,
+            color =
+              node.hit > 0
+                ? palette.white
+                : node.stun > 0
+                  ? palette.mint
+                  : [0.78, 0.4, 1],
+            rotation = reduced ? 0 : time * 0.65 + node.id,
+            ring = (x, y, z, radius, glow, tint, tilt = 0) => {
+              for (let i = 0; i < 32; i++) {
+                const point = (angle) => ({
+                  x: x + Math.cos(angle) * radius,
+                  y: y + Math.sin(angle) * radius * Math.sin(tilt),
+                  z: z + Math.sin(angle) * radius * Math.cos(tilt),
+                });
+                beam(
+                  out,
+                  point((i * Math.PI) / 16 + rotation),
+                  point(((i + 1) * Math.PI) / 16 + rotation),
+                  tint,
+                  0.018,
+                  glow,
+                );
+              }
+            };
+          // The emitter is flush with the floor; only energy rises above it.
+          box(out, node.x, 0.025, node.z, 1.55, 0.04, 1.55, palette.dark);
+          ring(
+            node.x,
+            0.06,
+            node.z,
+            0.68,
+            alive ? 1.3 : 0,
+            alive ? color : palette.trim,
+          );
+          if (!alive) {
+            for (const sign of [-1, 1])
+              beam(
+                out,
+                { x: node.x - 0.3, y: 0.07, z: node.z + sign * 0.3 },
+                { x: node.x + 0.3, y: 0.07, z: node.z - sign * 0.3 },
+                palette.trim,
+                0.025,
+                0,
+              );
+            return;
+          }
+          const energy = node.stun > 0 ? 0.35 : 1;
+          sphere(
+            out,
+            node.x,
+            node.y,
+            node.z,
+            0.3,
+            color.map((v) => v * energy),
+            1.3,
+          );
+          ring(node.x, node.y, node.z, 0.56, energy, color, Math.PI / 2);
+          ring(node.x, node.y, node.z, 0.56, energy, color, rotation * 0.6);
+          for (let i = 0; i < 4; i++) {
+            const a = rotation + (i * Math.PI) / 2,
+              x = node.x + Math.cos(a) * 0.38,
+              z = node.z + Math.sin(a) * 0.38;
+            beam(
+              out,
+              { x, y: 0.09, z },
+              { x, y: 0.6, z },
+              color.map((v) => v * 0.45),
+              0.008,
+              energy,
+            );
+          }
+          if (node.pending) {
+            const p = node.pending.point,
+              progress = clamp(1 - node.charge / C.BREACH.charge, 0, 1),
+              radius = node.pending.enemy.collisionRadius + 0.28;
+            ring(p.x, 0.065, p.z, radius, 1.3, palette.orange);
+            ring(
+              p.x,
+              reduced ? 0.12 : 0.12 + progress * 1.7,
+              p.z,
+              radius * (1 - progress * 0.4),
+              1,
+              color,
+            );
+            beam(
+              out,
+              { x: node.x, y: 0.1, z: node.z },
+              { x: p.x, y: 0.1, z: p.z },
+              color,
+              0.014,
+              1,
+            );
+            for (let i = 0; i < 4; i++) {
+              const a = (i * Math.PI) / 2,
+                x = p.x + Math.cos(a) * radius,
+                z = p.z + Math.sin(a) * radius;
+              beam(
+                out,
+                { x, y: 0.07, z },
+                { x, y: 0.3 + progress * 1.4, z },
+                color,
+                0.012,
+                1,
+              );
+            }
+          }
+        }
+        function empVisual() {
+          if (!empWave || pulseTimer <= 0) return null;
+          const progress = clamp(1 - pulseTimer, 0, 1);
+          return {
+            ...empWave,
+            progress,
+            radius: reduced ? 2.4 : 0.3 + 8.7 * (1 - (1 - progress) ** 1.25),
+            alpha: reduced
+              ? pulseTimer * 0.35
+              : clamp(progress / 0.035, 0, 1) * clamp(pulseTimer / 0.28, 0, 1),
+          };
+        }
+        function empMesh(out) {
+          const wave = empVisual();
+          if (!wave || wave.alpha <= 0.001) return;
+          const { x, y, z, radius, progress, alpha, phase } = wave,
+            arc = (a, b, strength = alpha) => {
+              if (a.y < 0.035 && b.y < 0.035) return;
+              beam(
+                out,
+                a,
+                b,
+                [0.28 * strength, 0.88 * strength, strength],
+                0.014 * strength,
+                2,
+              );
+            };
+          // The low ring marks the sphere's intersection with the deck.
+          const floorRadius = reduced
+            ? radius
+            : Math.sqrt(Math.max(0, radius * radius - (y - 0.055) ** 2));
+          if (floorRadius > 0.1)
+            for (let i = 0; i < 72; i++) {
+              const point = (angle) => ({
+                x: x + Math.cos(angle) * floorRadius,
+                y: 0.055,
+                z: z + Math.sin(angle) * floorRadius,
+              });
+              arc(point((i * Math.PI) / 36), point(((i + 1) * Math.PI) / 36));
+            }
+          // Reduced motion keeps a small, stationary activation halo.
+          if (reduced) return;
+          const shellPoint = (longitude, latitude) => {
+            const jitter =
+                Math.sin(
+                  longitude * 13 + latitude * 9 + phase + progress * 16,
+                ) *
+                (0.035 + radius * 0.008),
+              r = radius + jitter,
+              lon = longitude + Math.sin(latitude * 17 + phase) * 0.026,
+              lat =
+                latitude +
+                Math.sin(longitude * 15 + phase + progress * 12) * 0.018;
+            return {
+              x: x + Math.cos(lon) * Math.cos(lat) * r,
+              y: y + Math.sin(lat) * r,
+              z: z + Math.sin(lon) * Math.cos(lat) * r,
+            };
+          };
+          for (const latitude of [-0.42, 0, 0.52])
+            for (let i = 0; i < 64; i++) {
+              if (latitude !== 0 && i % 9 === 0) continue;
+              arc(
+                shellPoint((i * Math.PI) / 32, latitude),
+                shellPoint(((i + 1) * Math.PI) / 32, latitude),
+                alpha * (latitude === 0 ? 0.8 : 0.42),
+              );
+            }
+          // Broken meridians turn the flat shock ring into a charged sphere.
+          for (let meridian = 0; meridian < 6; meridian++)
+            for (let i = 0; i < 32; i++) {
+              if ((i + meridian * 3) % 7 === 0) continue;
+              const longitude = (meridian * Math.PI) / 3 + phase * 0.02;
+              arc(
+                shellPoint(longitude, -Math.PI / 2 + (i * Math.PI) / 32),
+                shellPoint(longitude, -Math.PI / 2 + ((i + 1) * Math.PI) / 32),
+                alpha * 0.58,
+              );
+            }
+          // Only affected actors get discharge links; snapshots keep the arcs
+          // attached to the original blast, even if a target moves or dies.
+          const discharge = clamp(1 - progress / 0.24, 0, 1);
+          if (discharge <= 0) return;
+          wave.targets.forEach((target, index) => {
+            const dx = target.x - x,
+              dz = target.z - z,
+              length = Math.hypot(dx, dz);
+            if (length < 0.01) return;
+            const point = (step) => {
+              const t = step / 8,
+                wobble = Math.sin(t * Math.PI) * 0.18,
+                bend =
+                  Math.sin(phase + index * 2.3 + step * 2.7 + progress * 12) *
+                  wobble;
+              return {
+                x: x + dx * t - (dz / length) * bend,
+                y:
+                  y +
+                  (target.y - y) * t +
+                  Math.cos(step * 3.9 + phase) * wobble,
+                z: z + dz * t + (dx / length) * bend,
+              };
+            };
+            for (let i = 0; i < 8; i++) {
+              const a = point(i),
+                b = point(i + 1);
+              arc(a, b, discharge);
+              if (i === 4)
+                arc(
+                  a,
+                  { x: a.x + dx * 0.09, y: a.y + 0.26, z: a.z + dz * 0.09 },
+                  discharge * 0.5,
+                );
+            }
+          });
+        }
         function actors(time, preview = false) {
           const out = [];
+          if (!preview) empMesh(out);
+          if (!preview)
+            for (const node of spawners) breachMesh(out, node, time);
           // Only faulty lamp tubes join the dynamic mesh; their housings stay static.
           for (const lamp of lights)
             if (lamp.flicker)
@@ -6092,6 +7346,7 @@ gl_FragColor=vec4(col,1.);}`;
             for (const e of enemies)
               if (e.health > 0) {
                 robot(out, e, time);
+                if (e.boss) guardianCrest(out, e, time);
                 if (e.charge > 0 && e.aim)
                   beam(
                     out,
@@ -6220,8 +7475,8 @@ gl_FragColor=vec4(col,1.);}`;
               1.7,
               0.025,
               0.07,
-              cardTaken ? palette.mint : [0.15, 0.3, 0.27],
-              cardTaken ? 1.6 : 0.3,
+              portalReady() ? palette.mint : [0.3, 0.12, 0.12],
+              portalReady() ? 1.6 : 0.3,
             );
           for (const b of bullets) {
             box(
@@ -6258,34 +7513,43 @@ gl_FragColor=vec4(col,1.);}`;
           return out;
         }
         const BLADE_CONTACT = 0.42;
-        const BLADE_REST = [0.3, -0.38, -0.86, -0.18, -0.2, -0.32];
-        const BLADE_CUTS = [
+        const STAFF_REST = [0.16, -0.12, -1.28, -0.16, -0.1, -0.9];
+        const STAFF_GRIPS = [
+          { y: 0.36, side: 1 },
+          { y: -0.36, side: -1 },
+        ];
+        const STAFF_STRIKES = [
           [
-            [0.48, -0.2, -0.65, -0.12, -0.35, -0.9],
-            [0.02, -0.24, -1.1, -1.2, -0.15, 0.15],
-            [-0.38, -0.53, -0.85, -1.95, 0.4, 1.25],
+            // Lead with the forward head, then carry its weight across the body.
+            [0.42, -0.13, -1.17, -0.3, -0.28, -1.18],
+            [0.04, -0.3, -1.62, -1.27, -0.16, 0.1],
+            [-0.35, -0.32, -1.3, -0.5, 0.3, 0.98],
           ],
           [
-            [-0.4, -0.23, -0.7, -0.2, 0.3, 0.95],
-            [0.06, -0.23, -1.12, -1.25, 0.1, -0.2],
-            [0.48, -0.46, -0.85, -1.9, -0.35, -1.2],
+            // Reverse the grip's leverage to bring the butt end forward.
+            [-0.42, -0.2, -1.2, 0.25, 0.35, 1.1],
+            [0.05, 0.12, -1.65, 1.27, 0.16, -0.1],
+            [0.42, -0.28, -1.3, 0.3, -0.25, -1.05],
           ],
           [
-            [0.2, 0.1, -0.62, 0.22, -0.1, -0.14],
-            [0.08, -0.22, -1.15, -1.45, 0, 0],
-            [0.02, -0.65, -0.92, -2.45, 0.1, 0.15],
+            // A level, two-handed sweep carries the front head right to left.
+            [0.25, -0.16, -1.35, -1.52, -0.85, 0],
+            [0, -0.15, -1.52, -1.52, 0, 0],
+            [-0.3, -0.18, -1.4, -1.52, 0.95, 0],
           ],
         ];
-        function bladePose(step, progress, quiet = reduced) {
-          const p = clamp(progress, 0, 1);
+        function staffPose(step, progress, quiet = reduced) {
+          const p = clamp(progress, 0, 1),
+            narrow = clamp((1.1 - width / height) / 0.55, 0, 1),
+            // Hold the shaft more upright on phones so both heads stay in view.
+            rest = STAFF_REST.map(
+              (v, i) => v + [-0.09, 0.1, -0.42, 0, 0, 0.62][i] * narrow,
+            );
           if (quiet) {
             const thrust = Math.sin(Math.PI * Math.min(1, p / 0.75));
-            return BLADE_REST.map(
-              (v, i) =>
-                v - (i === 2 ? thrust * 0.24 : i === 3 ? thrust * 0.35 : 0),
-            );
+            return rest.map((v, i) => v - (i === 2 ? thrust * 0.24 : 0));
           }
-          const frames = [BLADE_REST, ...BLADE_CUTS[step], BLADE_REST],
+          const frames = [rest, ...STAFF_STRIKES[step], rest],
             times = [0, 0.2, BLADE_CONTACT, 0.64, 1];
           let segment = 0;
           while (segment < 3 && p > times[segment + 1]) segment++;
@@ -6296,7 +7560,7 @@ gl_FragColor=vec4(col,1.);}`;
             (v, i) => v + (frames[segment + 1][i] - v) * ease,
           );
         }
-        function bladeTransform(pose, x, y, z, normal = false) {
+        function staffTransform(pose, x, y, z, normal = false) {
           const [tx, ty, tz, pitch, yaw, roll] = pose,
             scale = normal ? 1 : 0.8,
             rx = (x * Math.cos(roll) - y * Math.sin(roll)) * scale,
@@ -6309,127 +7573,127 @@ gl_FragColor=vec4(col,1.);}`;
             -rx * Math.sin(yaw) + pz * Math.cos(yaw) + (normal ? 0 : tz),
           ];
         }
-        function bladeMesh(time) {
-          const mesh = [],
-            active = bladeTimer > 0,
-            progress = active ? 1 - bladeTimer / bladeDuration : 0,
-            heavy = bladeStep === 2;
-          const energy = active && heavy ? [0.68, 0.38, 1] : [0.18, 0.95, 0.8];
-          const B = (x, y, z, w, h, d, col, glow = 0) =>
-            box(mesh, x, y, z, w, h, d, col, glow);
-          B(0, -0.12, 0, 0.115, 0.3, 0.13, palette.dark);
-          for (let i = 0; i < 6; i++)
-            B(0, -0.245 + i * 0.045, 0.015, 0.13, 0.016, 0.14, palette.trim);
-          B(0, -0.3, 0, 0.16, 0.075, 0.17, palette.trim);
-          B(0, -0.345, 0.01, 0.075, 0.03, 0.075, energy, 1.6);
-          B(0, 0.045, 0, 0.24, 0.09, 0.19, palette.trim);
-          B(0, 0.12, 0, 0.17, 0.11, 0.135, palette.dark);
-          for (const side of [-1, 1]) {
-            B(side * 0.14, 0.05, 0, 0.08, 0.13, 0.16, [0.42, 0.31, 0.17]);
-            B(side * 0.15, 0.125, 0, 0.07, 0.025, 0.1, palette.orange, 1.2);
-          }
-          B(0.14, -0.13, -0.015, 0.045, 0.34, 0.065, palette.trim);
-          B(0.08, -0.285, -0.015, 0.15, 0.045, 0.065, palette.trim);
-          const outline = [
-            [-0.055, 0.17],
-            [0.065, 0.17],
-            [0.145, 0.49],
-            [0.19, 0.85],
-            [0.08, 1.04],
-            [-0.05, 0.76],
-            [-0.09, 0.4],
-          ];
-          function solid(points, depth, color, glow) {
-            for (const side of [-1, 1])
-              for (let i = 1; i < points.length - 1; i++)
-                quad(
-                  mesh,
-                  [
-                    [...points[0], (side * depth) / 2],
-                    [...points[i], (side * depth) / 2],
-                    [...points[i + 1], (side * depth) / 2],
-                    [...points[0], (side * depth) / 2],
-                  ],
-                  [0, 0, side],
-                  color,
-                  glow,
-                );
-            for (let i = 0; i < points.length; i++) {
-              const a = points[i],
-                b = points[(i + 1) % points.length],
-                dx = b[0] - a[0],
-                dy = b[1] - a[1],
-                l = Math.hypot(dx, dy);
+        function staffSection(out, y, length, radius, color, glow = 0) {
+          // Flat facets keep the shaft round in silhouette without a texture.
+          for (let i = 0; i < 8; i++) {
+            const a = (i * Math.PI) / 4,
+              b = ((i + 1) * Math.PI) / 4,
+              ring = (angle, height) => [
+                Math.cos(angle) * radius,
+                height,
+                Math.sin(angle) * radius,
+              ],
+              low = y - length / 2,
+              high = y + length / 2;
+            quad(
+              out,
+              [ring(a, low), ring(b, low), ring(b, high), ring(a, high)],
+              [Math.cos((a + b) / 2), 0, Math.sin((a + b) / 2)],
+              color,
+              glow,
+            );
+            for (const side of [-1, 1]) {
+              const end = y + (side * length) / 2,
+                center = [0, end, 0];
               quad(
-                mesh,
-                [
-                  [...a, -depth / 2],
-                  [...b, -depth / 2],
-                  [...b, depth / 2],
-                  [...a, depth / 2],
-                ],
-                [dy / l, -dx / l, 0],
+                out,
+                [center, ring(a, end), ring(b, end), center],
+                [0, side, 0],
                 color,
                 glow,
               );
             }
           }
-          solid(outline, 0.035, [0.035, 0.24, 0.25], 0.5);
-          solid(
-            outline.map(([x, y]) => [x * 0.7, y * 0.96]),
-            0.045,
-            energy,
-            1.25,
-          );
-          // The cutting edge is white-hot; the interior stays transparent-looking teal.
-          for (let i = 1; i < 4; i++)
-            beam(
-              mesh,
-              { x: outline[i][0], y: outline[i][1], z: 0.023 },
-              { x: outline[i + 1][0], y: outline[i + 1][1], z: 0.023 },
-              [0.8, 1, 0.94],
-              0.011,
-              2.1,
-            );
-          for (let i = 0; i < 9; i++) {
-            const y = 0.19 + i * 0.078,
-              x =
-                Math.sin(time * (reduced ? 0 : 15) + i * 1.7) * 0.019 +
-                (y > 0.5 ? (y - 0.5) * 0.14 : 0);
-            beam(
-              mesh,
-              { x, y, z: 0.03 },
-              { x: x + 0.018, y: y + 0.06, z: 0.03 },
-              [0.68, 1, 0.94],
-              0.003,
-              2.2,
-            );
+        }
+        function staffMesh(time) {
+          const mesh = [],
+            active = bladeTimer > 0,
+            progress = active ? 1 - bladeTimer / bladeDuration : 0,
+            heavy = bladeStep === 2,
+            energy = active && heavy ? [0.68, 0.38, 1] : [0.18, 0.95, 0.8],
+            B = (x, y, z, w, h, d, col, glow = 0) =>
+              box(mesh, x, y, z, w, h, d, col, glow),
+            S = (y, length, radius, col, glow = 0) =>
+              staffSection(mesh, y, length, radius, col, glow);
+          // A continuous metal shaft, two wrapped grips, and blunt charged heads.
+          S(0, 2.52, 0.047, [0.22, 0.3, 0.33]);
+          S(0, 0.15, 0.078, palette.dark);
+          S(0, 0.045, 0.08, energy, 1.4);
+          for (const { y } of STAFF_GRIPS) {
+            S(y, 0.38, 0.066, palette.dark);
+            for (let i = -3; i <= 3; i++)
+              S(y + i * 0.049, 0.016, 0.073, palette.trim);
           }
-          for (let i = 0; i < 3; i++)
-            B(-0.058, 0.23 + i * 0.07, 0, 0.026, 0.038, 0.064, palette.trim);
-          // The gauntlet grips the hilt; the forearm reaches from a fixed elbow.
-          B(0, -0.16, 0.025, 0.19, 0.22, 0.21, [0.16, 0.19, 0.21]);
-          B(0.105, -0.15, 0.04, 0.045, 0.16, 0.16, palette.trim);
-          for (let i = 0; i < 3; i++)
-            B(
-              -0.02,
-              -0.23 + i * 0.055,
-              0.14,
-              0.15,
-              0.043,
-              0.045,
-              [0.28, 0.33, 0.34],
-            );
-          const pose = bladePose(bladeStep, progress);
-          pose[0] += bxForBlade();
+          for (const side of [-1, 1]) {
+            S(side * 0.7, 0.22, 0.054, palette.trim);
+            S(side * 0.88, 0.065, 0.09, [0.46, 0.32, 0.17]);
+            S(side * 0.93, 0.03, 0.098, palette.orange, 0.7);
+            S(side * 1.1, 0.28, 0.078, energy, 1.35);
+            for (const direction of [-1, 1]) {
+              B(
+                direction * 0.081,
+                side * 1.1,
+                0,
+                0.025,
+                0.3,
+                0.055,
+                palette.dark,
+              );
+              B(
+                0,
+                side * 1.1,
+                direction * 0.081,
+                0.055,
+                0.3,
+                0.025,
+                palette.dark,
+              );
+            }
+            S(side * 1.27, 0.085, 0.102, palette.trim);
+            S(side * 1.335, 0.045, 0.077, [0.75, 1, 0.93], 1.8);
+            // Small electrical filaments crawl over each impact head.
+            for (let i = 0; i < 5; i++) {
+              const phase = (reduced ? 0 : time * 12) + i * 1.7 + side,
+                x = Math.cos(phase) * 0.084,
+                z = Math.sin(phase) * 0.084,
+                y = side * (0.98 + i * 0.043);
+              beam(
+                mesh,
+                { x, y, z },
+                { x: x * 0.7, y: y + side * 0.04, z: z * 0.7 },
+                [0.78, 1, 0.94],
+                0.004,
+                2,
+              );
+            }
+          }
+          // Both gauntlets wrap the shaft; their wrists stay attached throughout.
+          for (const { y, side } of STAFF_GRIPS) {
+            B(0, y, 0.055, 0.18, 0.23, 0.19, [0.16, 0.19, 0.21]);
+            B(side * 0.1, y, 0.025, 0.055, 0.14, 0.15, palette.trim);
+            for (let i = -1; i <= 1; i++)
+              B(
+                0,
+                y + i * 0.062,
+                -0.043,
+                0.16,
+                0.047,
+                0.05,
+                [0.28, 0.33, 0.34],
+              );
+            B(0, y, 0.155, 0.13, 0.11, 0.025, palette.trim);
+            B(0, y, 0.17, 0.06, 0.025, 0.012, palette.orange, 0.6);
+          }
+          const pose = staffPose(bladeStep, progress);
+          pose[0] += bxForStaff();
           for (let i = 0; i < mesh.length; i += 12) {
-            const point = bladeTransform(
+            const point = staffTransform(
                 pose,
                 mesh[i],
                 mesh[i + 1],
                 mesh[i + 2],
               ),
-              normal = bladeTransform(
+              normal = staffTransform(
                 pose,
                 mesh[i + 3],
                 mesh[i + 4],
@@ -6441,128 +7705,324 @@ gl_FragColor=vec4(col,1.);}`;
               mesh[i + 3 + axis] = normal[axis];
             }
           }
-          const wrist = bladeTransform(pose, 0, -0.29, 0.025),
-            elbow = [0.42, -0.78, -0.25],
-            delta = wrist.map((v, i) => v - elbow[i]),
-            length = Math.hypot(...delta),
-            axis = delta.map((v) => v / length),
-            sideLength = Math.hypot(axis[0], axis[2]),
-            side = [axis[2] / sideLength, 0, -axis[0] / sideLength],
-            up = [
-              axis[1] * side[2],
-              axis[2] * side[0] - axis[0] * side[2],
-              -axis[1] * side[0],
-            ],
-            sleeve = [];
-          box(sleeve, 0, 0, 0, 0.16, length, 0.18, [0.12, 0.17, 0.19]);
-          for (let i = 0; i < sleeve.length; i += 12) {
-            const p = sleeve.slice(i, i + 3),
-              n = sleeve.slice(i + 3, i + 6);
-            for (let j = 0; j < 3; j++) {
-              sleeve[i + j] =
-                (wrist[j] + elbow[j]) / 2 +
-                side[j] * p[0] +
-                axis[j] * p[1] +
-                up[j] * p[2];
-              sleeve[i + 3 + j] =
-                side[j] * n[0] + axis[j] * n[1] + up[j] * n[2];
+          for (const { y, side: hand } of STAFF_GRIPS) {
+            const wrist = staffTransform(pose, 0, y - 0.07, 0.15),
+              elbow = [hand * 0.44, -0.86, -0.5],
+              delta = wrist.map((v, i) => v - elbow[i]),
+              length = Math.hypot(...delta),
+              axis = delta.map((v) => v / length),
+              sideLength = Math.hypot(axis[0], axis[2]),
+              side = [axis[2] / sideLength, 0, -axis[0] / sideLength],
+              up = [
+                axis[1] * side[2],
+                axis[2] * side[0] - axis[0] * side[2],
+                -axis[1] * side[0],
+              ],
+              sleeve = [];
+            box(sleeve, 0, 0, 0, 0.13, length, 0.15, [0.12, 0.17, 0.19]);
+            for (let i = 0; i < sleeve.length; i += 12) {
+              const p = sleeve.slice(i, i + 3),
+                n = sleeve.slice(i + 3, i + 6);
+              for (let j = 0; j < 3; j++) {
+                sleeve[i + j] =
+                  (wrist[j] + elbow[j]) / 2 +
+                  side[j] * p[0] +
+                  axis[j] * p[1] +
+                  up[j] * p[2];
+                sleeve[i + 3 + j] =
+                  side[j] * n[0] + axis[j] * n[1] + up[j] * n[2];
+              }
             }
+            mesh.push(...sleeve);
           }
-          mesh.push(...sleeve);
-          // A short edge trail follows the actual blade path through depth.
+          // Each charged end leaves its own short trail along the actual swing.
           if (active && !reduced && progress > 0.2 && progress < 0.76) {
             const end = Math.min(0.64, progress),
               begin = Math.max(0.2, progress - 0.12);
-            for (let i = 0; i < 7; i++) {
-              const a = bladePose(bladeStep, begin + ((end - begin) * i) / 7),
-                b = bladePose(bladeStep, begin + ((end - begin) * (i + 1)) / 7),
-                one = bladeTransform(a, 0.08, 1.04, 0),
-                two = bladeTransform(b, 0.08, 1.04, 0);
-              beam(
-                mesh,
-                { x: one[0], y: one[1], z: one[2] },
-                { x: two[0], y: two[1], z: two[2] },
-                energy.map((v) => v * (0.25 + i * 0.08)),
-                0.006 + i * 0.0015,
-                0.8,
-              );
-            }
+            for (const tip of [-1.335, 1.335])
+              for (let i = 0; i < 7; i++) {
+                const a = staffPose(bladeStep, begin + ((end - begin) * i) / 7),
+                  b = staffPose(
+                    bladeStep,
+                    begin + ((end - begin) * (i + 1)) / 7,
+                  );
+                a[0] += bxForStaff();
+                b[0] += bxForStaff();
+                const one = staffTransform(a, 0, tip, 0),
+                  two = staffTransform(b, 0, tip, 0);
+                beam(
+                  mesh,
+                  { x: one[0], y: one[1], z: one[2] },
+                  { x: two[0], y: two[1], z: two[2] },
+                  energy.map((v) => v * (0.25 + i * 0.08)),
+                  0.006 + i * 0.0015,
+                  0.8,
+                );
+              }
           }
           return mesh;
         }
-        function bxForBlade() {
+        function bxForStaff() {
           return reduced ? 0 : Math.sin(bob) * 0.008 * walkAmount;
         }
-        function weaponMesh(time) {
+        function rifleHousing(out, x, y, z, w, h, d, color, bevel = 0.015) {
+          const c = Math.min(bevel, w / 3, h / 3),
+            outline = [
+              [-w / 2 + c, -h / 2],
+              [w / 2 - c, -h / 2],
+              [w / 2, -h / 2 + c],
+              [w / 2, h / 2 - c],
+              [w / 2 - c, h / 2],
+              [-w / 2 + c, h / 2],
+              [-w / 2, h / 2 - c],
+              [-w / 2, -h / 2 + c],
+            ];
+          for (let i = 0; i < outline.length; i++) {
+            const a = outline[i],
+              b = outline[(i + 1) % outline.length],
+              length = Math.hypot(b[0] - a[0], b[1] - a[1]),
+              point = (p, side) => [x + p[0], y + p[1], z + (side * d) / 2];
+            quad(
+              out,
+              [point(a, -1), point(b, -1), point(b, 1), point(a, 1)],
+              [(b[1] - a[1]) / length, (a[0] - b[0]) / length, 0],
+              color,
+            );
+            for (const side of [-1, 1]) {
+              const center = [x, y, z + (side * d) / 2];
+              quad(
+                out,
+                [center, point(a, side), point(b, side), center],
+                [0, 0, side],
+                color,
+              );
+            }
+          }
+        }
+        function rifleRing(
+          out,
+          x,
+          y,
+          z,
+          length,
+          outer,
+          inner,
+          color,
+          glow = 0,
+          axis = "z",
+        ) {
+          const transform = ([a, b, c], normal = false) =>
+              axis === "x"
+                ? [
+                    (normal ? 0 : x) + c,
+                    (normal ? 0 : y) + b,
+                    (normal ? 0 : z) - a,
+                  ]
+                : [
+                    (normal ? 0 : x) + a,
+                    (normal ? 0 : y) + b,
+                    (normal ? 0 : z) + c,
+                  ],
+            face = (points, normal) =>
+              quad(
+                out,
+                points.map((p) => transform(p)),
+                transform(normal, true),
+                color,
+                glow,
+              ),
+            point = (angle, radius, end) => [
+              Math.cos(angle) * radius,
+              Math.sin(angle) * radius,
+              (end * length) / 2,
+            ];
+          for (let i = 0; i < 10; i++) {
+            const a = (i * Math.PI) / 5,
+              b = ((i + 1) * Math.PI) / 5,
+              normal = [Math.cos((a + b) / 2), Math.sin((a + b) / 2), 0];
+            face(
+              [
+                point(a, outer, -1),
+                point(b, outer, -1),
+                point(b, outer, 1),
+                point(a, outer, 1),
+              ],
+              normal,
+            );
+            if (inner > 0)
+              face(
+                [
+                  point(a, inner, -1),
+                  point(b, inner, -1),
+                  point(b, inner, 1),
+                  point(a, inner, 1),
+                ],
+                normal.map((v) => -v),
+              );
+            for (const end of [-1, 1])
+              face(
+                [
+                  point(a, outer, end),
+                  point(b, outer, end),
+                  point(b, inner, end),
+                  point(a, inner, end),
+                ],
+                [0, 0, end],
+              );
+          }
+        }
+        function rifleMesh(time) {
           const out = [],
             motion = reduced ? 0 : 1,
-            kick = flashTimer / 0.09,
-            bx = Math.sin(bob) * 0.012 * walkAmount * motion,
-            by = Math.abs(Math.cos(bob)) * 0.015 * walkAmount * motion,
-            reload =
-              reloadTimer > 0
-                ? Math.sin((reloadTimer / player.reloadDuration) * Math.PI)
-                : 0;
-          const B = (x, y, z, w, h, d, color, glow = 0, angle = 0) =>
-            box(
-              out,
-              x + bx,
-              y + by - reload * 0.45,
-              z + kick * 0.045,
-              w,
-              h,
-              d,
-              color,
-              glow,
-              angle,
-            );
-          if (player.weapon === 1) return bladeMesh(time);
-          B(0.31, -0.32, -0.63, 0.2, 0.19, 0.52, [0.13, 0.18, 0.21]);
-          B(0.31, -0.23, -0.69, 0.23, 0.065, 0.58, [0.33, 0.41, 0.43]);
-          B(0.31, -0.31, -0.93, 0.14, 0.12, 0.27, palette.dark);
-          B(0.31, -0.31, -1.08, 0.175, 0.15, 0.055, palette.trim);
-          B(0.31, -0.31, -1.113, 0.075, 0.065, 0.02, palette.dark);
-          B(
-            0.31,
-            -0.31,
-            -1.13,
-            0.05,
-            0.045,
-            0.02,
-            palette.orange,
-            flashTimer > 0 ? 6 : 0.9,
-          );
-          B(0.31, -0.2, -0.68, 0.09, 0.03, 0.41, palette.dark);
-          for (let i = 0; i < 7; i++)
-            B(0.31, -0.18, -0.48 - i * 0.055, 0.12, 0.02, 0.025, palette.trim);
-          const reloading = reloadTimer > 0,
+            kick = clamp(flashTimer / 0.09, 0, 1) * motion,
+            reloading = reloadTimer > 0,
+            progress = reloading
+              ? clamp(1 - reloadTimer / player.reloadDuration, 0, 1)
+              : 0,
+            reload = Math.sin(progress * Math.PI),
+            magazine = Math.sin(
+              Math.PI * clamp((progress - 0.12) / 0.76, 0, 1),
+            ),
+            ammoFraction = reloading ? progress : player.ammo / player.magSize,
             ammoColor = reloading
               ? palette.orange
               : player.ammo <= player.magSize * 0.25
                 ? palette.red
-                : palette.mint;
-          B(0.31, -0.14, -0.55, 0.13, 0.105, 0.13, palette.trim);
-          B(0.31, -0.14, -0.48, 0.114, 0.089, 0.012, palette.dark);
-          B(0.31, -0.077, -0.55, 0.055, 0.02, 0.07, ammoColor, 1);
-          // A physical rear-facing display shares the rifle's recoil and bob.
-          const panel = (x, y, w, h, color, glow = 0) => {
-            const px = x + bx,
-              py = y + by - reload * 0.45,
-              pz = -0.473 + kick * 0.045;
-            quad(
-              out,
-              [
-                [px - w / 2, py - h / 2, pz],
-                [px + w / 2, py - h / 2, pz],
-                [px + w / 2, py + h / 2, pz],
-                [px - w / 2, py + h / 2, pz],
-              ],
-              [0, 0, 1],
-              color,
-              glow,
+                : palette.mint,
+            ceramic = [0.57, 0.64, 0.62],
+            metal = [0.2, 0.27, 0.3],
+            copper = [0.57, 0.31, 0.12],
+            coreColor =
+              player.ammo || reloading ? [0.24, 0.84, 1] : [0.1, 0.2, 0.23],
+            charge = player.ammo || reloading ? 0.8 + kick * 1.7 : 0.08,
+            B = (x, y, z, w, h, d, col, glow = 0) =>
+              box(out, x, y, z, w, h, d, col, glow),
+            H = (x, y, z, w, h, d, col, bevel) =>
+              rifleHousing(out, x, y, z, w, h, d, col, bevel),
+            R = (x, y, z, length, outer, inner, col, glow = 0, axis = "z") =>
+              rifleRing(out, x, y, z, length, outer, inner, col, glow, axis);
+          // Layered receiver: a dark chassis, bevelled ceramic plates, and a
+          // separate exposed capacitor instead of one solid rectangular shell.
+          H(0.3, -0.315, -0.665, 0.215, 0.17, 0.49, palette.dark);
+          H(0.3, -0.232, -0.69, 0.237, 0.055, 0.59, ceramic, 0.012);
+          H(0.3, -0.39, -0.63, 0.19, 0.046, 0.43, metal, 0.01);
+          H(0.184, -0.268, -0.61, 0.026, 0.095, 0.275, ceramic, 0.004);
+          H(0.417, -0.31, -0.65, 0.028, 0.12, 0.37, metal, 0.007);
+          B(0.174, -0.315, -0.61, 0.014, 0.012, 0.25, palette.orange, 0.25);
+          // The stencil sits just outside its plate, never coplanar with it.
+          quad(
+            out,
+            [
+              [0.1705, -0.291, -0.717],
+              [0.1705, -0.291, -0.503],
+              [0.1705, -0.228, -0.503],
+              [0.1705, -0.228, -0.717],
+            ],
+            [-1, 0, 0],
+            [1, 1, 1],
+            0,
+            [
+              [724 / 1024, 488 / 512],
+              [1012 / 1024, 488 / 512],
+              [1012 / 1024, 380 / 512],
+              [724 / 1024, 380 / 512],
+            ],
+          );
+          // Slotted cooling fins and individual fasteners catch the headlamp.
+          for (let i = 0; i < 7; i++) {
+            B(0.3, -0.195, -0.52 - i * 0.049, 0.13, 0.018, 0.025, metal);
+            B(0.423, -0.3, -0.5 - i * 0.04, 0.018, 0.047, 0.013, palette.dark);
+          }
+          for (const z of [-0.487, -0.734]) {
+            R(0.165, -0.276, z, 0.012, 0.008, 0.003, metal, 0, "x");
+            B(0.1575, -0.276, z, 0.004, 0.003, 0.012, palette.dark);
+          }
+          // Side-mounted plasma chamber, caged end caps, and copper bus bars.
+          R(0.172, -0.351, -0.742, 0.22, 0.034, 0, coreColor, charge);
+          for (const z of [-0.865, -0.625])
+            R(0.172, -0.351, z, 0.035, 0.044, 0, metal);
+          for (let i = 0; i < 5; i++)
+            R(0.172, -0.351, -0.66 - i * 0.04, 0.012, 0.039, 0.034, copper);
+          B(0.129, -0.351, -0.743, 0.011, 0.017, 0.265, palette.dark);
+          B(0.153, -0.39, -0.71, 0.012, 0.012, 0.35, copper);
+          B(0.153, -0.37, -0.536, 0.014, 0.055, 0.014, copper);
+          // The accelerator's coils are visible through an open shroud.
+          R(0.3, -0.3, -1.03, 0.32, 0.036, 0, palette.dark);
+          for (let i = 0; i < 4; i++) {
+            const z = -0.926 - i * 0.067;
+            R(0.3, -0.3, z, 0.027, 0.061, 0.037, copper);
+            R(0.3, -0.3, z - 0.02, 0.011, 0.047, 0.036, coreColor, charge);
+          }
+          H(0.3, -0.227, -1.055, 0.146, 0.035, 0.33, ceramic, 0.008);
+          H(0.3, -0.369, -1.04, 0.128, 0.03, 0.32, metal, 0.008);
+          B(0.379, -0.3, -1.055, 0.018, 0.1, 0.33, metal);
+          for (let i = 0; i < 4; i++)
+            B(
+              0.3,
+              -0.206,
+              -0.96 - i * 0.056,
+              0.083,
+              0.011,
+              0.013,
+              palette.dark,
             );
-          };
-          const digitMasks = [63, 6, 91, 79, 102, 109, 125, 7, 127, 111],
+          R(0.3, -0.3, -1.257 + kick * 0.018, 0.116, 0.082, 0.039, metal);
+          R(0.3, -0.3, -1.318 + kick * 0.018, 0.018, 0.09, 0.043, palette.dark);
+          R(
+            0.3,
+            -0.3,
+            -1.33 + kick * 0.018,
+            0.005,
+            0.056,
+            0.045,
+            palette.orange,
+            0.5 + kick * 3,
+          );
+          // Small open reflex sight: its frame never fills in the sight picture.
+          B(0.3, -0.171, -0.879, 0.1, 0.021, 0.105, palette.dark);
+          for (const side of [-1, 1]) {
+            H(
+              0.3 + side * 0.051,
+              -0.12,
+              -0.875,
+              0.019,
+              0.096,
+              0.045,
+              metal,
+              0.004,
+            );
+            B(
+              0.3 + side * 0.05,
+              -0.123,
+              -0.85,
+              0.007,
+              0.012,
+              0.007,
+              palette.mint,
+              0.75,
+            );
+          }
+          H(0.3, -0.068, -0.875, 0.119, 0.016, 0.045, metal, 0.004);
+          B(0.3, -0.12, -0.898, 0.006, 0.006, 0.003, palette.mint, 0.9);
+          // Protected rear ammo counter, attached to the same transform as the rifle.
+          H(0.26, -0.162, -0.528, 0.154, 0.106, 0.116, metal, 0.014);
+          H(0.26, -0.162, -0.466, 0.133, 0.084, 0.008, palette.dark, 0.009);
+          for (const x of [0.193, 0.327])
+            R(x, -0.121, -0.468, 0.012, 0.004, 0, ceramic);
+          const panel = (x, y, w, h, color, glow = 0) =>
+              quad(
+                out,
+                [
+                  [x - w / 2, y - h / 2, -0.461],
+                  [x + w / 2, y - h / 2, -0.461],
+                  [x + w / 2, y + h / 2, -0.461],
+                  [x - w / 2, y + h / 2, -0.461],
+                ],
+                [0, 0, 1],
+                color,
+                glow,
+              ),
+            digitMasks = [63, 6, 91, 79, 102, 109, 125, 7, 127, 111],
             segments = [
               [0, 0.024, 0.022, 0.005],
               [0.013, 0.012, 0.005, 0.018],
@@ -6577,49 +8037,148 @@ gl_FragColor=vec4(col,1.);}`;
             .split("")
             .forEach((digit, index) => {
               const mask = digitMasks[Number(digit)];
-              segments.forEach(([x, y, w, h], segment) => {
-                const lit = mask & (1 << segment);
+              segments.forEach(([x, y, w, h], segment) =>
                 panel(
-                  0.289 + index * 0.042 + x,
-                  -0.132 + y,
+                  0.239 + index * 0.042 + x,
+                  -0.153 + y,
                   w,
                   h,
-                  lit ? ammoColor : [0.035, 0.065, 0.07],
-                  lit ? 0.85 : 0,
-                );
-              });
+                  mask & (1 << segment) ? ammoColor : [0.035, 0.065, 0.07],
+                  mask & (1 << segment) ? 0.85 : 0,
+                ),
+              );
             });
-          // The charge strip becomes a refill progress meter during reloads.
-          const ammoFraction = reloading
-            ? C.clamp(1 - reloadTimer / player.reloadDuration, 0, 1)
-            : player.ammo / player.magSize;
           for (let i = 0; i < 12; i++) {
             const lit = i < Math.ceil(ammoFraction * 12);
             panel(
-              0.2715 + i * 0.007,
-              -0.171,
+              0.2215 + i * 0.007,
+              -0.193,
               0.005,
               0.004,
               lit ? ammoColor : [0.035, 0.065, 0.07],
               lit ? 0.65 : 0,
             );
           }
-          B(0.195, -0.27, -0.57, 0.025, 0.08, 0.19, palette.orange, 0.8);
-          B(0.425, -0.285, -0.52, 0.026, 0.055, 0.26, palette.trim);
-          B(0.31, -0.45, -0.64, 0.125, 0.19, 0.18, [0.15, 0.21, 0.23]);
-          B(0.31, -0.55 - reload * 0.14, -0.66, 0.14, 0.07, 0.19, palette.trim);
-          B(0.3, -0.44, -0.41, 0.13, 0.21, 0.14, palette.dark);
-          B(0.31, -0.49, -0.36, 0.22, 0.17, 0.2, [0.18, 0.25, 0.25]);
-          B(0.35, -0.59, -0.22, 0.25, 0.29, 0.29, [0.22, 0.29, 0.28]);
-          B(0.23, -0.43, -0.82, 0.19, 0.15, 0.2, [0.23, 0.3, 0.28]);
-          B(0.19, -0.56, -0.7, 0.18, 0.21, 0.28, [0.16, 0.22, 0.23]);
-          if (flashTimer > 0 && !reduced) {
-            const a = time * 89;
-            B(0.31, -0.31, -1.2, 0.07, 0.07, 0.17, [1, 0.76, 0.36], 5);
-            B(0.31, -0.31, -1.23, 0.21, 0.027, 0.04, palette.orange, 4, a);
-            B(0.31, -0.31, -1.23, 0.025, 0.2, 0.04, palette.orange, 4, a);
+          // Battery pack slides out and reseats; its six windows show charge.
+          const magY = -0.471 - magazine * 0.18;
+          H(0.3, magY, -0.657, 0.128, 0.174, 0.16, metal, 0.014);
+          H(0.3, magY - 0.092, -0.657, 0.145, 0.03, 0.176, palette.dark, 0.006);
+          B(0.231, magY, -0.657, 0.012, 0.112, 0.1, palette.dark);
+          for (let i = 0; i < 6; i++)
+            B(
+              0.223,
+              magY - 0.044 + i * 0.018,
+              -0.657,
+              0.006,
+              0.009,
+              0.071,
+              i < Math.ceil(ammoFraction * 6) ? ammoColor : metal,
+              i < Math.ceil(ammoFraction * 6) ? 0.7 : 0,
+            );
+          // Skeleton trigger guard, stippled grip, and armoured supporting hands.
+          H(0.3, -0.466, -0.42, 0.102, 0.16, 0.106, palette.dark, 0.018);
+          for (let i = 0; i < 4; i++)
+            B(0.244, -0.42 - i * 0.03, -0.42, 0.008, 0.014, 0.083, metal);
+          B(0.3, -0.446, -0.5, 0.076, 0.018, 0.1, metal);
+          B(0.3, -0.416, -0.542, 0.076, 0.06, 0.016, metal);
+          B(0.3, -0.411, -0.482, 0.02, 0.041, 0.014, ceramic);
+          H(
+            0.308,
+            -0.475,
+            -0.373,
+            0.166,
+            0.134,
+            0.145,
+            [0.18, 0.24, 0.25],
+            0.024,
+          );
+          H(0.342, -0.582, -0.285, 0.18, 0.22, 0.14, [0.13, 0.19, 0.21], 0.023);
+          H(
+            0.3,
+            -0.441 - magazine * 0.14,
+            -0.862 + magazine * 0.14,
+            0.167,
+            0.11,
+            0.17,
+            [0.18, 0.24, 0.25],
+            0.022,
+          );
+          for (let i = 0; i < 3; i++)
+            B(
+              0.207,
+              -0.414 - i * 0.029 - magazine * 0.14,
+              -0.861 + magazine * 0.14,
+              0.022,
+              0.021,
+              0.134,
+              ceramic,
+            );
+          H(
+            0.21,
+            -0.55 - magazine * 0.08,
+            -0.71,
+            0.134,
+            0.22,
+            0.18,
+            [0.13, 0.19, 0.21],
+            0.02,
+          );
+          if (kick > 0) {
+            R(
+              0.3,
+              -0.3,
+              -1.37,
+              0.018,
+              0.036 + kick * 0.05,
+              0.032,
+              [0.5, 0.88, 1],
+              kick * 3,
+            );
+            beam(
+              out,
+              { x: 0.3, y: -0.3, z: -1.35 },
+              { x: 0.3, y: -0.3, z: -1.48 - kick * 0.15 },
+              [1, 0.79, 0.4],
+              0.023 * kick,
+              4,
+            );
+          }
+          // Recoil and reload tilt apply to every component, including decals
+          // and display pixels. A smaller inset keeps the counter on phones.
+          const narrow = clamp((1.2 - width / height) / 0.7, 0, 1),
+            pitch = kick * 0.035 - reload * 0.09 * motion,
+            roll = -reload * 0.2 * motion,
+            cp = Math.cos(pitch),
+            sp = Math.sin(pitch),
+            cr = Math.cos(roll),
+            sr = Math.sin(roll),
+            cy = Math.cos(0.16),
+            sy = Math.sin(0.16),
+            bx = Math.sin(bob) * 0.012 * walkAmount * motion - narrow * 0.15,
+            by =
+              Math.abs(Math.cos(bob)) * 0.015 * walkAmount * motion -
+              reload * 0.055 +
+              narrow * 0.16,
+            bz = kick * 0.04 - narrow * 0.12;
+          for (let i = 0; i < out.length; i += 12) {
+            for (const offset of [0, 3]) {
+              const normal = offset === 3,
+                x = out[i + offset] - (normal ? 0 : 0.3),
+                y = out[i + offset + 1] - (normal ? 0 : -0.3),
+                z = out[i + offset + 2] - (normal ? 0 : -0.5),
+                ry = y * cp - z * sp,
+                rz = y * sp + z * cp,
+                rx = x * cr - ry * sr;
+              out[i + offset] = rx * cy + rz * sy + (normal ? 0 : 0.3 + bx);
+              out[i + offset + 1] = x * sr + ry * cr + (normal ? 0 : -0.3 + by);
+              out[i + offset + 2] =
+                -rx * sy + rz * cy + (normal ? 0 : -0.5 + bz);
+            }
           }
           return out;
+        }
+        function weaponMesh(time) {
+          return player.weapon === 1 ? staffMesh(time) : rifleMesh(time);
         }
         function bindGeometry(buffer) {
           gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -6669,6 +8228,23 @@ gl_FragColor=vec4(col,1.);}`;
               power: 2.5,
             });
           else {
+            for (const node of spawners)
+              if (node.health > 0)
+                effects.push({
+                  x: node.x,
+                  y: node.y,
+                  z: node.z,
+                  color: node.stun > 0 ? palette.mint : [0.78, 0.4, 1],
+                  power: node.stun > 0 ? 0.3 : node.pending ? 2 : 1.1,
+                });
+            if (guardian?.health > 0)
+              effects.push({
+                x: guardian.x,
+                y: guardian.y,
+                z: guardian.z,
+                color: guardian.enraged ? palette.red : guardian.accent,
+                power: guardian.charge > 0 ? 1.8 : 0.8,
+              });
             if (!cardTaken)
               effects.push({
                 x: level.card.x,
@@ -6677,11 +8253,11 @@ gl_FragColor=vec4(col,1.);}`;
                 color: [1, 0.6, 0.2],
                 power: 2,
               });
-            if (pulseTimer > 0 && !reduced)
+            if (empWave && pulseTimer > 0 && !reduced)
               effects.push({
-                x: player.x,
-                y: 1.6,
-                z: player.z,
+                x: empWave.x,
+                y: empWave.y,
+                z: empWave.z,
                 color: palette.mint,
                 power: pulseTimer * 5,
               });
@@ -6755,6 +8331,15 @@ gl_FragColor=vec4(col,1.);}`;
           gl.uniform1f(U.Time, time);
           gl.uniform1f(U.Flash, 0);
           gl.uniform2f(U.Portal, portalCharge, motion);
+          const wave = preview ? null : empVisual();
+          gl.uniform4f(
+            U.Emp,
+            wave?.x ?? 0,
+            wave?.y ?? 0,
+            wave?.z ?? 0,
+            wave?.radius ?? 0,
+          );
+          gl.uniform1f(U.EmpPower, wave && !reduced ? wave.alpha : 0);
           for (const lamp of lights) {
             lamp.intensity = C.lightIntensity(lamp.flicker, time, reduced);
             if (lamp.portal) {
@@ -6808,6 +8393,7 @@ gl_FragColor=vec4(col,1.);}`;
           gl.drawArrays(gl.TRIANGLES, 0, dynamicCount);
           if (!preview && mode !== "transit") {
             gl.clear(gl.DEPTH_BUFFER_BIT);
+            gl.uniform1f(U.EmpPower, 0);
             gl.uniformMatrix4fv(
               U.VP,
               false,
@@ -6891,6 +8477,29 @@ gl_FragColor=vec4(col,1.);}`;
                   : "#a99870";
             ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
           }
+          for (const node of spawners) {
+            if (
+              !seen[
+                Math.floor(node.z / CELL) * SIZE + Math.floor(node.x / CELL)
+              ]
+            )
+              continue;
+            const [x, y] = point(node);
+            ctx.strokeStyle =
+              node.health <= 0
+                ? "#576a73"
+                : node.stun > 0
+                  ? "#9af5d3"
+                  : "#ce91ff";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.moveTo(x - 6, y);
+            ctx.lineTo(x + 6, y);
+            ctx.moveTo(x, y - 6);
+            ctx.lineTo(x, y + 6);
+            ctx.stroke();
+          }
           for (const e of enemies) {
             if (
               e.health <= 0 ||
@@ -6901,7 +8510,7 @@ gl_FragColor=vec4(col,1.);}`;
             const [x, y] = point(e);
             ctx.fillStyle = e.stun > 0 ? "#9af5d3" : "#d86b59";
             ctx.beginPath();
-            ctx.arc(x, y, 2, 0, Math.PI * 2);
+            ctx.arc(x, y, e.boss ? 4 : 2, 0, Math.PI * 2);
             ctx.fill();
           }
           if (!cardTaken) {
@@ -6917,7 +8526,7 @@ gl_FragColor=vec4(col,1.);}`;
             ctx.stroke();
           }
           const [ex, ez] = point(level.exit);
-          ctx.strokeStyle = "#9af5d3";
+          ctx.strokeStyle = guardian?.health > 0 ? "#ff776b" : "#9af5d3";
           ctx.lineWidth = 1.5;
           ctx.strokeRect(ex - 4, ez - 4, 8, 8);
           const [x, z] = point(player);
@@ -6933,8 +8542,86 @@ gl_FragColor=vec4(col,1.);}`;
           ctx.fill();
           ctx.restore();
         }
+        function projectWaypoint(v, objective, viewportWidth, viewportHeight) {
+          const x = objective.x,
+            y = 1.6,
+            z = objective.z,
+            w = v[3] * x + v[7] * y + v[11] * z + v[15],
+            px = ((v[0] * x + v[4] * y + v[8] * z + v[12]) * viewportWidth) / 2,
+            // Behind the camera, carry the cue around the lower rim. Dividing
+            // by negative depth would mirror it and flip the turn direction.
+            py =
+              ((-(v[1] * x + v[5] * y + v[9] * z + v[13]) +
+                Math.max(0, -w) * 2) *
+                viewportHeight) /
+              2,
+            edge = Math.max(
+              // Leave room for the whole label, including on narrow phones.
+              Math.abs(px) /
+                Math.max(
+                  1,
+                  viewportWidth / 2 - Math.max(80, viewportWidth * 0.14),
+                ),
+              Math.abs(py) / (viewportHeight * (py < 0 ? 0.2 : 0.16)),
+              0.00001,
+            ),
+            depth = Math.max(w, edge),
+            blend = clamp((edge - w) / (edge * 0.15), 0, 1);
+          // Clip before the perspective divide, keeping the camera plane and
+          // safe-area boundary continuous, even during a dash or resize.
+          return {
+            x: viewportWidth / 2 + px / depth,
+            y: viewportHeight / 2 + py / depth,
+            angle: Math.atan2(py, px),
+            arrow: blend * blend * (3 - 2 * blend),
+          };
+        }
+        function updateWaypoint() {
+          if (!currentVP) return;
+          const ready = portalReady(),
+            objective = cardTaken
+              ? ready
+                ? level.exit
+                : guardian
+              : level.card,
+            distance = Math.hypot(
+              objective.x - player.x,
+              objective.z - player.z,
+            ),
+            marker = projectWaypoint(
+              currentVP,
+              objective,
+              innerWidth,
+              innerHeight,
+            ),
+            fade = clamp((distance - 2) / 2, 0, 1),
+            label = `${cardTaken ? (ready ? "LIFT" : "GUARDIAN") : "CARD"} · ${Math.round(distance)}m`;
+          // Anchor the icon itself; changing text or glyph must never move it.
+          $("waypoint").style.transform =
+            `translate3d(${marker.x}px, ${marker.y}px, 0) translate(-50%, -50%)`;
+          $("waypoint").style.opacity = String(
+            0.85 * fade * fade * (3 - 2 * fade),
+          );
+          $("waypoint").style.color = cardTaken
+            ? ready
+              ? "#9af5d3"
+              : "#ff9388"
+            : "#ffad66";
+          $("waypoint-diamond").style.opacity = String(1 - marker.arrow);
+          $("waypoint-arrow").style.opacity = String(marker.arrow);
+          $("waypoint-arrow").style.transform = `rotate(${marker.angle}rad)`;
+          if ($("waypoint-label").textContent !== label)
+            $("waypoint-label").textContent = label;
+        }
         function updateHUD() {
+          const clock = C.floorClock(floorStats.seconds, difficulty),
+            activeNodes = spawners.filter((node) => node.health > 0).length,
+            countdown = Math.ceil(clock.next);
           const fingerprint = [
+            guardian?.health > 0,
+            clock.tier,
+            countdown,
+            activeNodes,
             deck,
             player.floorsCompleted,
             floorRecords[difficulty],
@@ -6958,7 +8645,9 @@ gl_FragColor=vec4(col,1.);}`;
             $("run-progress").textContent =
               `${player.floorsCompleted} CLEARED / BEST ${floorRecords[difficulty]}`;
             $("objective").textContent = cardTaken
-              ? "Reach the transit lift"
+              ? portalReady()
+                ? "Reach the transit lift"
+                : "Defeat the portal guardian"
               : "Recover the deck access card";
             $("contract-label").textContent = contract.completed
               ? "BONUS UPGRADE SECURED"
@@ -6968,6 +8657,19 @@ gl_FragColor=vec4(col,1.);}`;
             $("contract-meter").style.width =
               `${(100 * contract.progress) / Math.max(1, contract.target)}%`;
             $("contract").classList.toggle("secured", contract.completed);
+            $("pressure-label").textContent = clock.tier
+              ? `LOCKDOWN ${clock.tier} / SURGE IN`
+              : "LOCKDOWN IN";
+            $("pressure-time").textContent =
+              `${String(Math.floor(countdown / 60)).padStart(2, "0")}:${String(countdown % 60).padStart(2, "0")}`;
+            $("floor-pressure").classList.toggle(
+              "warning",
+              !clock.tier && clock.remaining <= 30,
+            );
+            $("floor-pressure").classList.toggle("lockdown", clock.tier > 0);
+            $("breach-status").textContent = activeNodes
+              ? `${activeNodes} BREACH NODE${activeNodes === 1 ? "" : "S"} ONLINE`
+              : "ALL BREACHES SEALED";
             $("health-value").textContent = Math.ceil(player.health);
             $("shield-value").textContent = Math.ceil(player.shield);
             $("health-meter").style.width =
@@ -6975,9 +8677,7 @@ gl_FragColor=vec4(col,1.);}`;
             $("shield-meter").style.width =
               (player.shield / player.maxShield) * 100 + "%";
             $("weapon-name").textContent =
-              player.weapon === 2
-                ? "P–24 / PULSE RIFLE"
-                : "A–03 / STORM CUTLASS";
+              player.weapon === 2 ? "P–24 / PULSE RIFLE" : "A–03 / ARC STAFF";
             $("ammo").innerHTML =
               player.weapon === 2
                 ? `${String(player.ammo).padStart(2, "0")}<small>${player.reserve} / ${C.AMMO.reserve}<span>RESERVE</span></small>`
@@ -6988,7 +8688,7 @@ gl_FragColor=vec4(col,1.);}`;
                 : player.weapon === 2
                   ? isTouch
                     ? "TAP RLD TO RELOAD"
-                    : "[R] RELOAD · [1] ARC BLADE"
+                    : "[R] RELOAD · [1] ARC STAFF"
                   : isTouch
                     ? "3-HIT COMBO · DEFLECT BOLTS"
                     : "3-HIT COMBO · DEFLECT · [2] RIFLE";
@@ -7000,21 +8700,73 @@ gl_FragColor=vec4(col,1.);}`;
             $("emp-status").classList.toggle("charging", empTimer > 0);
             $("interact").hidden = !interaction;
             $("interact").innerHTML = interaction
-              ? interaction.type === "exit" && cardTaken
+              ? interaction.type === "exit" && portalReady()
                 ? "WALK THROUGH / NEXT FLOOR"
-                : `<kbd>${isTouch ? "USE" : "E"}</kbd> &nbsp; ${interaction.type === "cache" ? "Salvage crew cache" : "Portal offline · access card required"}`
+                : `<kbd>${isTouch ? "USE" : "E"}</kbd> &nbsp; ${interaction.type === "cache" ? "Salvage crew cache" : cardTaken ? "Portal sealed · defeat guardian" : "Portal offline · access card required"}`
               : "";
+          }
+          const showGuardian =
+            guardian?.health > 0 &&
+            guardian.encountered &&
+            Math.hypot(guardian.x - player.x, guardian.z - player.z) < 24;
+          $("boss-banner").hidden = !showGuardian;
+          if (showGuardian) {
+            const percent = clamp(
+              (guardian.health / guardian.maxHealth) * 100,
+              0,
+              100,
+            );
+            $("boss-name").textContent =
+              `${guardian.name} / ${Math.ceil(percent)}%`;
+            $("boss-meter").style.width = `${percent}%`;
+            $("boss-health").setAttribute(
+              "aria-valuenow",
+              String(Math.ceil(percent)),
+            );
+            $("boss-banner").classList.toggle("enraged", guardian.enraged);
+            $("boss-status").textContent =
+              `${guardian.enraged ? "ENRAGED · " : ""}${
+                guardian.stun > 0
+                  ? "EMP DISRUPTED"
+                  : guardian.rush > 0
+                    ? "CHARGING / SIDESTEP"
+                    : guardian.charge > 0
+                      ? guardian.boss === "bastion"
+                        ? "CORE OPEN / CANNONS CHARGING"
+                        : guardian.boss === "reaver"
+                          ? "AIM LOCKED / DASH SIDEWAYS"
+                          : "FAN VOLLEY INCOMING"
+                      : guardian.recover > 0
+                        ? "RECOVERING / STRIKE NOW"
+                        : guardian.hint
+              }`;
           }
           $("toast").style.opacity = toastTimer > 0 ? "1" : "0";
           $("radio").style.opacity = radioTimer > 0 ? "1" : "0";
           $("hitmarker").style.opacity = hitTimer > 0 ? "1" : "0";
           $("damage").style.opacity = reduced ? "0" : String(hurtTimer * 0.3);
+          $("damage-direction").hidden = !lastDamage;
+          if (lastDamage) {
+            const difference = lastDamage.bearing - player.yaw,
+              angle = Math.atan2(Math.sin(difference), Math.cos(difference)),
+              side = ["front", "right", "behind", "left"][
+                (Math.round(angle / (Math.PI / 2)) + 4) % 4
+              ];
+            $("damage-bearing").style.transform = `rotate(${angle}rad)`;
+            $("damage-direction").style.opacity = String(
+              Math.min(1, lastDamage.life / 0.55),
+            );
+            $("damage-direction").setAttribute(
+              "aria-label",
+              `Last hit: ${side}`,
+            );
+          }
           let target = null,
             nearest = 40;
           const dir = forward(player.yaw, player.pitch),
             origin = { x: player.x, y: 1.55, z: player.z },
             wall = sceneHit(origin, dir, 40);
-          for (const e of enemies) {
+          for (const e of [...enemies, ...spawners]) {
             if (e.health <= 0) continue;
             const hit = C.segmentSphere(
               origin,
@@ -7028,49 +8780,17 @@ gl_FragColor=vec4(col,1.);}`;
               nearest = hit;
             }
           }
-          $("target-health").hidden = !target;
-          $("target-name").hidden = !target;
+          $("target-health").hidden = !target || (target.boss && showGuardian);
+          $("target-name").hidden = !target || (target.boss && showGuardian);
           if (target)
-            $("target-name").textContent =
-              `${target.trait === "standard" ? "" : target.trait + " · "}${target.name}${target.type === "bulwark" && target.stun <= 0 ? " / FRONTAL ARMOR" : ""}`;
+            $("target-name").textContent = target.spawner
+              ? `BREACH NODE / ${target.stun > 0 ? "DISRUPTED" : target.pending ? "SPAWNING" : "SHOOT CORE TO SEAL"}`
+              : target.boss
+                ? `${target.name} / PORTAL GUARDIAN`
+                : `${target.lockdownTier ? "OVERCLOCKED · " : ""}${target.trait === "standard" ? "" : target.trait + " · "}${target.name}${target.type === "bulwark" && target.stun <= 0 ? " / FRONTAL ARMOR" : ""}`;
           if (target)
             $("target-health").firstElementChild.style.width =
               (target.health / target.maxHealth) * 100 + "%";
-          const objective = cardTaken ? level.exit : level.card,
-            dx = objective.x - player.x,
-            dz = objective.z - player.z,
-            dist = Math.hypot(dx, dz),
-            angle = Math.atan2(dx, -dz) - player.yaw,
-            a = Math.atan2(Math.sin(angle), Math.cos(angle));
-          let sx =
-              innerWidth / 2 +
-              Math.tan(clamp(a, -1.1, 1.1)) * innerWidth * 0.43,
-            sy = innerHeight * 0.46;
-          if (currentVP && Math.abs(a) < 1.1) {
-            const v = currentVP,
-              x = objective.x,
-              y = 1.6,
-              z = objective.z,
-              w = v[3] * x + v[7] * y + v[11] * z + v[15];
-            if (w > 0.1) {
-              sx =
-                (((v[0] * x + v[4] * y + v[8] * z + v[12]) / w) * 0.5 + 0.5) *
-                innerWidth;
-              sy =
-                ((-(v[1] * x + v[5] * y + v[9] * z + v[13]) / w) * 0.5 + 0.5) *
-                innerHeight;
-            }
-          }
-          $("waypoint").style.left =
-            clamp(sx, innerWidth * 0.14, innerWidth * 0.86) + "px";
-          $("waypoint").style.top =
-            clamp(sy, innerHeight * 0.3, innerHeight * 0.66) + "px";
-          $("waypoint").style.opacity = dist < 3 ? "0" : "0.85";
-          $("waypoint").style.color = cardTaken ? "#9af5d3" : "#ffad66";
-          $("waypoint").firstElementChild.textContent =
-            Math.abs(a) > 1.1 ? (a > 0 ? "›" : "‹") : "◇";
-          $("waypoint-label").textContent =
-            `${cardTaken ? "LIFT" : "CARD"} · ${Math.round(dist)}m`;
           drawMap($("minimap"));
         }
         let uiTimer = 0;
@@ -7086,6 +8806,9 @@ gl_FragColor=vec4(col,1.);}`;
               mode === "title" ? (reduced ? 0 : timestamp / 1000) : gameTime;
             render(time);
             if (mode === "playing") {
+              // Spatial cues use this frame's camera; expensive HUD/map work
+              // can remain throttled without making objective tracking stutter.
+              updateWaypoint();
               uiTimer -= dt;
               if (uiTimer <= 0) {
                 updateHUD();

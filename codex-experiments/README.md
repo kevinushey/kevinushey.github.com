@@ -5,8 +5,8 @@ A standalone first-person space-station survival game, inspired by the game in
 repository with `python3 -m http.server` and visit `/codex-experiments/game.html`.
 There is no build step, dependency, asset download, or network requirement.
 
-Recover a gold access card and reach the green lift on each procedural floor.
-The card activates a swirling transit portal. Walk through its opening from
+Recover a gold access card and defeat the guardian at each floor's lift.
+Both conditions activate its swirling transit portal. Walk through its opening from
 either side to leave the floor, or use E / the touch Use button nearby. A brief
 warp effect and sound lead into the upgrade screen. Reduced motion keeps the
 portal animation steady and uses a simple fade for transit. Crossing detection
@@ -18,19 +18,82 @@ Your score is floors completed, saved at each lift; dying on floor 7 scores 6.
 Standard and Explorer have separate local records. Old point-based records
 are not reused as floor counts, and audio/accessibility preferences carry over.
 
-Each floor also offers an optional contract: scrap a squad, earn cutlass kills,
+The objective marker follows the rendered camera every frame. Its diamond
+becomes an edge arrow when the target leaves the central view; targets behind
+you travel around the lower edge. The marker fades as you approach, and its
+fixed icon anchor keeps changing distance labels from shifting its position.
+
+**Portal guardians:** Every lift room has one boss, replacing an ordinary squad
+member so the population cap stays unchanged. Three forms rotate with the floors;
+the seed determines the first form and a small health variation. The armored
+**Bastion** fires paired cannon bolts and exposes its core during wind-up and
+recovery. The floating **Prism Sovereign** fires five-bolt fans with gaps to dodge
+or parry. The **Rift Reaver** locks its aim before a fast, straight charge: dash
+sideways and strike during recovery. All three enter an enraged phase below half
+health, adding projectiles or faster charges, and scale with floor difficulty
+and lockdown. Their distinct crowns, weapons, and colors identify each form.
+
+Boss fights have a dedicated health bar, attack warnings, combat music, and a
+red seal across the portal. Guardians resist staff stagger; EMP interrupts
+them for 1.4 seconds, and staff hits and reflected bolts bypass frontal armor.
+They stay in their lift room, respect walls and furniture, and never heal when
+you retreat. Defeat releases the seal, but the gold card is still required.
+The card and boss can be handled in either order. Walking, dashing, and Use all
+check both conditions. Bosses award one kill and contract progress; the score
+still increases only when you complete the floor.
+
+Each floor also offers an optional contract: scrap a squad, earn staff kills,
 or salvage two crew caches. Progress appears below the main objective. Finish
 the contract to earn two permanent upgrade choices at the lift instead of one;
 you can always leave without completing it. The lift report shows floor time,
 machines scrapped, and contract progress. **Arc welder** adds 12 damage to each
-cut and 16 damage to reflected bolts, alongside the rifle, armor, and ability
+strike and 16 damage to reflected bolts, alongside the rifle, armor, and ability
 upgrades. Contracts and their rewards reset each floor; upgrades last for the run.
+
+**Floor lockdown:** A visible countdown gives you one minute per floor in both
+Standard and Explorer. At zero, every surviving machine begins hunting you and
+gains health, damage, speed, and firing cadence. Another overclock surge arrives
+every 30 seconds. Health and damage keep increasing; movement and attack rates
+stay bounded. Wounded enemies retain their health percentage. A warning plays
+30 seconds before lockdown, and the music gains its combat layers. The lift
+remains usable: the deadline adds pressure rather than ending the run. The
+countdown and production pause with the game, tactical map, and hidden tab;
+each new floor gets a fresh timer.
+
+**Breach nodes:** Two violet energy cores occupy reserved room centers, away
+from the starting room, card, and lift. Their floor emitters and projections
+are passable, preserving all furnished routes. Each node starts producing after
+30–43 seconds, then waits 35 seconds between spawn charges. Lockdown shortens
+that interval to a minimum of ten seconds. A visible marker charges for 2.4
+seconds before each reinforcement arrives, followed by a short attack delay.
+Spawn positions are checked again at arrival, stay inside rooms, clear of walls,
+furniture, actors, and supplies, and at least four meters from the player.
+Blocked pads retry later without accumulating a backlog. Population stays
+capped at 48 live machines, and old corpses are pruned to bound storage.
+
+Shoot or slash a core to seal its breach permanently; reflected bolts work too.
+EMP cancels the pending spawn and disables production for eight seconds before
+the node resumes its cooldown. Nodes have health bars, status labels, local
+lighting, and explored-map icons. Sealing every breach stops reinforcements but
+does not stop the lockdown clock. Destroying a node does not award enemy kills
+or contract progress. Reinforcements count toward combat contracts, but carry
+no ammo drops, keeping supplies scarce.
 
 **Ammo:** 24 rounds loaded, at most 48 in reserve (72 total). Runs start with
 24 loaded and one spare magazine. Each floor has two 12-round stashes; machines
 have a 20% chance to drop six rounds, and crew caches supply eight. Pickups and
 caches leave excess ammunition behind when your reserve is full. Reloading
 conserves rounds, and lift resupply adds only one magazine.
+
+The P–24 pulse rifle has bevelled ceramic armor, a printed receiver plate,
+exposed copper accelerator coils, a caged plasma chamber, cooling fins,
+individual fasteners, and an open reflex sight. Its protected rear display
+shows loaded rounds, turns red at six or fewer, and uses an amber progress
+strip during reloads. The removable battery has six charge windows; it slides
+out and reseats as the supporting hand follows it. Recoil moves the whole
+rifle, including the display, while the chamber brightens and a pulse ring
+flashes at the muzzle. Reduced motion keeps firing steady and suppresses the
+flash. The rifle is inset on narrow screens to keep its counter visible.
 
 Enemy health and damage grow cubically, eventually outpacing linear suit
 upgrades. Squads grow to six enemies per room; movement, fire cadence, and
@@ -45,14 +108,16 @@ Room orientations and connections vary by seed. Ceilings range from 3.6 to
 provide cover and flanking routes; enemies, supplies, and objectives occupy
 separate clear floor tiles. Furniture also keeps narrow interior aisles clear.
 
-Collect supplies and scrap hostile machines. The Storm Cutlass chains a diagonal
-cut, a returning backhand, and an overhead finisher, with a visible gauntlet and
-forearm driving each swing forward. Wind-up, contact, and follow-through have
-distinct poses; the edge trail follows the blade. Damage, sound, and bolt parries
-occur at contact, after the short wind-up. Switching weapons cancels a pending
-cut. Reduced motion uses a small forward gesture with the same combat timing.
-The blade ignores frontal armor and reflects incoming bolts. Cabinets and equipment cases block
-movement and attacks, with height-aware projectile collision.
+Collect supplies and scrap hostile machines. The Arc Staff has a long reinforced
+shaft, two wrapped grips, and charged impact heads at both ends. Two gauntlets
+and forearms drive a forehand strike, a returning butt-end strike, and a wide
+horizontal finisher. Wind-up, contact, and follow-through have distinct poses;
+both charged ends leave short energy trails, turning violet on the finisher.
+Damage, impact sound, and bolt parries occur at contact, after the short wind-up.
+Switching weapons cancels a pending strike. Reduced motion uses a small forward
+jab with the same combat timing. The staff bypasses frontal armor and reflects
+incoming bolts. Cabinets and equipment cases block movement and attacks, with
+height-aware projectile collision.
 Furniture stays inside rooms and leaves full-width doorways, room-side
 approaches, and hallways clear.
 Wall clearance keeps the camera outside protruding consoles and structural
@@ -64,14 +129,14 @@ Six enemy classes have distinct silhouettes and behavior: patrol drones, heavy
 sentries, melee stalkers, strafing skimmers, spread-shot prism casters, and
 bulwarks with frontal armor. Seeded traits vary size, health, speed, damage, and
 firing cadence. Swift, reinforced, and overclocked variants have visible accents
-and tradeoffs. Flank bulwarks, stun them with EMP, or use the blade.
+and tradeoffs. Flank bulwarks, stun them with EMP, or use the staff.
 
 Explorer mode reduces incoming damage. The field guide contains
 controls, sensitivity, and reduced-motion settings.
 
 - **Move:** WASD or up/down arrows; Shift to sprint; Space to dash.
 - **Look:** mouse; drag if mouse capture is unavailable; left/right arrows.
-- **Combat:** click or J to fire; R to reload; 1/2 to switch blade/rifle.
+- **Combat:** click or J to fire; R to reload; 1/2 to switch staff/rifle.
 - **EMP:** F or right click. Stuns nearby visible enemies and clears nearby bolts.
 - **Interact:** E. Gold cards and supplies are collected on contact.
 - **Map:** M or click/tap the radar. **Pause:** Escape, P, or the pause button.
@@ -92,16 +157,31 @@ when the page is hidden.
 
 The headlamp has a broad spill and a brighter central beam, with subtle metallic
 highlights and restrained bloom. Soft contact shadows ground enemies on the
-floor. Explosions, muzzle flashes, impacts, bolts, EMP, and the cutlass cast
+floor. Explosions, muzzle flashes, impacts, bolts, EMP, and the staff cast
 colored light onto nearby surfaces. Fixture lights have reserved slots so
 passing bolts do not displace them, and wall checks reject sources behind solid
 walls relative to the viewer. These are local light effects and contact shadows,
 not full shadow mapping. Transient lights have a fixed budget and expire; reduced
-motion disables their flashes while keeping steady blade and projectile glow.
+motion disables their flashes while keeping steady staff and projectile glow.
 
 Destroyed enemies burst with a layered blast, low thump, and metallic crackle.
 Heavy machines have deeper explosions; pitch varies between kills, and sounds
 fade with distance and pan toward the enemy. All effects respect master mute.
+
+EMP releases a cyan electric sphere that expands from the activation point,
+with broken lightning filaments, a bright floor ring, and a traveling glow on
+walls and props. Brief discharge arcs connect to affected machines. The visual
+pulse lasts one second and stays behind when you move; damage and stun still
+apply immediately with the existing range and cover checks. Reduced motion
+replaces the expansion and flash with a small, stationary halo that fades out.
+
+A red arc around the crosshair points toward the most recent incoming hit,
+including damage absorbed by shields. Front hits appear above the crosshair,
+rear hits below, and side hits to the left or right. The marker rotates with
+your view and fades after 1.4 seconds. Projectile direction is captured at
+impact; a passing bolt or charging enemy cannot flip the marker afterward.
+The indicator pauses with the game, resets at each floor, and remains available
+with reduced motion enabled.
 
 All geometry, lighting, effects, signage, and Web Audio sound are generated in
 `game.html`. Station geometry is batched into a WebGL mesh; simulation uses a
@@ -117,7 +197,7 @@ node --test codex-experiments/game.test.cjs
 Tests cover varied room silhouettes and heights, clear and separate spawns,
 300 generated decks and furnished routes, full-width passage
 clearance for players and enemies, cabinet collision and
-cover, ammo, shields, EMP, cutlass combos and parries, enemy traits and attacks,
+cover, ammo, shields, EMP, staff combos and parries, enemy traits and attacks,
 finite model geometry, music scheduling and voice cleanup, pause, death/retry,
 and repeated floor transitions beyond the old ending, record persistence,
 difficulty scaling, and valid spawns including floor 10,000. The
@@ -125,6 +205,17 @@ controller tests stub the browser platform; visual and input checks require a
 real browser.
 
 Additional tests cover achievable contracts, exactly-once rewards, two-stage
-fabrication, cutlass upgrades, bounded light effects, four complete soundtracks,
+fabrication, staff upgrades, bounded light effects, four complete soundtracks,
 and track changes and cleanup. Browser checks include portrait/landscape menus,
 native Web Audio rendering, and the lighting shaders.
+
+Lockdown tests cover both deadlines, successive surges, wounded/dead enemies,
+pause and reset behavior, extraction during lockdown, and bounded attack rates.
+Breach tests cover 300 deterministic layouts, spawn clearance and revalidation,
+population/storage limits, spawn warnings, all weapon interactions, EMP and cover,
+ammo farming prevention, and finite visual geometry with reduced motion.
+
+Guardian tests cover 600 generated arenas including late floors, rotating forms,
+telegraphed volleys and dodgable rushes, half-health phases, armor openings,
+EMP interruption, staff and reflected-bolt damage, collision and arena limits,
+both portal-unlock orders, pause/reset behavior, and finite boss geometry.

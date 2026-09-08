@@ -113,10 +113,14 @@ function campaign(initialSave = {}) {
       listen(windowListeners, type, callback),
   };
   sandbox.window = sandbox;
-  const exposed = `\nwindow.testGame = { startRun, update, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, robot, bladeMesh, portalMesh, sceneLights, lightBurst,
+  const exposed = `\nwindow.testGame = { startRun, update, updatePressure, updateGuardian, moveGuardian, portalReady, guardianCrest, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, spawnerHit, breachMesh, robot, staffMesh, rifleMesh, portalMesh, sceneLights, lightBurst, staffPose, staffTransform,
+    projectWaypoint, updateWaypoint, perspective, view, multiply, render, frame, empVisual, empMesh,
+    get currentVP() { return currentVP; },
     get player() { return player; }, get level() { return level; }, get enemies() { return enemies; },
     get pickups() { return pickups; }, get bullets() { return bullets; },
-    get state() { return { mode, deck, cardTaken, portalCharge, transitTimer, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords, contract, floorStats, upgradePicks, lightBursts }; },
+    get spawners() { return spawners; },
+    get guardian() { return guardian; },
+    get state() { return { mode, deck, cardTaken, portalCharge, transitTimer, reloadTimer, empTimer, pulseTimer, empWave, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords, contract, floorStats, upgradePicks, lightBursts, lockdownTier, lastDamage }; },
     get interaction() { return interaction; }, set interaction(v) { interaction = v; },
     get keys() { return keys; }, toggleMap };\n})();`;
   vm.runInNewContext(
@@ -128,6 +132,12 @@ function campaign(initialSave = {}) {
     element,
     get lockRequests() {
       return lockRequests;
+    },
+    viewport(w, h, dpr = 1) {
+      sandbox.innerWidth = w;
+      sandbox.innerHeight = h;
+      sandbox.devicePixelRatio = dpr;
+      this.event("resize", {}, "window");
     },
     event(type, properties = {}, target = "document") {
       eventTime = properties.timeStamp ?? eventTime + 10;
@@ -634,6 +644,169 @@ test("EMP stuns visible enemies, clears bolts and cannot fire during cooldown", 
   g.emp();
   assert.equal(e.health, 66);
   assert.equal(g.state.empTimer, g.player.empMax);
+});
+
+test("EMP discharge links only affected targets and snapshots the cast position", () => {
+  const { game: g } = campaign();
+  g.startRun();
+  g.level.map = Array.from({ length: C.SIZE }, (_, z) =>
+    Array.from({ length: C.SIZE }, (_, x) =>
+      x > 1 && x < 20 && z > 1 && z < 20 ? 0 : 1,
+    ),
+  );
+  g.level.props = [{ x: 12, y: 1, z: 13.5, w: 1, h: 2, d: 0.25 }];
+  Object.assign(g.player, { x: 12, z: 12 });
+  g.enemies.forEach((e) => (e.health = 0));
+  g.spawners.forEach((e) => (e.health = 0));
+  const [near, covered, far] = g.enemies;
+  Object.assign(near, { x: 14, y: 1.1, z: 12, health: 100 });
+  Object.assign(covered, { x: 12, y: 1, z: 15, health: 100 });
+  Object.assign(far, { x: 22, y: 1, z: 12, health: 100 });
+  const [node, coveredNode] = g.spawners;
+  Object.assign(node, { x: 15, y: 0.6, z: 11, health: 100 });
+  Object.assign(coveredNode, { x: 12, y: 0.6, z: 16, health: 100 });
+  g.emp();
+  const wave = g.state.empWave;
+  assert.deepEqual(
+    Array.from(wave.targets, (p) => ({ ...p })),
+    [
+      { x: 14, y: 1.1, z: 12 },
+      { x: 15, y: 0.6, z: 11 },
+    ],
+  );
+  assert.equal(near.health, 66);
+  assert.equal(node.health, 66);
+  assert.equal(covered.health, 100);
+  assert.equal(coveredNode.health, 100);
+  assert.equal(far.health, 100);
+  g.player.x += 1;
+  near.x += 1;
+  g.emp();
+  assert.equal(g.state.empWave, wave, "cooldown cannot replace an active wave");
+  assert.equal(g.empVisual().x, 12, "moving does not drag the sphere");
+  assert.equal(
+    wave.targets[0].x,
+    14,
+    "discharge endpoints stay at the hit location",
+  );
+  assert.ok(
+    g
+      .sceneLights([13, 1.55, 12])
+      .some((l) => l.x === 12 && l.y === 1 && l.z === 12 && l.power === 5),
+    "the flash stays at the cast origin too",
+  );
+});
+
+test("EMP wave pauses with simulation, expires, and clears through transit and retry", () => {
+  const s = campaign(),
+    g = s.game;
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  g.spawners.forEach((e) => (e.health = 0));
+  g.emp();
+  s.tick(0.2);
+  const radius = g.empVisual().radius;
+  g.toggleMap();
+  s.tick(2);
+  g.emp();
+  assert.equal(g.empVisual().radius, radius);
+  g.toggleMap();
+  g.pause();
+  s.tick(2);
+  assert.equal(g.empVisual().radius, radius);
+  g.setPlaying(false);
+  s.setHidden(true);
+  s.tick(2);
+  assert.equal(g.empVisual().radius, radius);
+  s.setHidden(false);
+  g.setPlaying(false);
+  s.tick(0.81);
+  assert.equal(g.empVisual(), null);
+  assert.equal(g.state.empWave, null);
+  s.tick(12);
+  Object.assign(g.player, g.level.card);
+  s.tick(0.05);
+  Object.assign(g.player, g.level.exit);
+  s.tick(0.05);
+  g.emp();
+  assert.ok(g.state.empWave);
+  g.interact();
+  assert.equal(g.state.mode, "transit");
+  assert.equal(g.state.empWave, null);
+  s.tick(C.PORTAL.duration + 0.05);
+  s.element("upgrade-blade").onclick();
+  assert.equal(g.empVisual(), null);
+  g.emp();
+  assert.ok(g.empVisual());
+  g.damage(1e9);
+  g.startRun();
+  assert.equal(g.empVisual(), null);
+  assert.equal(g.state.empWave, null);
+});
+
+test("EMP geometry stays finite and bounded, with a stationary reduced-motion halo", () => {
+  for (const reduced of [false, true]) {
+    const { game: g } = campaign({ reduced });
+    g.startRun();
+    g.enemies.forEach((e) => (e.health = 0));
+    g.spawners.forEach((e) => (e.health = 0));
+    // More targets than the visual budget must not change the gameplay hit budget.
+    const template = g.enemies[0];
+    g.enemies.length = 0;
+    for (let i = 0; i < 20; i++)
+      g.enemies.push({
+        ...template,
+        x: g.player.x + 1,
+        z: g.player.z,
+        y: 1,
+        health: 100,
+      });
+    const idle = [];
+    g.empMesh(idle);
+    assert.equal(idle.length, 0);
+    g.emp();
+    assert.equal(g.state.empWave.targets.length, 12);
+    assert.ok(g.enemies.every((e) => e.health === 66));
+    g.enemies.forEach((e) => (e.health = 0));
+    let previousRadius = 0,
+      previousAlpha = 1;
+    for (let i = 0; i < 25; i++) {
+      const wave = g.empVisual(),
+        mesh = [];
+      assert.ok(wave.radius >= previousRadius && wave.radius <= 9);
+      assert.ok(wave.alpha >= 0 && wave.alpha <= 1);
+      if (reduced) {
+        assert.equal(wave.radius, 2.4);
+        assert.ok(wave.alpha <= previousAlpha && wave.alpha <= 0.35);
+      }
+      previousRadius = wave.radius;
+      previousAlpha = wave.alpha;
+      g.empMesh(mesh);
+      assert.equal(mesh.length % 36, 0);
+      assert.ok(
+        mesh.length / 12 < 7000,
+        "bounded vertices independent of crowd size",
+      );
+      assert.ok(mesh.every(Number.isFinite));
+      if (i > 0 || reduced) assert.ok(mesh.length > 0);
+      for (let j = 0; j < mesh.length; j += 12) {
+        assert.ok(
+          Math.abs(Math.hypot(mesh[j + 3], mesh[j + 4], mesh[j + 5]) - 1) <
+            1e-8,
+        );
+        if (reduced)
+          assert.ok(
+            Math.abs(mesh[j + 1] - 0.055) < 0.02,
+            "no vertical cage or target arcs in reduced motion",
+          );
+      }
+      g.update(0.04);
+    }
+    assert.equal(g.empVisual(), null);
+    const expired = [];
+    g.empMesh(expired);
+    assert.equal(expired.length, 0);
+  }
 });
 
 test("shield regeneration has a five-second damage delay", () => {
@@ -1309,7 +1482,7 @@ test("enemy classes and traits are varied, bounded and deterministic", () => {
         JSON.stringify(C.generateDeck(seed, deck).enemies),
       );
       if (deck > 0) assert.equal(new Set(l.enemies.map((e) => e.type)).size, 6);
-      for (const e of l.enemies) {
+      for (const e of l.enemies.filter((enemy) => !enemy.boss)) {
         types.add(e.type);
         traits.add(e.trait);
         health.add(e.maxHealth);
@@ -1339,7 +1512,7 @@ test("bulwark armor resists frontal rifle fire and has flank, EMP and blade coun
   assert.equal(C.enemyDamage(e, 100, { x: 0, z: 2 }), 100);
 });
 
-test("the blade chains two cuts into a stronger finisher, then resets after a pause", () => {
+test("the staff chains two strikes into a stronger finisher, then resets after a pause", () => {
   const { game: g, tick } = campaign();
   g.startRun();
   g.enemies.forEach((e) => (e.health = 0));
@@ -1422,41 +1595,50 @@ test("blade contact fires once, pauses during wind-up, and cancels when switchin
   }
 });
 
-test("cutlass swings extend forward with finite geometry, unit normals and camera clearance", () => {
-  const { game: g, tick } = campaign({ reduced: false });
-  g.startRun();
-  g.enemies.forEach((e) => (e.health = 0));
-  g.player.weapon = 1;
-  const idle = g.bladeMesh(2);
-  const depth = (mesh) => {
-    let z = 0;
-    for (let i = 2; i < mesh.length; i += 12) z = Math.min(z, mesh[i]);
-    return z;
-  };
-  for (let step = 0; step < 3; step++) {
-    g.fire();
-    let furthest = 0;
-    while (g.state.bladeTimer > 0) {
-      tick(1 / 60);
-      const mesh = g.bladeMesh(2);
-      assert.ok(mesh.every(Number.isFinite));
-      furthest = Math.min(furthest, depth(mesh));
-      for (let i = 0; i < mesh.length; i += 12) {
+test("staff swings extend forward with finite geometry, unit normals and camera clearance", () => {
+  for (const [w, h] of [
+    [1280, 720],
+    [390, 680],
+  ]) {
+    for (const reduced of [false, true]) {
+      const harness = campaign({ reduced }),
+        { game: g, tick } = harness;
+      harness.viewport(w, h);
+      g.startRun();
+      g.enemies.forEach((e) => (e.health = 0));
+      g.player.weapon = 1;
+      const idle = g.staffMesh(2);
+      const depth = (mesh) => {
+        let z = 0;
+        for (let i = 2; i < mesh.length; i += 12) z = Math.min(z, mesh[i]);
+        return z;
+      };
+      for (let step = 0; step < 3; step++) {
+        g.fire();
+        let furthest = 0;
+        while (g.state.bladeTimer > 0) {
+          tick(1 / 60);
+          const mesh = g.staffMesh(2);
+          assert.ok(mesh.every(Number.isFinite));
+          furthest = Math.min(furthest, depth(mesh));
+          for (let i = 0; i < mesh.length; i += 12) {
+            assert.ok(
+              mesh[i + 2] < -0.04,
+              "weapon stays in front of the camera near plane",
+            );
+            assert.ok(
+              Math.abs(Math.hypot(mesh[i + 3], mesh[i + 4], mesh[i + 5]) - 1) <
+                1e-8,
+              "3D transforms preserve lighting normals",
+            );
+          }
+        }
         assert.ok(
-          mesh[i + 2] < -0.04,
-          "weapon stays in front of the camera near plane",
-        );
-        assert.ok(
-          Math.abs(Math.hypot(mesh[i + 3], mesh[i + 4], mesh[i + 5]) - 1) <
-            1e-8,
-          "3D transforms preserve lighting normals",
+          furthest < depth(idle) - (reduced ? 0.15 : 0.6),
+          "each strike reaches forward instead of only rotating on screen",
         );
       }
     }
-    assert.ok(
-      furthest < depth(idle) - 0.6,
-      "each cut reaches forward instead of only rotating on screen",
-    );
   }
 });
 
@@ -1530,7 +1712,7 @@ test("prism casters fire three distinct directions after a telegraphed windup", 
   assert.equal(new Set(g.bullets.map((b) => b.dz.toFixed(4))).size, 3);
 });
 
-test("all six enemy models and every cutlass combo pose produce finite geometry", () => {
+test("all six enemy models and every staff combo pose produce finite geometry", () => {
   const { game: g, tick } = campaign();
   g.startRun();
   g.enemies.forEach((e) => (e.health = 0));
@@ -1559,7 +1741,7 @@ test("all six enemy models and every cutlass combo pose produce finite geometry"
     g.fire();
     for (let j = 0; j < 3; j++) {
       tick(0.1);
-      const mesh = g.bladeMesh(2);
+      const mesh = g.staffMesh(2);
       assert.ok(mesh.length > 0 && mesh.length % 12 === 0);
       assert.ok(mesh.every(Number.isFinite));
     }
@@ -1799,7 +1981,7 @@ test("a completed contract grants exactly two upgrade choices, then resets on th
   assert.equal(g.state.upgradePicks, 0);
 });
 
-test("cutlass contracts count lethal blade strikes and arc upgrades increase their damage", () => {
+test("staff contracts count lethal staff strikes and arc upgrades increase their damage", () => {
   const { game: g, tick } = campaign();
   g.startRun();
   Object.assign(g.state.contract, {
@@ -1944,4 +2126,1217 @@ test("soundtrack selection persists safely before the audio context exists", () 
   restored.element("music-track").onchange({ target: { value: "1000" } });
   assert.equal(restored.saved.musicTrack, -1);
   assert.equal(restored.element("music-title").textContent, "ION RUNNER");
+});
+
+test("lockdown starts after one minute, surges every thirty seconds, and bounds cadence but not strength", () => {
+  for (const difficulty of ["standard", "explorer"]) {
+    assert.equal(C.floorClock(0, difficulty).next, 60);
+    assert.equal(C.floorClock(59.99, difficulty).tier, 0);
+    assert.equal(C.floorClock(60, difficulty).tier, 1);
+    assert.equal(C.floorClock(60, difficulty).next, 30);
+    assert.equal(C.floorClock(89.99, difficulty).tier, 1);
+    assert.equal(C.floorClock(90, difficulty).tier, 2);
+    assert.equal(C.floorClock(90, difficulty).next, 30);
+    assert.equal(C.floorClock(120, difficulty).tier, 3);
+  }
+  for (const type of Object.keys(C.enemyTypes)) {
+    const e = C.makeEnemy(C.rng(99), type, 4),
+      original = { ...e };
+    e.health = e.maxHealth / 2;
+    C.strengthenEnemy(e, 1);
+    assert.ok(e.maxHealth > original.maxHealth);
+    assert.ok(e.damage > original.damage);
+    assert.ok(e.speed > original.speed);
+    assert.ok(e.interval < original.interval);
+    assert.equal(
+      e.health / e.maxHealth,
+      0.5,
+      "wounds are retained proportionally",
+    );
+    assert.equal(e.alert, true);
+    const first = { ...e };
+    C.strengthenEnemy(e, 1);
+    assert.deepEqual({ ...e }, first, "same tier never compounds stats");
+    C.strengthenEnemy(e, 1000);
+    assert.ok(e.maxHealth > first.maxHealth * 100);
+    assert.ok(e.speed <= 7 && e.boltSpeed <= 26 && e.interval >= 0.3);
+    assert.ok(e.windup === 0 || e.windup >= 0.22);
+    e.health = 0;
+    C.strengthenEnemy(e, 1001);
+    assert.equal(e.health, 0, "dead enemies are never resurrected");
+  }
+});
+
+test("every floor has two reproducible, passable breach pads away from objectives and actors", () => {
+  for (let seed = 1; seed <= 300; seed++) {
+    const deck = seed % 30,
+      level = C.generateDeck(seed, deck);
+    assert.equal(level.spawners.length, 2);
+    assert.deepEqual(level.spawners, C.generateDeck(seed, deck).spawners);
+    assert.equal(new Set(level.spawners.map((s) => s.room)).size, 2);
+    for (const node of level.spawners) {
+      assert.ok(![0, level.exit.room, level.card.room].includes(node.room));
+      assert.ok(C.fits(level.map, node.x, node.z, 0.75, level.props));
+      for (const item of [
+        ...level.enemies,
+        ...level.pickups,
+        level.start,
+        level.card,
+        level.exit,
+      ])
+        assert.ok(Math.hypot(item.x - node.x, item.z - node.z) >= C.CELL);
+      const enemy = C.makeEnemy(C.rng(seed), "bulwark", deck),
+        point = C.reinforcementSpot(
+          level,
+          node,
+          enemy,
+          level.start,
+          level.enemies,
+        );
+      assert.ok(
+        point,
+        `clear reinforcement location: seed ${seed}, room ${node.room}`,
+      );
+      assert.ok(
+        C.validReinforcementSpot(
+          level,
+          point,
+          enemy,
+          level.start,
+          level.enemies,
+          node,
+        ),
+      );
+      assert.equal(
+        C.validReinforcementSpot(
+          level,
+          point,
+          enemy,
+          point,
+          level.enemies,
+          node,
+        ),
+        false,
+      );
+      assert.equal(
+        C.validReinforcementSpot(
+          level,
+          point,
+          enemy,
+          level.start,
+          [...level.enemies, { ...enemy, ...point }],
+          node,
+        ),
+        false,
+      );
+      const blocked = {
+        ...level,
+        props: [...level.props, { ...point, y: 1, w: 1, h: 2, d: 1 }],
+      };
+      assert.equal(
+        C.validReinforcementSpot(blocked, point, enemy, level.start, [], node),
+        false,
+      );
+    }
+  }
+});
+
+test("floor clock and node production pause together and reset after lockdown extraction", () => {
+  const s = campaign(),
+    g = s.game;
+  g.startRun();
+  g.updateHUD();
+  assert.equal(s.element("pressure-time").textContent, "01:00");
+  g.enemies.forEach((e) => {
+    e.stun = 1e6;
+  });
+  s.tick(1);
+  const seconds = g.state.floorStats.seconds,
+    cooldown = g.spawners[0].cooldown;
+  g.pause();
+  g.update(10);
+  s.tick(2);
+  assert.equal(g.state.floorStats.seconds, seconds);
+  g.setPlaying(false);
+  g.toggleMap();
+  g.update(10);
+  s.tick(2);
+  assert.equal(g.state.floorStats.seconds, seconds);
+  assert.equal(g.spawners[0].cooldown, cooldown);
+  g.toggleMap();
+  s.setHidden(true);
+  s.tick(2);
+  assert.equal(g.state.floorStats.seconds, seconds);
+  s.setHidden(false);
+  g.setPlaying(false);
+  g.state.floorStats.seconds = 59.99;
+  s.tick(0.05);
+  assert.equal(g.state.lockdownTier, 1);
+  assert.ok(g.enemies.every((e) => e.lockdownTier === 1 && e.alert));
+  g.updateHUD();
+  assert.equal(s.element("pressure-time").textContent, "00:30");
+  const health = g.enemies[0].maxHealth;
+  g.state.floorStats.seconds = 89.99;
+  s.tick(0.05);
+  assert.equal(g.state.lockdownTier, 2);
+  assert.ok(g.enemies[0].maxHealth > health);
+  g.updateHUD();
+  assert.match(s.element("pressure-label").textContent, /LOCKDOWN 2/);
+  assert.equal(s.element("pressure-time").textContent, "00:30");
+  g.enemies.forEach((e) => (e.health = 0));
+  g.spawners.forEach((node) => g.spawnerHit(node, 1e6));
+  Object.assign(g.player, g.level.card);
+  s.tick(0.05);
+  Object.assign(g.player, g.level.exit);
+  s.tick(0.05);
+  g.interact();
+  assert.equal(g.state.mode, "transit", "lockdown never seals the lift");
+  const exitTime = g.state.floorStats.seconds;
+  s.tick(C.PORTAL.duration + 0.05);
+  assert.equal(g.state.floorStats.seconds, exitTime);
+  assert.equal(g.state.mode, "upgrade");
+  s.element("upgrade-blade").onclick();
+  assert.equal(g.state.lockdownTier, 0);
+  assert.equal(g.state.floorStats.seconds, 0);
+  g.updateHUD();
+  assert.equal(s.element("pressure-time").textContent, "01:00");
+  assert.ok(
+    g.spawners.every((node) => node.health === node.maxHealth && !node.pending),
+  );
+  assert.ok(g.enemies.every((e) => !e.lockdownTier));
+  g.damage(1e9);
+  g.startRun();
+  assert.equal(g.state.floorStats.seconds, 0);
+  assert.equal(g.state.lockdownTier, 0);
+});
+
+test("nodes telegraph individual reinforcements, inherit lockdown, and revalidate moving blockers", () => {
+  const { game: g } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const node = g.spawners[0],
+    second = g.spawners[1];
+  second.health = 0;
+  node.cooldown = 0;
+  g.updatePressure(0.01);
+  assert.ok(node.pending);
+  assert.equal(node.charge, C.BREACH.charge);
+  const point = { ...node.pending.point },
+    count = g.enemies.length;
+  g.updatePressure(C.BREACH.charge / 2);
+  assert.equal(g.enemies.length, count, "no early materialization");
+  Object.assign(g.player, point);
+  g.updatePressure(C.BREACH.charge);
+  assert.equal(g.enemies.length, count, "player moved into marked pad");
+  assert.equal(node.pending, null);
+  assert.equal(node.cooldown, 3);
+  Object.assign(g.player, g.level.start);
+  g.state.floorStats.seconds = 90;
+  node.cooldown = 0;
+  g.updatePressure(0.01);
+  assert.equal(g.state.lockdownTier, 2);
+  assert.ok(node.pending);
+  g.updatePressure(C.BREACH.charge);
+  const e = g.enemies.at(-1);
+  assert.equal(e.reinforcement, true);
+  assert.equal(e.lockdownTier, 2);
+  assert.ok(
+    e.alert && e.stun > 0 && e.cooldown >= 1,
+    "new enemies cannot attack on arrival",
+  );
+  assert.ok(
+    node.cooldown < C.BREACH.interval,
+    "lockdown accelerates production",
+  );
+  const pickups = g.pickups.length;
+  for (let i = 0; i < 10; i++) {
+    e.health = 1;
+    g.enemyHit(e, 1e8, true);
+  }
+  assert.equal(
+    g.pickups.length,
+    pickups,
+    "reinforcements cannot farm unlimited ammo",
+  );
+});
+
+test("spawning obeys the live cap, prunes corpses, and never releases a backlog", () => {
+  const { game: g } = campaign();
+  g.startRun();
+  const sample = g.enemies[0],
+    node = g.spawners[0];
+  g.spawners[1].health = 0;
+  g.enemies.forEach((e) =>
+    Object.assign(e, { x: g.level.start.x, z: g.level.start.z }),
+  );
+  while (g.enemies.length < C.BREACH.activeCap)
+    g.enemies.push({ ...sample, id: 1000 + g.enemies.length });
+  node.cooldown = 0;
+  g.updatePressure(1000);
+  assert.equal(g.enemies.length, C.BREACH.activeCap);
+  assert.equal(node.pending, null);
+  g.enemies.forEach((e) => (e.health = 0));
+  while (g.enemies.length < C.BREACH.historyCap)
+    g.enemies.push({ ...sample, health: 0 });
+  for (let i = 0; i < 80; i++) {
+    g.enemies.forEach((e) => (e.health = 0));
+    node.cooldown = 0;
+    g.updatePressure(0.01);
+    assert.ok(node.pending);
+    g.updatePressure(C.BREACH.charge);
+    assert.equal(g.enemies.filter((e) => e.health > 0).length, 1);
+    assert.ok(g.enemies.length <= C.BREACH.historyCap);
+    assert.equal(new Set(g.enemies.map((e) => e.id)).size, g.enemies.length);
+  }
+  assert.ok(g.enemies.at(-1).id >= 80);
+});
+
+function stageBreach(g) {
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const node = g.spawners[0];
+  Object.assign(node, { x: g.player.x + 2, z: g.player.z });
+  Object.assign(g.player, { yaw: Math.PI / 2, pitch: 0 });
+  return node;
+}
+
+test("rifle, timed staff, and reflected bolts destroy nodes without awarding enemy kills", () => {
+  for (const weapon of ["rifle", "blade", "reflected"]) {
+    const { game: g, tick, element } = campaign(),
+      node = stageBreach(g);
+    const startX = node.x,
+      startZ = node.z,
+      health = node.health;
+    g.updateHUD();
+    assert.match(element("target-name").textContent, /BREACH NODE/);
+    if (weapon === "rifle") {
+      g.player.weapon = 2;
+      g.fire();
+      assert.equal(node.health, health - g.player.damage);
+    } else if (weapon === "blade") {
+      g.player.weapon = 1;
+      g.fire();
+      assert.equal(node.health, health);
+      tick(0.15);
+      assert.equal(node.health, health - 46);
+      assert.equal(node.x, startX);
+      assert.equal(node.z, startZ);
+    } else {
+      g.bullets.push({
+        x: g.player.x,
+        y: node.y,
+        z: node.z,
+        dx: 1,
+        dy: 0,
+        dz: 0,
+        speed: 30,
+        damage: 64,
+        life: 1,
+        friendly: true,
+      });
+      tick(0.1);
+      assert.equal(node.health, health - 64);
+    }
+    const pickups = g.pickups.length,
+      progress = g.state.contract.progress;
+    g.spawnerHit(node, 1e6);
+    g.spawnerHit(node, 1e6);
+    g.updatePressure(1000);
+    assert.equal(node.health, 0);
+    assert.equal(node.pending, null);
+    assert.equal(g.state.floorStats.kills, 0);
+    assert.equal(g.player.kills, 0);
+    assert.equal(g.state.contract.progress, progress);
+    assert.equal(g.pickups.length, pickups);
+  }
+});
+
+test("EMP cancels production for eight seconds, while walls protect breach cores", () => {
+  const { game: g, tick } = campaign(),
+    node = stageBreach(g);
+  node.pending = {
+    point: { x: node.x + 2, z: node.z },
+    enemy: C.makeEnemy(C.rng(1), "drone"),
+  };
+  node.charge = 1;
+  node.cooldown = 0;
+  g.emp();
+  assert.equal(node.health, node.maxHealth - 34);
+  assert.equal(node.pending, null);
+  assert.equal(node.stun, 8);
+  g.updatePressure(7.9);
+  assert.ok(node.stun > 0);
+  assert.equal(node.cooldown, 8);
+  tick(0.2);
+  assert.equal(node.stun, 0);
+  assert.equal(node.pending, null);
+  g.level.props.push({
+    x: g.player.x + 1,
+    z: g.player.z,
+    y: 1,
+    w: 0.25,
+    d: 2,
+    h: 2,
+  });
+  const health = node.health;
+  g.player.weapon = 2;
+  g.fire();
+  g.player.weapon = 1;
+  tick(0.2);
+  g.fire();
+  tick(0.2);
+  assert.equal(node.health, health, "cover blocks gun and blade");
+  tick(12);
+  g.emp();
+  assert.equal(node.health, health, "cover blocks EMP");
+});
+
+test("breach core and spawn warning geometry stay finite through charge, EMP, destruction and reduced motion", () => {
+  for (const reduced of [false, true]) {
+    const { game: g } = campaign({ reduced });
+    g.startRun();
+    const node = g.spawners[0];
+    node.cooldown = 0;
+    g.updatePressure(0.01);
+    assert.ok(node.pending);
+    for (const state of [
+      { charge: 2.4 },
+      { charge: 1.2 },
+      { charge: 0 },
+      { stun: 8 },
+      { health: 0 },
+    ]) {
+      Object.assign(node, state);
+      const mesh = [];
+      g.breachMesh(mesh, node, 10);
+      assert.ok(mesh.length > 100 && mesh.length < 50000);
+      assert.ok(mesh.every(Number.isFinite));
+    }
+  }
+});
+
+test("every generated floor reserves one reachable guardian beside its portal, with rotating forms", () => {
+  for (let seed = 0; seed < 100; seed++) {
+    let previous;
+    for (const deck of [0, 1, 2, 3, 12, 10000]) {
+      const level = C.generateDeck(seed, deck),
+        bosses = level.enemies.filter((e) => e.boss);
+      assert.equal(bosses.length, 1);
+      const boss = bosses[0];
+      assert.equal(boss.room, level.exit.room);
+      assert.ok(Math.hypot(boss.x - level.exit.x, boss.z - level.exit.z) <= 5);
+      assert.ok(
+        C.fits(level.map, boss.x, boss.z, boss.collisionRadius, level.props),
+      );
+      assert.ok(boss.health > 250 && Number.isFinite(boss.health));
+      assert.equal(boss.health, boss.maxHealth);
+      assert.ok(level.enemies.length <= 48);
+      for (const item of [
+        ...level.pickups,
+        level.card,
+        level.exit,
+        ...level.enemies.filter((e) => e !== boss),
+      ])
+        assert.ok(Math.hypot(boss.x - item.x, boss.z - item.z) >= C.CELL);
+      if (deck > 0 && deck <= 3) assert.notEqual(boss.boss, previous);
+      previous = boss.boss;
+    }
+  }
+});
+
+function guardianArena(kind, reduced = false) {
+  const session = campaign({ reduced }),
+    g = session.game;
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  g.spawners.forEach((e) => (e.health = 0));
+  const boss = g.guardian,
+    room = g.level.rooms[boss.room],
+    seed = C.guardianTypes.findIndex((spec) => spec.boss === kind);
+  Object.assign(room, { x: 2, z: 2, w: 8, h: 8, cx: 6, cz: 6 });
+  g.level.map = Array.from({ length: C.SIZE }, () => Array(C.SIZE).fill(1));
+  for (let z = 2; z < 10; z++)
+    for (let x = 2; x < 10; x++) g.level.map[z][x] = 0;
+  g.level.props = [];
+  Object.assign(g.level.start, { x: 10, z: 10 });
+  Object.assign(g.level.card, { x: 23, z: 23 });
+  Object.assign(g.level.exit, { x: 20, z: 20 });
+  Object.assign(boss, C.makeGuardian(seed, 0), {
+    x: 12,
+    y: 1.2,
+    z: 12,
+    homeX: 12,
+    homeZ: 12,
+    encountered: true,
+    enraged: false,
+    charge: 0,
+    cooldown: 0,
+    recover: 0,
+    stun: 0,
+    hit: 0,
+    rush: 0,
+    angle: Math.PI / 2,
+  });
+  Object.assign(g.player, {
+    x: 17,
+    z: 12,
+    yaw: -Math.PI / 2,
+    health: 1e6,
+    maxHealth: 1e6,
+    shield: 0,
+    maxShield: 0,
+  });
+  return session;
+}
+
+test("guardian volleys have distinct patterns, a locked wind-up, and a stronger half-health phase", () => {
+  for (const [kind, normal, enraged] of [
+    ["bastion", 2, 3],
+    ["sovereign", 5, 7],
+  ]) {
+    const { game: g, element } = guardianArena(kind),
+      boss = g.guardian;
+    g.updateGuardian(boss, 0.01);
+    assert.ok(boss.charge >= 0.65);
+    assert.equal(g.bullets.length, 0);
+    const aim = { ...boss.aim };
+    g.player.z += 2;
+    g.updateGuardian(boss, boss.charge / 2);
+    assert.deepEqual(
+      { ...boss.aim },
+      aim,
+      "telegraphed aim does not track the dodge",
+    );
+    assert.equal(g.bullets.length, 0);
+    g.updateGuardian(boss, boss.charge + 0.01);
+    assert.equal(g.bullets.length, normal);
+    assert.equal(new Set(g.bullets.map((b) => b.dz.toFixed(5))).size, normal);
+    assert.ok(boss.recover > 0);
+    assert.ok(
+      g.bullets.every((b) => Math.abs(Math.hypot(b.dx, b.dy, b.dz) - 1) < 1e-8),
+    );
+    g.bullets.length = 0;
+    Object.assign(boss, {
+      health: boss.maxHealth / 2,
+      recover: 0,
+      cooldown: 0,
+    });
+    g.updateGuardian(boss, 0.01);
+    assert.equal(boss.enraged, true);
+    g.updateGuardian(boss, boss.charge + 0.01);
+    assert.equal(g.bullets.length, enraged);
+    g.updateHUD();
+    assert.equal(element("boss-banner").hidden, false);
+    assert.match(element("boss-name").textContent, /50%/);
+    assert.match(element("boss-status").textContent, /ENRAGED/);
+  }
+});
+
+test("the Reaver telegraphs a straight rush that can be sidestepped and hits only once", () => {
+  for (const dodge of [false, true]) {
+    const { game: g } = guardianArena("reaver"),
+      boss = g.guardian;
+    g.updateGuardian(boss, 0.01);
+    const origin = { x: boss.x, z: boss.z },
+      health = g.player.health;
+    assert.ok(boss.charge > 0);
+    if (dodge) g.player.z += 3;
+    g.updateGuardian(boss, boss.charge + 0.01);
+    assert.equal(g.bullets.length, 0);
+    assert.ok(boss.rush > 0);
+    for (let i = 0; i < 50; i++) g.updateGuardian(boss, 1 / 60);
+    assert.ok(boss.x > origin.x + 5 && Math.abs(boss.z - origin.z) < 0.01);
+    assert.equal(g.player.health, dodge ? health : health - boss.damage);
+    if (!dodge)
+      assert.ok(
+        Math.abs(g.state.lastDamage.bearing + Math.PI / 2) < 1e-8,
+        "the rush indicator points toward the impact origin after the boss passes the player",
+      );
+    else assert.equal(g.state.lastDamage, null);
+    assert.equal(boss.rush, 0);
+    assert.ok(boss.recover > 0);
+  }
+});
+
+test("guardian movement and rushes respect props, walls and the lift-room boundary", () => {
+  const { game: g } = guardianArena("reaver"),
+    boss = g.guardian,
+    health = boss.health;
+  g.level.props.push({ x: 14, z: 12, y: 1, w: 0.5, h: 2, d: 3 });
+  g.moveGuardian(boss, 10, 0);
+  assert.ok(boss.x <= 13.75 - boss.collisionRadius + 1e-8);
+  assert.ok(
+    C.fits(g.level.map, boss.x, boss.z, boss.collisionRadius, g.level.props),
+  );
+  g.level.props = [];
+  g.moveGuardian(boss, 100, -100);
+  assert.ok(
+    boss.x <= 25 - boss.collisionRadius && boss.z >= 5 + boss.collisionRadius,
+  );
+  assert.equal(boss.health, health, "leaving combat does not reset health");
+  Object.assign(boss, { x: 12, z: 12, rush: 0.75, rushX: -1, rushZ: 0 });
+  for (let i = 0; i < 60; i++) g.updateGuardian(boss, 1 / 60);
+  assert.ok(
+    C.fits(g.level.map, boss.x, boss.z, boss.collisionRadius, g.level.props),
+  );
+  assert.ok(boss.x >= 5 + boss.collisionRadius);
+});
+
+test("Bastion armor opens during attacks and recovery, while EMP interrupts all guardian forms", () => {
+  for (const spec of C.guardianTypes) {
+    const { game: g, tick } = guardianArena(spec.boss),
+      boss = g.guardian;
+    if (spec.boss === "bastion") {
+      assert.equal(C.enemyDamage(boss, 100, g.player), 45);
+      boss.charge = 1;
+      assert.equal(C.enemyDamage(boss, 100, g.player), 100);
+      boss.charge = 0;
+      boss.recover = 1;
+      assert.equal(C.enemyDamage(boss, 100, g.player), 100);
+      boss.recover = 0;
+    }
+    boss.charge = 1;
+    boss.aim = { x: g.player.x, y: 1.2, z: g.player.z };
+    boss.rush = 0.75;
+    g.emp();
+    assert.equal(boss.charge, 0);
+    assert.equal(boss.rush, 0);
+    assert.equal(boss.stun, 1.4);
+    tick(1);
+    assert.ok(boss.stun > 0);
+    assert.equal(g.bullets.length, 0);
+    tick(0.5);
+    assert.equal(boss.stun, 0);
+  }
+});
+
+test("guardians resist staff stagger, but strikes and returned projectiles still damage them", () => {
+  const { game: g, tick } = guardianArena("bastion"),
+    boss = g.guardian;
+  Object.assign(g.player, { x: 13.5, z: 12, weapon: 1 });
+  Object.assign(boss, { charge: 1, aim: { x: 13.5, y: 1.2, z: 12 } });
+  const health = boss.health;
+  g.fire();
+  tick(0.15);
+  assert.equal(boss.health, health - 46);
+  assert.equal(boss.stun, 0);
+  assert.ok(
+    boss.charge > 0,
+    "light attacks cannot repeatedly cancel the boss wind-up",
+  );
+  boss.charge = 0;
+  boss.cooldown = 10;
+  g.bullets.push({
+    x: 13.5,
+    y: 1.2,
+    z: 12,
+    dx: -1,
+    dy: 0,
+    dz: 0,
+    friendly: true,
+    damage: 64,
+    speed: 20,
+    life: 2,
+  });
+  tick(0.1);
+  assert.equal(
+    boss.health,
+    health - 110,
+    "returned bolts bypass frontal armor",
+  );
+});
+
+test("both card and guardian defeat are required for transit, in either order, and reset next floor", () => {
+  for (const cardFirst of [true, false]) {
+    const { game: g, tick, element } = campaign();
+    g.startRun();
+    g.enemies.forEach((e) => {
+      if (!e.boss) e.health = 0;
+    });
+    g.spawners.forEach((e) => (e.health = 0));
+    const guardianKind = g.guardian.boss;
+    if (cardFirst) {
+      Object.assign(g.player, g.level.card);
+      tick(0.05);
+      Object.assign(g.player, g.level.exit);
+      tick(0.05);
+      g.interact();
+      assert.equal(g.state.mode, "playing");
+      assert.equal(g.portalReady(), false);
+      assert.equal(g.state.portalCharge, 0);
+      g.player.z = g.level.exit.z - 1;
+      g.player.yaw = Math.PI;
+      g.keys.add("KeyW");
+      g.dash();
+      tick(0.1);
+      g.keys.clear();
+      assert.equal(
+        g.player.floorsCompleted,
+        0,
+        "dashing through the seal cannot bypass a living guardian",
+      );
+    }
+    const kills = g.player.kills;
+    g.enemyHit(g.guardian, 1e9, true);
+    g.enemyHit(g.guardian, 1e9, true);
+    assert.equal(g.player.kills, kills + 1);
+    if (!cardFirst) {
+      Object.assign(g.player, g.level.exit);
+      tick(0.05);
+      g.interact();
+      assert.equal(g.state.mode, "playing");
+      assert.equal(g.portalReady(), false);
+      Object.assign(g.player, g.level.card);
+      tick(0.05);
+    }
+    assert.equal(g.portalReady(), true);
+    Object.assign(g.player, g.level.exit);
+    tick(0.05);
+    g.interact();
+    assert.equal(g.state.mode, "transit");
+    assert.equal(g.player.floorsCompleted, 1);
+    tick(C.PORTAL.duration + 0.05);
+    element("upgrade-blade").onclick();
+    assert.equal(g.state.mode, "playing");
+    assert.ok(g.guardian.health > 0);
+    assert.notEqual(g.guardian.boss, guardianKind);
+    assert.equal(g.guardian.encountered, false);
+    assert.equal(g.portalReady(), false);
+    g.damage(1e9);
+    g.startRun();
+    assert.equal(g.state.deck, 0);
+    assert.ok(g.guardian.health > 0 && !g.guardian.encountered);
+  }
+});
+
+test("guardian wind-ups pause with the map, and lockdown preserves wounds", () => {
+  const { game: g, tick } = guardianArena("sovereign"),
+    boss = g.guardian;
+  g.updateGuardian(boss, 0.01);
+  const charge = boss.charge;
+  g.toggleMap();
+  tick(4);
+  assert.equal(boss.charge, charge);
+  g.toggleMap();
+  boss.health = boss.maxHealth * 0.4;
+  const damage = boss.damage;
+  g.state.floorStats.seconds = 60;
+  tick(0.02);
+  assert.ok(boss.damage > damage);
+  assert.ok(Math.abs(boss.health / boss.maxHealth - 0.4) < 1e-10);
+  assert.equal(boss.enraged, true);
+});
+
+test("all guardian silhouettes and sealed portal geometry remain finite in normal and reduced motion", () => {
+  for (const reduced of [false, true])
+    for (const spec of C.guardianTypes) {
+      const { game: g } = guardianArena(spec.boss, reduced),
+        boss = g.guardian;
+      for (const state of [
+        { charge: 0 },
+        { charge: 1 },
+        { enraged: true },
+        { stun: 1 },
+      ]) {
+        Object.assign(boss, state);
+        const mesh = [];
+        g.robot(mesh, boss, reduced ? 0 : 2);
+        g.guardianCrest(mesh, boss, 2);
+        g.portalMesh(mesh, 2);
+        assert.ok(mesh.length > 0 && mesh.length % 12 === 0);
+        assert.ok(mesh.every(Number.isFinite));
+      }
+    }
+});
+
+test("standing inside the Reaver cannot neutralize its charge or cause repeated impact damage", () => {
+  const { game: g } = guardianArena("reaver"),
+    boss = g.guardian;
+  Object.assign(g.player, { x: boss.x, z: boss.z });
+  const health = g.player.health;
+  g.updateGuardian(boss, 0.01);
+  g.updateGuardian(boss, boss.charge + 0.01);
+  assert.ok(Math.hypot(boss.rushX, boss.rushZ) > 0.99);
+  g.updateGuardian(boss, 0.01);
+  g.updateGuardian(boss, 0.01);
+  assert.equal(g.player.health, health - boss.damage);
+  assert.ok([boss.x, boss.z, boss.rushX, boss.rushZ].every(Number.isFinite));
+});
+
+test("the latest damage arc distinguishes all four directions and follows camera turns", () => {
+  const { game: g, element } = campaign();
+  g.startRun();
+  g.player.yaw = 0;
+  const health = g.player.health;
+  const rotation = () =>
+    Number(
+      element("damage-bearing").style.transform.match(/rotate\((.*)rad\)/)[1],
+    );
+  for (const [x, z, expected] of [
+    [0, -2, 0],
+    [2, 0, Math.PI / 2],
+    [0, 2, Math.PI],
+    [-2, 0, -Math.PI / 2],
+  ]) {
+    g.damage(5, { x: g.player.x + x, z: g.player.z + z });
+    g.updateHUD();
+    assert.equal(element("damage-direction").hidden, false);
+    assert.ok(Math.abs(rotation() - expected) < 1e-8);
+    assert.equal(
+      g.state.lastDamage.life,
+      1.4,
+      "a new hit replaces and refreshes the cue",
+    );
+  }
+  assert.equal(
+    g.player.health,
+    health,
+    "shield-only hits still give direction",
+  );
+  const source = { x: g.player.x + 5, z: g.player.z };
+  g.damage(5, source);
+  source.x = g.player.x - 5;
+  g.player.yaw = Math.PI / 2;
+  g.updateHUD();
+  assert.ok(
+    Math.abs(rotation()) < 1e-8,
+    "facing the hit origin moves the arc to the front",
+  );
+  g.player.yaw = -Math.PI / 2;
+  g.updateHUD();
+  assert.ok(Math.abs(Math.abs(rotation()) - Math.PI) < 1e-8);
+});
+
+test("damage direction fades on game time, survives reduced motion, and resets after transit or retry", () => {
+  for (const reduced of [false, true]) {
+    const { game: g, tick, element } = campaign({ reduced });
+    g.startRun();
+    g.enemies.forEach((e) => (e.health = 0));
+    g.damage(10, { x: g.player.x - 2, z: g.player.z });
+    tick(1);
+    g.updateHUD();
+    assert.ok(Number(element("damage-direction").style.opacity) > 0);
+    assert.ok(Number(element("damage-direction").style.opacity) < 1);
+    if (reduced) assert.equal(element("damage").style.opacity, "0");
+    const life = g.state.lastDamage.life;
+    g.toggleMap();
+    tick(3);
+    assert.equal(g.state.lastDamage.life, life);
+    g.toggleMap();
+    g.pause();
+    tick(3);
+    assert.equal(g.state.lastDamage.life, life);
+    g.setPlaying(false);
+    tick(0.5);
+    g.updateHUD();
+    assert.equal(g.state.lastDamage, null);
+    assert.equal(element("damage-direction").hidden, true);
+    Object.assign(g.player, g.level.card);
+    tick(0.05);
+    Object.assign(g.player, g.level.exit);
+    tick(0.05);
+    g.damage(5, { x: g.player.x, z: g.player.z - 2 });
+    g.interact();
+    assert.equal(g.state.mode, "transit");
+    assert.equal(g.state.lastDamage, null);
+    tick(C.PORTAL.duration + 0.05);
+    element("upgrade-blade").onclick();
+    assert.equal(g.state.lastDamage, null);
+    assert.equal(element("damage-direction").hidden, true);
+    g.damage(1e9, { x: g.player.x + 2, z: g.player.z });
+    g.startRun();
+    assert.equal(g.state.lastDamage, null);
+  }
+});
+
+test("incoming bolts and stalker attacks supply direction, while cover and friendly bolts do not", () => {
+  const { game: g, tick } = campaign();
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const origin = { x: g.player.x, z: g.player.z };
+  const bolt = (friendly = false) => ({
+    x: origin.x + 2,
+    y: 1.2,
+    z: origin.z,
+    dx: -1,
+    dy: 0,
+    dz: 0,
+    speed: 40,
+    damage: 5,
+    life: 1,
+    friendly,
+  });
+  g.bullets.push(bolt(true));
+  tick(0.1);
+  assert.equal(g.state.lastDamage, null);
+  g.level.props.push({
+    x: origin.x + 1,
+    y: 1,
+    z: origin.z,
+    w: 0.3,
+    h: 2,
+    d: 2,
+  });
+  g.bullets.push(bolt());
+  tick(0.1);
+  assert.equal(
+    g.state.lastDamage,
+    null,
+    "a bolt stopped by cover is not a hit",
+  );
+  g.level.props.pop();
+  g.bullets.push(bolt());
+  tick(0.1);
+  assert.ok(Math.abs(g.state.lastDamage.bearing - Math.PI / 2) < 1e-8);
+  const e = g.enemies.find((enemy) => !enemy.boss);
+  Object.assign(e, C.makeEnemy(C.rng(8), "stalker"), {
+    x: origin.x - 1.4,
+    z: origin.z,
+    cooldown: 0,
+    stun: 0,
+    alert: true,
+  });
+  tick(0.02);
+  assert.ok(Math.abs(g.state.lastDamage.bearing + Math.PI / 2) < 1e-8);
+});
+
+test("invalid hits and hits without a known direction cannot create misleading damage arcs", () => {
+  const { game: g } = campaign();
+  g.startRun();
+  const source = { x: g.player.x + 2, z: g.player.z },
+    shield = g.player.shield;
+  for (const amount of [0, -1, NaN, Infinity]) g.damage(amount, source);
+  assert.equal(g.player.shield, shield);
+  assert.equal(g.state.lastDamage, null);
+  g.toggleMap();
+  g.damage(10, source);
+  assert.equal(g.state.lastDamage, null);
+  g.toggleMap();
+  g.damage(5, source);
+  assert.ok(g.state.lastDamage);
+  g.damage(5);
+  assert.equal(g.state.lastDamage, null);
+  g.damage(5, { x: g.player.x, z: g.player.z });
+  assert.equal(
+    g.state.lastDamage,
+    null,
+    "overlapping origins have no meaningful horizontal bearing",
+  );
+});
+
+test("objective waypoints match perspective at different viewports and dash fields of view", () => {
+  const { game: g } = campaign();
+  for (const [w, h] of [
+    [1280, 720],
+    [390, 844],
+    [844, 390],
+  ])
+    for (const fov of [74, 88, 102]) {
+      const focal = 1 / Math.tan((fov * Math.PI) / 360),
+        v = g.multiply(
+          g.perspective((fov * Math.PI) / 180, w / h),
+          g.view([0, 1.55, 0], 0, 0),
+        );
+      for (const x of [-1, 0, 1]) {
+        const marker = g.projectWaypoint(v, { x, z: -20 }, w, h);
+        assert.ok(
+          Math.abs(marker.x - (w / 2 + ((x / 20) * focal * h) / 2)) < 0.001,
+        );
+        assert.ok(
+          Math.abs(marker.y - (h / 2 - ((0.05 / 20) * focal * h) / 2)) < 0.001,
+        );
+        assert.equal(marker.arrow, 0, "a visible objective keeps its diamond");
+      }
+    }
+});
+
+test("objective waypoints stay continuous through screen edges, the camera plane, and directly behind", () => {
+  const { game: g } = campaign();
+  for (const [w, h] of [
+    [1280, 720],
+    [320, 640],
+    [390, 844],
+    [844, 390],
+  ])
+    for (const pitch of [-0.9, 0, 0.9]) {
+      let previous;
+      for (let step = 0; step <= 1440; step++) {
+        const yaw = (step * Math.PI) / 720,
+          v = g.multiply(
+            g.perspective((74 * Math.PI) / 180, w / h),
+            g.view([12, 1.55, 8], yaw, pitch),
+          ),
+          marker = g.projectWaypoint(v, { x: 12, z: -12 }, w, h);
+        assert.ok(Object.values(marker).every(Number.isFinite));
+        assert.ok(marker.x >= w * 0.14 - 0.001 && marker.x <= w * 0.86 + 0.001);
+        assert.ok(
+          marker.x >= 80 - 0.001 && marker.x <= w - 80 + 0.001,
+          "the longest label retains horizontal clearance on phones",
+        );
+        assert.ok(marker.y >= h * 0.3 - 0.001 && marker.y <= h * 0.66 + 0.001);
+        if (previous) {
+          assert.ok(
+            Math.hypot(
+              (marker.x - previous.x) / w,
+              (marker.y - previous.y) / h,
+            ) < 0.015,
+            `waypoint jumped at yaw ${yaw}, pitch ${pitch}, viewport ${w}×${h}`,
+          );
+          assert.ok(
+            Math.abs(marker.arrow - previous.arrow) < 0.3,
+            "edge glyph crossfades without a pop",
+          );
+        }
+        if (step === 720) {
+          assert.ok(Math.abs(marker.x - w / 2) < 0.001);
+          assert.ok(Math.abs(marker.y - h * 0.66) < 0.001);
+          assert.ok(Math.abs(marker.angle - Math.PI / 2) < 0.001);
+          assert.equal(
+            marker.arrow,
+            1,
+            "a target behind stays on the lower rim",
+          );
+        }
+        previous = marker;
+      }
+    }
+});
+
+test("objective waypoints update on every rendered frame using its camera, including after resize", () => {
+  const harness = campaign({ reduced: true }),
+    { game: g, element } = harness;
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  Object.assign(g.level.card, { x: g.player.x + 2, z: g.player.z - 20 });
+  g.player.yaw = 0;
+  const position = () =>
+    element("waypoint")
+      .style.transform.match(/translate3d\(([^p]+)px, ([^p]+)px/)
+      .slice(1)
+      .map(Number);
+  const check = (w, h) => {
+    const expected = g.projectWaypoint(g.currentVP, g.level.card, w, h),
+      [x, y] = position();
+    assert.ok(Math.abs(x - expected.x) < 0.0001);
+    assert.ok(Math.abs(y - expected.y) < 0.0001);
+  };
+  g.frame(1000);
+  let last = position();
+  for (let i = 1; i <= 5; i++) {
+    g.player.yaw += 0.015;
+    g.player.pitch += 0.005;
+    g.frame(1000 + i * 8);
+    check(1280, 720);
+    assert.notDeepEqual(
+      position(),
+      last,
+      "120 Hz camera turns must not wait for the 20 Hz HUD timer",
+    );
+    last = position();
+  }
+  harness.viewport(390, 844, 3);
+  g.frame(1048);
+  check(390, 844);
+  assert.equal(
+    element("world").width,
+    585,
+    "CSS pixels remain independent of render resolution",
+  );
+});
+
+test("objective waypoints fade smoothly on approach and immediately select card, guardian, or lift", () => {
+  const { game: g, element, tick } = campaign({ reduced: true });
+  g.startRun();
+  g.enemies.filter((e) => !e.boss).forEach((e) => (e.health = 0));
+  g.player.yaw = 0;
+  const start = { x: g.player.x, z: g.player.z };
+  let previous = 0;
+  for (const distance of [2, 2.5, 2.99, 3, 3.01, 3.5, 4]) {
+    Object.assign(g.level.card, { x: start.x, z: start.z - distance });
+    g.render(0);
+    g.updateWaypoint();
+    const opacity = Number(element("waypoint").style.opacity);
+    assert.ok(opacity >= previous && opacity <= 0.85);
+    if (Math.abs(distance - 3) <= 0.01)
+      assert.ok(Math.abs(opacity - 0.425) < 0.01);
+    previous = opacity;
+  }
+  assert.equal(element("waypoint-label").textContent, "CARD · 4m");
+  Object.assign(g.player, g.level.card);
+  tick(0.02);
+  Object.assign(g.player, start);
+  g.render(0);
+  g.updateWaypoint();
+  assert.match(element("waypoint-label").textContent, /^GUARDIAN · /);
+  assert.equal(element("waypoint").style.color, "#ff9388");
+  g.guardian.health = 0;
+  g.updateWaypoint();
+  assert.match(element("waypoint-label").textContent, /^LIFT · /);
+  assert.equal(element("waypoint").style.color, "#9af5d3");
+  g.startRun();
+  g.frame(1000);
+  assert.match(element("waypoint-label").textContent, /^CARD · /);
+  assert.equal(element("waypoint").style.color, "#ffad66");
+});
+
+test("staff strikes alternate impact heads and keep the finisher a wide horizontal sweep", () => {
+  const { game: g } = campaign();
+  const head = (step, progress, end) =>
+    g.staffTransform(g.staffPose(step, progress, false), 0, end * 1.335, 0);
+  for (const [step, end] of [
+    [0, 1],
+    [1, -1],
+  ]) {
+    const tip = head(step, 0.42, end),
+      butt = head(step, 0.42, -end);
+    assert.ok(
+      tip[2] < butt[2] - 1.5,
+      "the correct impact head leads into the strike",
+    );
+    assert.ok(tip[2] < -2.4, "contact extends forward into the fight");
+    assert.ok(
+      Math.abs(tip[0]) < 0.3 && Math.abs(tip[1]) < 0.25,
+      "the striking end travels toward the aim point",
+    );
+  }
+  const start = head(2, 0.2, 1),
+    finish = head(2, 0.64, 1);
+  assert.ok(
+    start[0] > 1 && finish[0] < -1,
+    "the finisher crosses from right to left",
+  );
+  assert.ok(
+    Math.abs(start[1] - finish[1]) < 0.05,
+    "the sweep stays level instead of chopping downward",
+  );
+});
+
+test("detailed rifle geometry stays finite and clear of the camera through recoil and reload", () => {
+  for (const [w, h] of [
+    [1280, 720],
+    [390, 680],
+  ])
+    for (const reduced of [false, true]) {
+      const harness = campaign({ reduced }),
+        { game: g, tick } = harness;
+      harness.viewport(w, h);
+      g.startRun();
+      g.enemies.forEach((e) => (e.health = 0));
+      g.spawners.forEach((e) => (e.health = 0));
+      const check = () => {
+        const mesh = g.rifleMesh(2);
+        assert.ok(mesh.length > 0 && mesh.length % 12 === 0);
+        assert.ok(mesh.every(Number.isFinite));
+        for (let i = 0; i < mesh.length; i += 12) {
+          assert.ok(
+            mesh[i + 2] < -0.04,
+            "hands, display, and moving parts remain in front of the near plane",
+          );
+          assert.ok(
+            Math.abs(Math.hypot(mesh[i + 3], mesh[i + 4], mesh[i + 5]) - 1) <
+              1e-8,
+            "lighting normals remain normalized through the whole rifle transform",
+          );
+          if (mesh[i + 9] === 0.85) {
+            const focal = 1 / Math.tan((65 * Math.PI) / 360),
+              x = w / 2 + ((mesh[i] / -mesh[i + 2]) * focal * h) / 2,
+              y = h / 2 - ((mesh[i + 1] / -mesh[i + 2]) * focal * h) / 2;
+            assert.ok(
+              x > 8 && x < w - 8 && y > 8 && y < h - 16,
+              "the physical ammo digits stay in view during recoil and reload",
+            );
+          }
+        }
+        return mesh;
+      };
+      const idle = check();
+      g.fire();
+      const shot = check();
+      assert.equal(g.player.ammo, 23);
+      if (!reduced)
+        assert.notEqual(
+          shot.length,
+          idle.length,
+          "a fired pulse adds a muzzle ring and flare",
+        );
+      else
+        assert.equal(
+          shot.length,
+          idle.length,
+          "reduced motion suppresses the firing flash",
+        );
+      tick(0.2);
+      g.reloadWeapon();
+      for (let i = 0; i < 14; i++) {
+        check();
+        tick(0.1);
+      }
+      assert.equal(g.player.ammo, 24);
+      assert.equal(
+        g.player.reserve,
+        23,
+        "the makeover preserves ammunition accounting",
+      );
+    }
+});
+
+test("the rifle's physical counter and charge strip reflect loaded, low, empty, and reloading ammo", () => {
+  const { game: g, tick } = campaign({ reduced: true });
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const readout = () => {
+    const mesh = g.rifleMesh(0),
+      digits = [],
+      bars = [];
+    for (let i = 0; i < mesh.length; i += 12) {
+      if (mesh[i + 9] === 0.85) digits.push(mesh.slice(i, i + 12));
+      if (mesh[i + 9] === 0.65) bars.push(mesh.slice(i, i + 12));
+    }
+    return { digits, bars };
+  };
+  for (const [ammo, segments, bars] of [
+    [24, 9, 12],
+    [23, 10, 12],
+    [6, 12, 3],
+    [3, 11, 2],
+    [0, 12, 0],
+  ]) {
+    g.player.ammo = ammo;
+    const result = readout(),
+      color = ammo <= 6 ? [1, 0.15, 0.09] : [0.24, 0.93, 0.75];
+    assert.equal(
+      result.digits.length,
+      segments * 6,
+      `physical digits show ${String(ammo).padStart(2, "0")}`,
+    );
+    assert.equal(result.bars.length, bars * 6);
+    assert.ok(
+      result.digits.every((v) =>
+        color.every((c, i) => Math.abs(v[i + 6] - c) < 1e-8),
+      ),
+    );
+  }
+  g.player.ammo = 3;
+  g.reloadWeapon();
+  tick(g.player.reloadDuration / 2);
+  const midway = readout();
+  assert.equal(
+    g.player.ammo,
+    3,
+    "digits keep showing real loaded rounds until the reload completes",
+  );
+  assert.equal(midway.digits.length, 11 * 6);
+  assert.ok(
+    midway.digits.every(
+      (v) => Math.abs(v[6] - 1) < 1e-8 && Math.abs(v[7] - 0.44) < 1e-8,
+    ),
+  );
+  assert.ok(
+    midway.bars.length > 0 && midway.bars.length < 12 * 6,
+    "the strip indicates reload progress",
+  );
+  tick(g.player.reloadDuration);
+  assert.equal(g.player.ammo, 24);
+  assert.equal(readout().digits.length, 9 * 6);
+  assert.equal(readout().bars.length, 12 * 6);
 });
