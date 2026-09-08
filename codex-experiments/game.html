@@ -390,6 +390,66 @@
       .floor-pressure.lockdown strong {
         color: #ff9388;
       }
+      .boss-banner {
+        position: absolute;
+        top: 22px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(400px, 40vw);
+        padding: 10px 14px;
+        background: #0a141de0;
+        border: 1px solid #ffb36c66;
+        color: #ffc184;
+        font-size: 10px;
+        letter-spacing: 1px;
+      }
+      .boss-banner strong {
+        font-size: 12px;
+      }
+      .boss-banner small {
+        display: block;
+        margin-top: 6px;
+        font-size: 8px;
+        line-height: 1.5;
+      }
+      .boss-track {
+        height: 5px;
+        margin-top: 8px;
+        background: #ffffff1a;
+      }
+      .boss-track span {
+        display: block;
+        height: 100%;
+        background: #ffb36c;
+      }
+      .boss-banner.enraged {
+        color: #ff9b92;
+        border-color: #ff776b;
+      }
+      .boss-banner.enraged .boss-track span {
+        background: #ff776b;
+      }
+      @media (max-width: 760px) and (orientation: portrait) {
+        .boss-banner {
+          top: 150px;
+          width: calc(100vw - 40px);
+          padding: 8px 10px;
+        }
+        #hud:has(#boss-banner:not([hidden])) .contract,
+        #hud:has(#boss-banner:not([hidden])) .objective {
+          display: none;
+        }
+        #hud:has(#boss-banner:not([hidden])) #toast {
+          top: 220px;
+        }
+      }
+      @media (max-height: 580px) and (orientation: landscape) {
+        .boss-banner {
+          top: 12px;
+          width: 38vw;
+          padding: 7px 10px;
+        }
+      }
       @media (max-height: 580px) {
         .floor-pressure {
           margin-top: 6px;
@@ -1339,6 +1399,20 @@
       </footer>
     </div>
     <div id="hud" class="screen" hidden>
+      <div id="boss-banner" class="boss-banner mono" hidden>
+        <strong id="boss-name"></strong>
+        <div
+          id="boss-health"
+          class="boss-track"
+          role="progressbar"
+          aria-label="Portal guardian health"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <span id="boss-meter"></span>
+        </div>
+        <small id="boss-status"></small>
+      </div>
       <header class="masthead">
         <div>
           <div class="deck-heading">
@@ -1520,14 +1594,14 @@
       </div>
       <h2>Your suit has a few tricks.</h2>
       <p>
-        Find the gold access card on each deck, then walk through the glowing
-        transit portal inside the lift frame. There is no final floor. Reach
-        each lift alive to score one completed floor, then choose a permanent
-        upgrade and resupply. You can also use E or the touch Use button near
-        the portal. Enemy squads grow tougher, faster, and more numerous until
-        the station overwhelms you. Explore side rooms for supplies. Your high
-        score is floors completed; Standard and Explorer keep separate records
-        on this device.
+        Find the gold access card on each deck and defeat its portal guardian,
+        then walk through the glowing transit portal inside the lift frame.
+        There is no final floor. Reach each lift alive to score one completed
+        floor, then choose a permanent upgrade and resupply. You can also use E
+        or the touch Use button near the portal. Enemy squads grow tougher,
+        faster, and more numerous until the station overwhelms you. Explore side
+        rooms for supplies. Your high score is floors completed; Standard and
+        Explorer keep separate records on this device.
       </p>
       <p>
         The pulse rifle holds 24 rounds; your suit carries at most two spare
@@ -1549,6 +1623,16 @@
         eight seconds. These projections and their floor pads are passable.
         Spawned machines carry no spare ammo. Sealing breaches is optional; it
         stops production but cannot stop lockdown.
+      </p>
+      <p>
+        Three guardians alternate between floors: the Bastion opens its frontal
+        armor to fire paired cannon bolts, the Prism Sovereign casts wide
+        volleys you can dodge or parry, and the Rift Reaver charges along a
+        telegraphed line. All become more dangerous below half health and
+        strengthen during lockdown. Guardians resist blade stagger, but EMP
+        interrupts their attacks for 1.4 seconds. They stay in the lift room and
+        retain damage if you retreat. Defeating one releases the portal seal;
+        you still need the access card.
       </p>
       <p>
         Each floor has an optional contract: scrap machines, land cutlass kills,
@@ -2003,8 +2087,83 @@
                   : 0.54) * scale,
           };
         }
+        const guardianTypes = [
+          {
+            boss: "bastion",
+            name: "The Bastion",
+            type: "bulwark",
+            health: 340,
+            speed: 1.05,
+            interval: 3.2,
+            windup: 1.25,
+            damage: 20,
+            accent: [1, 0.67, 0.24],
+            color: [0.39, 0.32, 0.23],
+            hint: "TWIN CANNONS / STRIKE WHEN ITS CORE OPENS",
+          },
+          {
+            boss: "sovereign",
+            name: "Prism Sovereign",
+            type: "prism",
+            health: 290,
+            speed: 1.25,
+            interval: 3.1,
+            windup: 1.35,
+            damage: 12,
+            accent: [0.8, 0.4, 1],
+            color: [0.32, 0.22, 0.42],
+            hint: "FAN VOLLEYS / DODGE THE GAPS OR PARRY",
+          },
+          {
+            boss: "reaver",
+            name: "Rift Reaver",
+            type: "stalker",
+            health: 320,
+            speed: 1.6,
+            interval: 3.1,
+            windup: 1.1,
+            damage: 28,
+            accent: [1, 0.3, 0.32],
+            color: [0.4, 0.19, 0.22],
+            hint: "CHARGING HUNTER / SIDESTEP ITS LOCKED AIM",
+          },
+        ];
+        function makeGuardian(seed, deck) {
+          const random = rng(seed ^ Math.imul(deck + 1, 0x5bd1e995)),
+            spec =
+              guardianTypes[
+                (deck + ((seed >>> 0) % guardianTypes.length)) %
+                  guardianTypes.length
+              ],
+            pressure = floorPressure(deck),
+            variation = 0.94 + random() * 0.12,
+            health = Math.round(spec.health * pressure.health * variation);
+          return {
+            ...makeEnemy(random, spec.type, deck),
+            ...spec,
+            trait: "standard",
+            scale: 1.35,
+            collisionRadius: 1.05,
+            hitRadius: 0.84,
+            health,
+            maxHealth: health,
+            speed: spec.speed * pressure.speed,
+            damage: Math.round(spec.damage * pressure.damage),
+            interval: spec.interval / Math.min(1.6, pressure.cadence),
+            windup: Math.max(
+              0.75,
+              spec.windup / Math.min(1.4, pressure.cadence),
+            ),
+            range: spec.boss === "reaver" ? 5.5 : 7,
+          };
+        }
         function enemyDamage(enemy, amount, from, bypass = false) {
-          if (bypass || enemy.type !== "bulwark" || enemy.stun > 0)
+          if (
+            bypass ||
+            enemy.type !== "bulwark" ||
+            enemy.stun > 0 ||
+            (enemy.boss && (enemy.charge > 0 || enemy.recover > 0))
+          )
             return amount;
           const dx = from.x - enemy.x,
             dz = from.z - enemy.z,
@@ -2285,13 +2444,32 @@
             }
             // Unique, clear floor tiles keep actors and supplies out of walls and objectives.
             const spawn = () => spawnTiles.pop();
+            // Reserve a roomy position near the lift before placing its squad
+            // and supplies. The guardian replaces one ordinary enemy.
+            let guardian = null;
+            if (room.index === exit.room) {
+              const spec = makeGuardian(seed, deck),
+                candidates = spawnTiles
+                  .filter((p) =>
+                    fits(map, p.x, p.z, spec.collisionRadius, props),
+                  )
+                  .sort(
+                    (a, b) =>
+                      Math.hypot(a.x - exit.x, a.z - exit.z) -
+                      Math.hypot(b.x - exit.x, b.z - exit.z),
+                  ),
+                point = candidates[0];
+              if (!point) throw new Error("No clear portal guardian position");
+              spawnTiles.splice(spawnTiles.indexOf(point), 1);
+              guardian = { ...point, ...spec, room: room.index };
+            }
             const count = Math.min(
               6,
               floorPressure(deck).squadSize +
                 (deck > 0 && random() < 0.45 ? 1 : 0) +
                 (deck >= 2 && room.index === exit.room ? 1 : 0),
             );
-            for (let i = 0; i < count; i++)
+            for (let i = 0; i < count - (guardian ? 1 : 0); i++)
               enemies.push({
                 ...spawn(),
                 ...makeEnemy(
@@ -2300,6 +2478,7 @@
                   deck,
                 ),
               });
+            if (guardian) enemies.push(guardian);
             if (room.index % 3 === 0 || stockedRooms.has(room))
               pickups.push({
                 ...spawn(),
@@ -2573,6 +2752,8 @@
           reinforcementSpot,
           validReinforcementSpot,
           enemyTypes,
+          guardianTypes,
+          makeGuardian,
           makeEnemy,
           enemyDamage,
           stationProps,
@@ -3792,7 +3973,9 @@ gl_FragColor=vec4(col,1.);}`;
               !mapOpen,
             deck,
             track: musicTrack,
-            extraction: mode === "playing" && cardTaken,
+            extraction:
+              mode === "playing" &&
+              (portalReady() || (guardian?.encountered && guardian.health > 0)),
             combat:
               mode === "playing" &&
               (lockdownTier > 0 ||
@@ -3994,6 +4177,7 @@ gl_FragColor=vec4(col,1.);}`;
           runSeed = 0,
           runBestAtStart = 0,
           enemies = [],
+          guardian = null,
           spawners = [],
           nextEnemyId = 0,
           breachRandom = C.rng(1),
@@ -4676,6 +4860,8 @@ gl_FragColor=vec4(col,1.);}`;
           player.yaw = Math.PI / 2;
           player.pitch = 0;
           enemies = level.enemies.map((e) => activateEnemy(e));
+          guardian = enemies.find((e) => e.boss);
+          $("boss-banner").hidden = true;
           pickups = level.pickups.map((p) => ({ ...p, taken: false }));
           buildStation();
           lastHud = "";
@@ -4698,9 +4884,195 @@ gl_FragColor=vec4(col,1.);}`;
               hit: 0,
               homeX: source.x,
               homeZ: source.z,
+              encountered: false,
+              enraged: false,
+              recover: 0,
+              rush: 0,
+              rushHit: false,
             };
           if (lockdownTier) C.strengthenEnemy(enemy, lockdownTier);
           return enemy;
+        }
+        function portalReady() {
+          return cardTaken && guardian?.health <= 0;
+        }
+        function moveGuardian(e, dx, dz) {
+          const room = level.rooms[e.room],
+            margin = e.collisionRadius + 0.02;
+          moveBody(
+            e,
+            clamp(
+              e.x + dx,
+              room.x * CELL + margin,
+              (room.x + room.w) * CELL - margin,
+            ) - e.x,
+            clamp(
+              e.z + dz,
+              room.z * CELL + margin,
+              (room.z + room.h) * CELL - margin,
+            ) - e.z,
+            e.collisionRadius,
+          );
+        }
+        function guardianVolley(e) {
+          const spreads =
+            e.boss === "bastion"
+              ? e.enraged
+                ? [-0.18, 0, 0.18]
+                : [-0.09, 0.09]
+              : e.enraged
+                ? [-0.54, -0.36, -0.18, 0, 0.18, 0.36, 0.54]
+                : [-0.44, -0.22, 0, 0.22, 0.44];
+          for (const angle of spreads) {
+            const cannon = e.boss === "bastion",
+              side = Math.sign(angle) * 0.48 * e.scale,
+              x =
+                e.x +
+                (cannon
+                  ? side * Math.cos(e.angle) +
+                    0.58 * e.scale * Math.sin(e.angle)
+                  : 0),
+              y = e.y + (cannon && angle ? 0.63 * e.scale : 0),
+              z =
+                e.z +
+                (cannon
+                  ? -side * Math.sin(e.angle) +
+                    0.58 * e.scale * Math.cos(e.angle)
+                  : 0),
+              ax = e.aim.x - x,
+              ay = e.aim.y - y,
+              az = e.aim.z - z,
+              length = Math.hypot(ax, ay, az) || 1,
+              c = Math.cos(angle),
+              s = Math.sin(angle);
+            bullets.push({
+              x,
+              y,
+              z,
+              dx: (ax * c + az * s) / length,
+              dy: ay / length,
+              dz: (az * c - ax * s) / length,
+              speed: e.boltSpeed,
+              damage: e.damage,
+              color: e.accent,
+              life: 5,
+            });
+          }
+          tone(e.boss === "bastion" ? 120 : 420, 0.22, "sawtooth", 0.09, 60);
+          lightBurst(e.x, e.y, e.z, e.accent, 2, 0.15);
+        }
+        function updateGuardian(e, dt) {
+          const dx = player.x - e.x,
+            dz = player.z - e.z,
+            dist = Math.hypot(dx, dz),
+            sight = dist < 24 && lineClear(e, player);
+          if (!e.encountered && ((sight && dist < 14) || e.hit > 0)) {
+            e.encountered = true;
+            e.alert = true;
+            e.cooldown = Math.max(e.cooldown, 1.5);
+            toast(`PORTAL GUARDIAN / ${e.name.toUpperCase()}`, 3.5);
+            radio(
+              `${e.name} controls this lift. ${
+                e.boss === "bastion"
+                  ? "Armor shutters open during its attack. That's your window."
+                  : e.boss === "sovereign"
+                    ? "Watch the spread. Dodge through the gaps, or send those bolts back."
+                    : "It commits to a straight charge. Let it aim, then dash sideways."
+              }`,
+              6,
+            );
+            tone(100, 0.6, "triangle", 0.1, 45);
+          }
+          if (!e.encountered) return;
+          if (!e.enraged && e.health <= e.maxHealth * 0.5) {
+            e.enraged = true;
+            toast(`${e.name.toUpperCase()} / CORE UNSTABLE`, 2.5);
+            sparks(e.x, e.y, e.z, e.accent, 18, 4);
+          }
+          if (e.stun > 0) {
+            e.charge = e.rush = 0;
+            e.recover = 0.8;
+            return;
+          }
+          e.recover = Math.max(0, e.recover - dt);
+          if (e.rush > 0) {
+            const before = { x: e.x, y: 1.2, z: e.z },
+              speed = Math.min(11, 7 + e.speed + (e.enraged ? 1.5 : 0));
+            moveGuardian(e, e.rushX * speed * dt, e.rushZ * speed * dt);
+            const traveled = Math.hypot(e.x - before.x, e.z - before.z);
+            if (
+              !e.rushHit &&
+              sight &&
+              (Math.hypot(player.x - before.x, player.z - before.z) < 1.25 ||
+                (traveled > 0 &&
+                  C.segmentSphere(
+                    before,
+                    {
+                      x: (e.x - before.x) / traveled,
+                      y: 0,
+                      z: (e.z - before.z) / traveled,
+                    },
+                    { x: player.x, y: 1.2, z: player.z },
+                    1.25,
+                    traveled,
+                  ) !== null))
+            ) {
+              e.rushHit = true;
+              damage(e.damage);
+            }
+            e.rush = traveled < speed * dt * 0.5 ? 0 : Math.max(0, e.rush - dt);
+            if (!e.rush) {
+              e.recover = 1;
+              e.cooldown = e.interval;
+            }
+            return;
+          }
+          if (e.charge > 0) {
+            e.angle = Math.atan2(e.aim.x - e.x, e.aim.z - e.z);
+            e.charge = Math.max(0, e.charge - dt);
+            if (e.charge === 0) {
+              if (e.boss === "reaver") {
+                const x = e.aim.x - e.x,
+                  z = e.aim.z - e.z,
+                  length = Math.hypot(x, z);
+                e.rushX = length > 0.01 ? x / length : Math.sin(e.angle);
+                e.rushZ = length > 0.01 ? z / length : Math.cos(e.angle);
+                e.rush = 0.75;
+                e.rushHit = false;
+                tone(85, 0.25, "sawtooth", 0.09, 220);
+              } else {
+                guardianVolley(e);
+                e.recover = 0.9;
+                e.cooldown = e.interval * (e.enraged ? 0.72 : 1);
+              }
+            }
+            return;
+          }
+          e.angle = Math.atan2(dx, dz);
+          e.cooldown = Math.max(0, e.cooldown - dt);
+          if (e.recover > 0) return;
+          // A guardian stays in its arena; retreating never heals it or restarts the encounter.
+          if (dist > e.range || !sight) {
+            const tx = sight ? player.x : e.homeX,
+              tz = sight ? player.z : e.homeZ,
+              vx = tx - e.x,
+              vz = tz - e.z,
+              length = Math.hypot(vx, vz);
+            if (length > 0.1)
+              moveGuardian(
+                e,
+                (vx / length) * e.speed * dt,
+                (vz / length) * e.speed * dt,
+              );
+          }
+          if (
+            sight &&
+            dist < (e.boss === "reaver" ? 9 : 21) &&
+            e.cooldown <= 0
+          ) {
+            e.aim = { x: player.x, y: 1.2, z: player.z };
+            e.charge = Math.max(0.65, e.windup * (e.enraged ? 0.8 : 1));
+          }
         }
         function updatePressure(dt) {
           floorStats.seconds += dt;
@@ -5177,7 +5549,25 @@ gl_FragColor=vec4(col,1.);}`;
             floorStats.kills++;
             progressContract("kills");
             if (source === "blade") progressContract("blade");
-            if (!e.reinforcement && Math.random() < C.AMMO.dropChance)
+            if (e.boss) {
+              e.charge = e.rush = 0;
+              toast(
+                `GUARDIAN DEFEATED / ${cardTaken ? "TRANSIT PORTAL ONLINE" : "ACCESS CARD STILL REQUIRED"}`,
+                4,
+              );
+              radio(
+                cardTaken
+                  ? "Guardian link severed. The portal is yours. Take the lift."
+                  : "Guardian down. Find the gold access card to activate its portal.",
+                5,
+              );
+              lightBurst(e.x, e.y, e.z, e.accent, 6, 0.7);
+            }
+            if (
+              !e.boss &&
+              !e.reinforcement &&
+              Math.random() < C.AMMO.dropChance
+            )
               pickups.push({
                 x: e.x,
                 z: e.z,
@@ -5232,9 +5622,11 @@ gl_FragColor=vec4(col,1.);}`;
                 true,
                 "blade",
               );
-              e.stun = Math.max(e.spawner ? e.stun : 0, heavy ? 1.2 : 0.45);
-              if (!e.spawner) e.charge = 0;
-              if (!e.spawner && d > 0.01)
+              if (!e.boss) {
+                e.stun = Math.max(e.spawner ? e.stun : 0, heavy ? 1.2 : 0.45);
+                if (!e.spawner) e.charge = 0;
+              }
+              if (!e.spawner && !e.boss && d > 0.01)
                 moveBody(
                   e,
                   (dx / d) * (heavy ? 0.85 : 0.25),
@@ -5368,8 +5760,9 @@ gl_FragColor=vec4(col,1.);}`;
               Math.hypot(e.x - player.x, e.z - player.z) < 9 &&
               lineClear(player, e)
             ) {
-              e.stun = 3.2;
+              e.stun = e.boss ? 1.4 : 3.2;
               e.charge = 0;
+              if (e.boss) e.rush = 0;
               enemyHit(e, 34, true);
             }
           for (const node of spawners)
@@ -5414,6 +5807,11 @@ gl_FragColor=vec4(col,1.);}`;
               tone(120, 0.2, "square", 0.06);
               return;
             }
+            if (!portalReady()) {
+              toast("Lift sealed · defeat the portal guardian");
+              tone(120, 0.2, "square", 0.06);
+              return;
+            }
             beginTransit();
           } else if (interaction.type === "cache") {
             const cache = interaction.item;
@@ -5449,7 +5847,7 @@ gl_FragColor=vec4(col,1.);}`;
           }
         }
         function beginTransit() {
-          if (mode !== "playing" || mapOpen || !cardTaken) return;
+          if (mode !== "playing" || mapOpen || !portalReady()) return;
           mode = "transit";
           transitTimer = 0;
           portalCharge = 1;
@@ -5702,7 +6100,10 @@ gl_FragColor=vec4(col,1.);}`;
           gameTime += dt;
           player.elapsed += dt;
           updatePressure(dt);
-          portalCharge = Math.min(1, portalCharge + (cardTaken ? dt * 1.6 : 0));
+          portalCharge = Math.min(
+            1,
+            portalCharge + (portalReady() ? dt * 1.6 : 0),
+          );
           bladeTimer = Math.max(0, bladeTimer - dt);
           for (const light of lightBursts) light.life -= dt;
           lightBursts = lightBursts.filter((light) => light.life > 0);
@@ -5759,7 +6160,10 @@ gl_FragColor=vec4(col,1.);}`;
               speed *
               dt,
           );
-          if (cardTaken && C.crossesPortal(beforeMove, player, level.exit)) {
+          if (
+            portalReady() &&
+            C.crossesPortal(beforeMove, player, level.exit)
+          ) {
             beginTransit();
             return;
           }
@@ -5801,6 +6205,11 @@ gl_FragColor=vec4(col,1.);}`;
                     (e.type === "skimmer" ? 0.23 : 0.12);
             e.hit = Math.max(0, e.hit - dt);
             e.stun = Math.max(0, e.stun - dt);
+            if (e.boss) {
+              updateGuardian(e, dt);
+              if (mode !== "playing") return;
+              continue;
+            }
             if (e.stun > 0) continue;
             const dx = player.x - e.x,
               dz = player.z - e.z,
@@ -5877,12 +6286,13 @@ gl_FragColor=vec4(col,1.);}`;
                   (oz / d) * dt * 0.6,
                   e.collisionRadius,
                 );
-                moveBody(
-                  other,
-                  (-ox / d) * dt * 0.6,
-                  (-oz / d) * dt * 0.6,
-                  other.collisionRadius,
-                );
+                if (!other.boss)
+                  moveBody(
+                    other,
+                    (-ox / d) * dt * 0.6,
+                    (-oz / d) * dt * 0.6,
+                    other.collisionRadius,
+                  );
               }
             }
             if (stalk) {
@@ -6014,11 +6424,16 @@ gl_FragColor=vec4(col,1.);}`;
             Math.hypot(player.x - level.card.x, player.z - level.card.z) < 1.4
           ) {
             cardTaken = true;
-            toast("ACCESS CARD ACQUIRED / TRANSIT PORTAL ONLINE", 4);
+            toast(
+              `ACCESS CARD ACQUIRED / ${portalReady() ? "TRANSIT PORTAL ONLINE" : "DEFEAT THE PORTAL GUARDIAN"}`,
+              4,
+            );
             radio(
-              contract.completed
-                ? "Access accepted. Bonus fabrication secured. The lift is ready."
-                : "Portal online. Your side contract is still open. Stay for the bonus, or take the lift—your call.",
+              !portalReady()
+                ? "Access accepted, but a guardian still controls the lift. Defeat it to open the portal."
+                : contract.completed
+                  ? "Access accepted. Bonus fabrication secured. The lift is ready."
+                  : "Portal online. Your side contract is still open. Stay for the bonus, or take the lift—your call.",
               5,
             );
             tone(523, 0.15, "sine", 0.15, 1046);
@@ -6318,13 +6733,98 @@ gl_FragColor=vec4(col,1.);}`;
               );
             }
         }
+        function guardianCrest(out, e, time) {
+          const glow =
+              e.stun > 0 ? palette.mint : e.enraged ? palette.red : e.accent,
+            c = Math.cos(e.angle),
+            s = Math.sin(e.angle),
+            scale = e.scale,
+            B = (x, y, z, w, h, d, color, power = 0, angle = 0) =>
+              box(
+                out,
+                e.x + (x * c + z * s) * scale,
+                e.y + y * scale,
+                e.z + (-x * s + z * c) * scale,
+                w * scale,
+                h * scale,
+                d * scale,
+                color,
+                power,
+                e.angle + angle,
+              );
+          if (e.boss === "bastion") {
+            const open = e.charge > 0 || e.recover > 0 || e.stun > 0;
+            for (const side of [-1, 1]) {
+              B(side * 0.48, 0.63, 0.05, 0.32, 0.28, 0.9, e.color);
+              B(side * 0.48, 0.63, 0.53, 0.2, 0.16, 0.08, glow, 2);
+              B(
+                side * (open ? 0.3 : 0.075),
+                0.1,
+                0.44,
+                0.16,
+                0.4,
+                0.06,
+                e.color,
+                0,
+                open ? side * 0.35 : 0,
+              );
+            }
+            for (const x of [-0.3, 0, 0.3])
+              B(
+                x,
+                0.96 + (x === 0 ? 0.1 : 0),
+                -0.1,
+                0.12,
+                0.32,
+                0.18,
+                glow,
+                0.8,
+              );
+            B(0, 0.1, 0.39, 0.28, 0.35, 0.035, open ? palette.mint : glow, 2);
+          } else if (e.boss === "sovereign") {
+            for (let i = 0; i < 8; i++) {
+              const a = (reduced ? 0 : time * 0.3) + (i * Math.PI) / 4;
+              B(
+                Math.cos(a) * 0.66,
+                0.72,
+                Math.sin(a) * 0.66,
+                0.1,
+                0.3,
+                0.1,
+                glow,
+                1.3,
+                a,
+              );
+            }
+            B(0, -0.72, 0, 0.3, 0.18, 0.3, glow, 1.5);
+          } else {
+            for (const side of [-1, 1]) {
+              B(
+                side * 0.3,
+                0.19,
+                0.59,
+                0.1,
+                0.25,
+                0.46,
+                glow,
+                1.2,
+                side * 0.25,
+              );
+              B(side * 0.23, 0.38, -0.07, 0.1, 0.28, 0.55, e.color);
+              B(side * 0.23, 0.54, -0.07, 0.08, 0.04, 0.45, glow, 1.8);
+            }
+          }
+        }
         function portalMesh(out, time) {
           const e = level.exit,
             { halfWidth: w, bottom, top } = C.PORTAL,
             t = reduced ? 0 : time,
-            color = palette.orange.map(
-              (v, i) => v + (palette.mint[i] - v) * portalCharge,
-            );
+            color =
+              guardian?.health > 0
+                ? palette.red
+                : palette.orange.map(
+                    (v, i) => v + (palette.mint[i] - v) * portalCharge,
+                  );
           // A distinct material in the shared shader gives the aperture depth
           // without another render pass or transparent geometry sorting.
           quad(
@@ -6412,7 +6912,18 @@ gl_FragColor=vec4(col,1.);}`;
                 );
               }
           }
-          if (!cardTaken) {
+          if (guardian?.health > 0) {
+            for (const side of [-1, 1])
+              beam(
+                out,
+                { x: e.x - w * 0.8, y: side > 0 ? 0.7 : 2.4, z: e.z + 0.035 },
+                { x: e.x + w * 0.8, y: side > 0 ? 2.4 : 0.7, z: e.z + 0.035 },
+                palette.red,
+                0.025,
+                1.2,
+              );
+          }
+          if (!portalReady()) {
             box(out, e.x, 1.32, e.z, 0.18, 0.22, 0.06, palette.orange, 0.7);
             box(out, e.x, 1.48, e.z, 0.12, 0.035, 0.06, palette.orange, 0.7);
             for (const s of [-1, 1])
@@ -6572,6 +7083,7 @@ gl_FragColor=vec4(col,1.);}`;
             for (const e of enemies)
               if (e.health > 0) {
                 robot(out, e, time);
+                if (e.boss) guardianCrest(out, e, time);
                 if (e.charge > 0 && e.aim)
                   beam(
                     out,
@@ -6700,8 +7212,8 @@ gl_FragColor=vec4(col,1.);}`;
               1.7,
               0.025,
               0.07,
-              cardTaken ? palette.mint : [0.15, 0.3, 0.27],
-              cardTaken ? 1.6 : 0.3,
+              portalReady() ? palette.mint : [0.3, 0.12, 0.12],
+              portalReady() ? 1.6 : 0.3,
             );
           for (const b of bullets) {
             box(
@@ -7159,6 +7671,14 @@ gl_FragColor=vec4(col,1.);}`;
                   color: node.stun > 0 ? palette.mint : [0.78, 0.4, 1],
                   power: node.stun > 0 ? 0.3 : node.pending ? 2 : 1.1,
                 });
+            if (guardian?.health > 0)
+              effects.push({
+                x: guardian.x,
+                y: guardian.y,
+                z: guardian.z,
+                color: guardian.enraged ? palette.red : guardian.accent,
+                power: guardian.charge > 0 ? 1.8 : 0.8,
+              });
             if (!cardTaken)
               effects.push({
                 x: level.card.x,
@@ -7414,7 +7934,7 @@ gl_FragColor=vec4(col,1.);}`;
             const [x, y] = point(e);
             ctx.fillStyle = e.stun > 0 ? "#9af5d3" : "#d86b59";
             ctx.beginPath();
-            ctx.arc(x, y, 2, 0, Math.PI * 2);
+            ctx.arc(x, y, e.boss ? 4 : 2, 0, Math.PI * 2);
             ctx.fill();
           }
           if (!cardTaken) {
@@ -7430,7 +7950,7 @@ gl_FragColor=vec4(col,1.);}`;
             ctx.stroke();
           }
           const [ex, ez] = point(level.exit);
-          ctx.strokeStyle = "#9af5d3";
+          ctx.strokeStyle = guardian?.health > 0 ? "#ff776b" : "#9af5d3";
           ctx.lineWidth = 1.5;
           ctx.strokeRect(ex - 4, ez - 4, 8, 8);
           const [x, z] = point(player);
@@ -7451,6 +7971,7 @@ gl_FragColor=vec4(col,1.);}`;
             activeNodes = spawners.filter((node) => node.health > 0).length,
             countdown = Math.ceil(clock.next);
           const fingerprint = [
+            guardian?.health > 0,
             clock.tier,
             countdown,
             activeNodes,
@@ -7477,7 +7998,9 @@ gl_FragColor=vec4(col,1.);}`;
             $("run-progress").textContent =
               `${player.floorsCompleted} CLEARED / BEST ${floorRecords[difficulty]}`;
             $("objective").textContent = cardTaken
-              ? "Reach the transit lift"
+              ? portalReady()
+                ? "Reach the transit lift"
+                : "Defeat the portal guardian"
               : "Recover the deck access card";
             $("contract-label").textContent = contract.completed
               ? "BONUS UPGRADE SECURED"
@@ -7532,10 +8055,46 @@ gl_FragColor=vec4(col,1.);}`;
             $("emp-status").classList.toggle("charging", empTimer > 0);
             $("interact").hidden = !interaction;
             $("interact").innerHTML = interaction
-              ? interaction.type === "exit" && cardTaken
+              ? interaction.type === "exit" && portalReady()
                 ? "WALK THROUGH / NEXT FLOOR"
-                : `<kbd>${isTouch ? "USE" : "E"}</kbd> &nbsp; ${interaction.type === "cache" ? "Salvage crew cache" : "Portal offline · access card required"}`
+                : `<kbd>${isTouch ? "USE" : "E"}</kbd> &nbsp; ${interaction.type === "cache" ? "Salvage crew cache" : cardTaken ? "Portal sealed · defeat guardian" : "Portal offline · access card required"}`
               : "";
+          }
+          const showGuardian =
+            guardian?.health > 0 &&
+            guardian.encountered &&
+            Math.hypot(guardian.x - player.x, guardian.z - player.z) < 24;
+          $("boss-banner").hidden = !showGuardian;
+          if (showGuardian) {
+            const percent = clamp(
+              (guardian.health / guardian.maxHealth) * 100,
+              0,
+              100,
+            );
+            $("boss-name").textContent =
+              `${guardian.name} / ${Math.ceil(percent)}%`;
+            $("boss-meter").style.width = `${percent}%`;
+            $("boss-health").setAttribute(
+              "aria-valuenow",
+              String(Math.ceil(percent)),
+            );
+            $("boss-banner").classList.toggle("enraged", guardian.enraged);
+            $("boss-status").textContent =
+              `${guardian.enraged ? "ENRAGED · " : ""}${
+                guardian.stun > 0
+                  ? "EMP DISRUPTED"
+                  : guardian.rush > 0
+                    ? "CHARGING / SIDESTEP"
+                    : guardian.charge > 0
+                      ? guardian.boss === "bastion"
+                        ? "CORE OPEN / CANNONS CHARGING"
+                        : guardian.boss === "reaver"
+                          ? "AIM LOCKED / DASH SIDEWAYS"
+                          : "FAN VOLLEY INCOMING"
+                      : guardian.recover > 0
+                        ? "RECOVERING / STRIKE NOW"
+                        : guardian.hint
+              }`;
           }
           $("toast").style.opacity = toastTimer > 0 ? "1" : "0";
           $("radio").style.opacity = radioTimer > 0 ? "1" : "0";
@@ -7560,16 +8119,22 @@ gl_FragColor=vec4(col,1.);}`;
               nearest = hit;
             }
           }
-          $("target-health").hidden = !target;
-          $("target-name").hidden = !target;
+          $("target-health").hidden = !target || (target.boss && showGuardian);
+          $("target-name").hidden = !target || (target.boss && showGuardian);
           if (target)
             $("target-name").textContent = target.spawner
               ? `BREACH NODE / ${target.stun > 0 ? "DISRUPTED" : target.pending ? "SPAWNING" : "SHOOT CORE TO SEAL"}`
-              : `${target.lockdownTier ? "OVERCLOCKED · " : ""}${target.trait === "standard" ? "" : target.trait + " · "}${target.name}${target.type === "bulwark" && target.stun <= 0 ? " / FRONTAL ARMOR" : ""}`;
+              : target.boss
+                ? `${target.name} / PORTAL GUARDIAN`
+                : `${target.lockdownTier ? "OVERCLOCKED · " : ""}${target.trait === "standard" ? "" : target.trait + " · "}${target.name}${target.type === "bulwark" && target.stun <= 0 ? " / FRONTAL ARMOR" : ""}`;
           if (target)
             $("target-health").firstElementChild.style.width =
               (target.health / target.maxHealth) * 100 + "%";
-          const objective = cardTaken ? level.exit : level.card,
+          const objective = cardTaken
+              ? portalReady()
+                ? level.exit
+                : guardian
+              : level.card,
             dx = objective.x - player.x,
             dz = objective.z - player.z,
             dist = Math.hypot(dx, dz),
@@ -7599,11 +8164,15 @@ gl_FragColor=vec4(col,1.);}`;
           $("waypoint").style.top =
             clamp(sy, innerHeight * 0.3, innerHeight * 0.66) + "px";
           $("waypoint").style.opacity = dist < 3 ? "0" : "0.85";
-          $("waypoint").style.color = cardTaken ? "#9af5d3" : "#ffad66";
+          $("waypoint").style.color = cardTaken
+            ? portalReady()
+              ? "#9af5d3"
+              : "#ff9388"
+            : "#ffad66";
           $("waypoint").firstElementChild.textContent =
             Math.abs(a) > 1.1 ? (a > 0 ? "›" : "‹") : "◇";
           $("waypoint-label").textContent =
-            `${cardTaken ? "LIFT" : "CARD"} · ${Math.round(dist)}m`;
+            `${cardTaken ? (portalReady() ? "LIFT" : "GUARDIAN") : "CARD"} · ${Math.round(dist)}m`;
           drawMap($("minimap"));
         }
         let uiTimer = 0;

@@ -113,10 +113,11 @@ function campaign(initialSave = {}) {
       listen(windowListeners, type, callback),
   };
   sandbox.window = sandbox;
-  const exposed = `\nwindow.testGame = { startRun, update, updatePressure, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, spawnerHit, breachMesh, robot, bladeMesh, portalMesh, sceneLights, lightBurst,
+  const exposed = `\nwindow.testGame = { startRun, update, updatePressure, updateGuardian, moveGuardian, portalReady, guardianCrest, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, spawnerHit, breachMesh, robot, bladeMesh, portalMesh, sceneLights, lightBurst,
     get player() { return player; }, get level() { return level; }, get enemies() { return enemies; },
     get pickups() { return pickups; }, get bullets() { return bullets; },
     get spawners() { return spawners; },
+    get guardian() { return guardian; },
     get state() { return { mode, deck, cardTaken, portalCharge, transitTimer, reloadTimer, empTimer, dashTimer, mapOpen, runSeed, bladeStep, bladeTimer, floorRecords, contract, floorStats, upgradePicks, lightBursts, lockdownTier }; },
     get interaction() { return interaction; }, set interaction(v) { interaction = v; },
     get keys() { return keys; }, toggleMap };\n})();`;
@@ -1310,7 +1311,7 @@ test("enemy classes and traits are varied, bounded and deterministic", () => {
         JSON.stringify(C.generateDeck(seed, deck).enemies),
       );
       if (deck > 0) assert.equal(new Set(l.enemies.map((e) => e.type)).size, 6);
-      for (const e of l.enemies) {
+      for (const e of l.enemies.filter((enemy) => !enemy.boss)) {
         types.add(e.type);
         traits.add(e.trait);
         health.add(e.maxHealth);
@@ -2322,4 +2323,346 @@ test("breach core and spawn warning geometry stay finite through charge, EMP, de
       assert.ok(mesh.every(Number.isFinite));
     }
   }
+});
+
+test("every generated floor reserves one reachable guardian beside its portal, with rotating forms", () => {
+  for (let seed = 0; seed < 100; seed++) {
+    let previous;
+    for (const deck of [0, 1, 2, 3, 12, 10000]) {
+      const level = C.generateDeck(seed, deck),
+        bosses = level.enemies.filter((e) => e.boss);
+      assert.equal(bosses.length, 1);
+      const boss = bosses[0];
+      assert.equal(boss.room, level.exit.room);
+      assert.ok(Math.hypot(boss.x - level.exit.x, boss.z - level.exit.z) <= 5);
+      assert.ok(
+        C.fits(level.map, boss.x, boss.z, boss.collisionRadius, level.props),
+      );
+      assert.ok(boss.health > 250 && Number.isFinite(boss.health));
+      assert.equal(boss.health, boss.maxHealth);
+      assert.ok(level.enemies.length <= 48);
+      for (const item of [
+        ...level.pickups,
+        level.card,
+        level.exit,
+        ...level.enemies.filter((e) => e !== boss),
+      ])
+        assert.ok(Math.hypot(boss.x - item.x, boss.z - item.z) >= C.CELL);
+      if (deck > 0 && deck <= 3) assert.notEqual(boss.boss, previous);
+      previous = boss.boss;
+    }
+  }
+});
+
+function guardianArena(kind, reduced = false) {
+  const session = campaign({ reduced }),
+    g = session.game;
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  g.spawners.forEach((e) => (e.health = 0));
+  const boss = g.guardian,
+    room = g.level.rooms[boss.room],
+    seed = C.guardianTypes.findIndex((spec) => spec.boss === kind);
+  Object.assign(room, { x: 2, z: 2, w: 8, h: 8, cx: 6, cz: 6 });
+  g.level.map = Array.from({ length: C.SIZE }, () => Array(C.SIZE).fill(1));
+  for (let z = 2; z < 10; z++)
+    for (let x = 2; x < 10; x++) g.level.map[z][x] = 0;
+  g.level.props = [];
+  Object.assign(g.level.start, { x: 10, z: 10 });
+  Object.assign(g.level.card, { x: 23, z: 23 });
+  Object.assign(g.level.exit, { x: 20, z: 20 });
+  Object.assign(boss, C.makeGuardian(seed, 0), {
+    x: 12,
+    y: 1.2,
+    z: 12,
+    homeX: 12,
+    homeZ: 12,
+    encountered: true,
+    enraged: false,
+    charge: 0,
+    cooldown: 0,
+    recover: 0,
+    stun: 0,
+    hit: 0,
+    rush: 0,
+    angle: Math.PI / 2,
+  });
+  Object.assign(g.player, {
+    x: 17,
+    z: 12,
+    yaw: -Math.PI / 2,
+    health: 1e6,
+    maxHealth: 1e6,
+    shield: 0,
+    maxShield: 0,
+  });
+  return session;
+}
+
+test("guardian volleys have distinct patterns, a locked wind-up, and a stronger half-health phase", () => {
+  for (const [kind, normal, enraged] of [
+    ["bastion", 2, 3],
+    ["sovereign", 5, 7],
+  ]) {
+    const { game: g, element } = guardianArena(kind),
+      boss = g.guardian;
+    g.updateGuardian(boss, 0.01);
+    assert.ok(boss.charge >= 0.65);
+    assert.equal(g.bullets.length, 0);
+    const aim = { ...boss.aim };
+    g.player.z += 2;
+    g.updateGuardian(boss, boss.charge / 2);
+    assert.deepEqual(
+      { ...boss.aim },
+      aim,
+      "telegraphed aim does not track the dodge",
+    );
+    assert.equal(g.bullets.length, 0);
+    g.updateGuardian(boss, boss.charge + 0.01);
+    assert.equal(g.bullets.length, normal);
+    assert.equal(new Set(g.bullets.map((b) => b.dz.toFixed(5))).size, normal);
+    assert.ok(boss.recover > 0);
+    assert.ok(
+      g.bullets.every((b) => Math.abs(Math.hypot(b.dx, b.dy, b.dz) - 1) < 1e-8),
+    );
+    g.bullets.length = 0;
+    Object.assign(boss, {
+      health: boss.maxHealth / 2,
+      recover: 0,
+      cooldown: 0,
+    });
+    g.updateGuardian(boss, 0.01);
+    assert.equal(boss.enraged, true);
+    g.updateGuardian(boss, boss.charge + 0.01);
+    assert.equal(g.bullets.length, enraged);
+    g.updateHUD();
+    assert.equal(element("boss-banner").hidden, false);
+    assert.match(element("boss-name").textContent, /50%/);
+    assert.match(element("boss-status").textContent, /ENRAGED/);
+  }
+});
+
+test("the Reaver telegraphs a straight rush that can be sidestepped and hits only once", () => {
+  for (const dodge of [false, true]) {
+    const { game: g } = guardianArena("reaver"),
+      boss = g.guardian;
+    g.updateGuardian(boss, 0.01);
+    const origin = { x: boss.x, z: boss.z },
+      health = g.player.health;
+    assert.ok(boss.charge > 0);
+    if (dodge) g.player.z += 3;
+    g.updateGuardian(boss, boss.charge + 0.01);
+    assert.equal(g.bullets.length, 0);
+    assert.ok(boss.rush > 0);
+    for (let i = 0; i < 50; i++) g.updateGuardian(boss, 1 / 60);
+    assert.ok(boss.x > origin.x + 5 && Math.abs(boss.z - origin.z) < 0.01);
+    assert.equal(g.player.health, dodge ? health : health - boss.damage);
+    assert.equal(boss.rush, 0);
+    assert.ok(boss.recover > 0);
+  }
+});
+
+test("guardian movement and rushes respect props, walls and the lift-room boundary", () => {
+  const { game: g } = guardianArena("reaver"),
+    boss = g.guardian,
+    health = boss.health;
+  g.level.props.push({ x: 14, z: 12, y: 1, w: 0.5, h: 2, d: 3 });
+  g.moveGuardian(boss, 10, 0);
+  assert.ok(boss.x <= 13.75 - boss.collisionRadius + 1e-8);
+  assert.ok(
+    C.fits(g.level.map, boss.x, boss.z, boss.collisionRadius, g.level.props),
+  );
+  g.level.props = [];
+  g.moveGuardian(boss, 100, -100);
+  assert.ok(
+    boss.x <= 25 - boss.collisionRadius && boss.z >= 5 + boss.collisionRadius,
+  );
+  assert.equal(boss.health, health, "leaving combat does not reset health");
+  Object.assign(boss, { x: 12, z: 12, rush: 0.75, rushX: -1, rushZ: 0 });
+  for (let i = 0; i < 60; i++) g.updateGuardian(boss, 1 / 60);
+  assert.ok(
+    C.fits(g.level.map, boss.x, boss.z, boss.collisionRadius, g.level.props),
+  );
+  assert.ok(boss.x >= 5 + boss.collisionRadius);
+});
+
+test("Bastion armor opens during attacks and recovery, while EMP interrupts all guardian forms", () => {
+  for (const spec of C.guardianTypes) {
+    const { game: g, tick } = guardianArena(spec.boss),
+      boss = g.guardian;
+    if (spec.boss === "bastion") {
+      assert.equal(C.enemyDamage(boss, 100, g.player), 45);
+      boss.charge = 1;
+      assert.equal(C.enemyDamage(boss, 100, g.player), 100);
+      boss.charge = 0;
+      boss.recover = 1;
+      assert.equal(C.enemyDamage(boss, 100, g.player), 100);
+      boss.recover = 0;
+    }
+    boss.charge = 1;
+    boss.aim = { x: g.player.x, y: 1.2, z: g.player.z };
+    boss.rush = 0.75;
+    g.emp();
+    assert.equal(boss.charge, 0);
+    assert.equal(boss.rush, 0);
+    assert.equal(boss.stun, 1.4);
+    tick(1);
+    assert.ok(boss.stun > 0);
+    assert.equal(g.bullets.length, 0);
+    tick(0.5);
+    assert.equal(boss.stun, 0);
+  }
+});
+
+test("guardians resist cutlass stagger, but cuts and returned projectiles still damage them", () => {
+  const { game: g, tick } = guardianArena("bastion"),
+    boss = g.guardian;
+  Object.assign(g.player, { x: 13.5, z: 12, weapon: 1 });
+  Object.assign(boss, { charge: 1, aim: { x: 13.5, y: 1.2, z: 12 } });
+  const health = boss.health;
+  g.fire();
+  tick(0.15);
+  assert.equal(boss.health, health - 46);
+  assert.equal(boss.stun, 0);
+  assert.ok(
+    boss.charge > 0,
+    "light attacks cannot repeatedly cancel the boss wind-up",
+  );
+  boss.charge = 0;
+  boss.cooldown = 10;
+  g.bullets.push({
+    x: 13.5,
+    y: 1.2,
+    z: 12,
+    dx: -1,
+    dy: 0,
+    dz: 0,
+    friendly: true,
+    damage: 64,
+    speed: 20,
+    life: 2,
+  });
+  tick(0.1);
+  assert.equal(
+    boss.health,
+    health - 110,
+    "returned bolts bypass frontal armor",
+  );
+});
+
+test("both card and guardian defeat are required for transit, in either order, and reset next floor", () => {
+  for (const cardFirst of [true, false]) {
+    const { game: g, tick, element } = campaign();
+    g.startRun();
+    g.enemies.forEach((e) => {
+      if (!e.boss) e.health = 0;
+    });
+    g.spawners.forEach((e) => (e.health = 0));
+    const guardianKind = g.guardian.boss;
+    if (cardFirst) {
+      Object.assign(g.player, g.level.card);
+      tick(0.05);
+      Object.assign(g.player, g.level.exit);
+      tick(0.05);
+      g.interact();
+      assert.equal(g.state.mode, "playing");
+      assert.equal(g.portalReady(), false);
+      assert.equal(g.state.portalCharge, 0);
+      g.player.z = g.level.exit.z - 1;
+      g.player.yaw = Math.PI;
+      g.keys.add("KeyW");
+      g.dash();
+      tick(0.1);
+      g.keys.clear();
+      assert.equal(
+        g.player.floorsCompleted,
+        0,
+        "dashing through the seal cannot bypass a living guardian",
+      );
+    }
+    const kills = g.player.kills;
+    g.enemyHit(g.guardian, 1e9, true);
+    g.enemyHit(g.guardian, 1e9, true);
+    assert.equal(g.player.kills, kills + 1);
+    if (!cardFirst) {
+      Object.assign(g.player, g.level.exit);
+      tick(0.05);
+      g.interact();
+      assert.equal(g.state.mode, "playing");
+      assert.equal(g.portalReady(), false);
+      Object.assign(g.player, g.level.card);
+      tick(0.05);
+    }
+    assert.equal(g.portalReady(), true);
+    Object.assign(g.player, g.level.exit);
+    tick(0.05);
+    g.interact();
+    assert.equal(g.state.mode, "transit");
+    assert.equal(g.player.floorsCompleted, 1);
+    tick(C.PORTAL.duration + 0.05);
+    element("upgrade-blade").onclick();
+    assert.equal(g.state.mode, "playing");
+    assert.ok(g.guardian.health > 0);
+    assert.notEqual(g.guardian.boss, guardianKind);
+    assert.equal(g.guardian.encountered, false);
+    assert.equal(g.portalReady(), false);
+    g.damage(1e9);
+    g.startRun();
+    assert.equal(g.state.deck, 0);
+    assert.ok(g.guardian.health > 0 && !g.guardian.encountered);
+  }
+});
+
+test("guardian wind-ups pause with the map, and lockdown preserves wounds", () => {
+  const { game: g, tick } = guardianArena("sovereign"),
+    boss = g.guardian;
+  g.updateGuardian(boss, 0.01);
+  const charge = boss.charge;
+  g.toggleMap();
+  tick(4);
+  assert.equal(boss.charge, charge);
+  g.toggleMap();
+  boss.health = boss.maxHealth * 0.4;
+  const damage = boss.damage;
+  g.state.floorStats.seconds = 180;
+  tick(0.02);
+  assert.ok(boss.damage > damage);
+  assert.ok(Math.abs(boss.health / boss.maxHealth - 0.4) < 1e-10);
+  assert.equal(boss.enraged, true);
+});
+
+test("all guardian silhouettes and sealed portal geometry remain finite in normal and reduced motion", () => {
+  for (const reduced of [false, true])
+    for (const spec of C.guardianTypes) {
+      const { game: g } = guardianArena(spec.boss, reduced),
+        boss = g.guardian;
+      for (const state of [
+        { charge: 0 },
+        { charge: 1 },
+        { enraged: true },
+        { stun: 1 },
+      ]) {
+        Object.assign(boss, state);
+        const mesh = [];
+        g.robot(mesh, boss, reduced ? 0 : 2);
+        g.guardianCrest(mesh, boss, 2);
+        g.portalMesh(mesh, 2);
+        assert.ok(mesh.length > 0 && mesh.length % 12 === 0);
+        assert.ok(mesh.every(Number.isFinite));
+      }
+    }
+});
+
+test("standing inside the Reaver cannot neutralize its charge or cause repeated impact damage", () => {
+  const { game: g } = guardianArena("reaver"),
+    boss = g.guardian;
+  Object.assign(g.player, { x: boss.x, z: boss.z });
+  const health = g.player.health;
+  g.updateGuardian(boss, 0.01);
+  g.updateGuardian(boss, boss.charge + 0.01);
+  assert.ok(Math.hypot(boss.rushX, boss.rushZ) > 0.99);
+  g.updateGuardian(boss, 0.01);
+  g.updateGuardian(boss, 0.01);
+  assert.equal(g.player.health, health - boss.damage);
+  assert.ok([boss.x, boss.z, boss.rushX, boss.rushZ].every(Number.isFinite));
 });

@@ -5,8 +5,8 @@ A standalone first-person space-station survival game, inspired by the game in
 repository with `python3 -m http.server` and visit `/codex-experiments/game.html`.
 There is no build step, dependency, asset download, or network requirement.
 
-Recover a gold access card and reach the green lift on each procedural floor.
-The card activates a swirling transit portal. Walk through its opening from
+Recover a gold access card and defeat the guardian at each floor's lift.
+Both conditions activate its swirling transit portal. Walk through its opening from
 either side to leave the floor, or use E / the touch Use button nearby. A brief
 warp effect and sound lead into the upgrade screen. Reduced motion keeps the
 portal animation steady and uses a simple fade for transit. Crossing detection
@@ -17,6 +17,25 @@ floor, then offers a permanent upgrade, restores health and shields, and supplie
 Your score is floors completed, saved at each lift; dying on floor 7 scores 6.
 Standard and Explorer have separate local records. Old point-based records
 are not reused as floor counts, and audio/accessibility preferences carry over.
+
+**Portal guardians:** Every lift room has one boss, replacing an ordinary squad
+member so the population cap stays unchanged. Three forms rotate with the floors;
+the seed determines the first form and a small health variation. The armored
+**Bastion** fires paired cannon bolts and exposes its core during wind-up and
+recovery. The floating **Prism Sovereign** fires five-bolt fans with gaps to dodge
+or parry. The **Rift Reaver** locks its aim before a fast, straight charge: dash
+sideways and strike during recovery. All three enter an enraged phase below half
+health, adding projectiles or faster charges, and scale with floor difficulty
+and lockdown. Their distinct crowns, weapons, and colors identify each form.
+
+Boss fights have a dedicated health bar, attack warnings, combat music, and a
+red seal across the portal. Guardians resist cutlass stagger; EMP interrupts
+them for 1.4 seconds, and cutlass hits and reflected bolts bypass frontal armor.
+They stay in their lift room, respect walls and furniture, and never heal when
+you retreat. Defeat releases the seal, but the gold card is still required.
+The card and boss can be handled in either order. Walking, dashing, and Use all
+check both conditions. Bosses award one kill and contract progress; the score
+still increases only when you complete the floor.
 
 Each floor also offers an optional contract: scrap a squad, earn cutlass kills,
 or salvage two crew caches. Progress appears below the main objective. Finish
@@ -163,3 +182,8 @@ pause and reset behavior, extraction during lockdown, and bounded attack rates.
 Breach tests cover 300 deterministic layouts, spawn clearance and revalidation,
 population/storage limits, spawn warnings, all weapon interactions, EMP and cover,
 ammo farming prevention, and finite visual geometry with reduced motion.
+
+Guardian tests cover 600 generated arenas including late floors, rotating forms,
+telegraphed volleys and dodgable rushes, half-health phases, armor openings,
+EMP interruption, cutlass and reflected-bolt damage, collision and arena limits,
+both portal-unlock orders, pause/reset behavior, and finite boss geometry.
