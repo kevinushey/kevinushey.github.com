@@ -37,8 +37,13 @@ Room orientations and connections vary by seed. Ceilings range from 3.6 to
 provide cover and flanking routes; enemies, supplies, and objectives occupy
 separate clear floor tiles. Furniture also keeps narrow interior aisles clear.
 
-Collect supplies and scrap hostile machines. The Storm Cutlass chains three cuts into a heavy finisher, ignores
-frontal armor, and reflects incoming bolts. Cabinets and equipment cases block
+Collect supplies and scrap hostile machines. The Storm Cutlass chains a diagonal
+cut, a returning backhand, and an overhead finisher, with a visible gauntlet and
+forearm driving each swing forward. Wind-up, contact, and follow-through have
+distinct poses; the edge trail follows the blade. Damage, sound, and bolt parries
+occur at contact, after the short wind-up. Switching weapons cancels a pending
+cut. Reduced motion uses a small forward gesture with the same combat timing.
+The blade ignores frontal armor and reflects incoming bolts. Cabinets and equipment cases block
 movement and attacks, with height-aware projectile collision.
 Furniture stays inside rooms and leaves full-width doorways, room-side
 approaches, and hallways clear.

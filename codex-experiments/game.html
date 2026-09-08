@@ -3315,7 +3315,7 @@ gl_FragColor=vec4(col,1.);}`;
           bladeTimer = 0,
           bladeDuration = 0.36,
           lastSwing = -20,
-          slashes = [];
+          bladePending = false;
         let radioTimer = 0,
           toastTimer = 0,
           flow = null,
@@ -3932,7 +3932,7 @@ gl_FragColor=vec4(col,1.);}`;
           bladeStep = 0;
           bladeTimer = 0;
           lastSwing = -20;
-          slashes = [];
+          bladePending = false;
           lastHurt = gameTime - 20;
           player.x = level.start.x;
           player.z = level.start.z;
@@ -4292,94 +4292,89 @@ gl_FragColor=vec4(col,1.);}`;
               });
           }
         }
+        function strikeBlade() {
+          const heavy = bladeStep === 2,
+            reach = heavy ? 3.25 : 2.85;
+          tone(heavy ? 110 : 230, 0.22, "sawtooth", 0.12, heavy ? 45 : 70);
+          tone(880, 0.16, "triangle", 0.06, 220);
+          noise(0.14, 0.13, 2600);
+          const f = forward(player.yaw);
+          for (const e of enemies) {
+            const dx = e.x - player.x,
+              dz = e.z - player.z,
+              d = Math.hypot(dx, dz);
+            if (
+              e.health > 0 &&
+              d < reach &&
+              (dx * f.x + dz * f.z) / Math.max(d, 0.01) > 0.18 &&
+              lineClear(player, e)
+            ) {
+              enemyHit(e, [46, 52, 78][bladeStep], true);
+              e.stun = heavy ? 1.2 : 0.45;
+              e.charge = 0;
+              if (d > 0.01)
+                moveBody(
+                  e,
+                  (dx / d) * (heavy ? 0.85 : 0.25),
+                  (dz / d) * (heavy ? 0.85 : 0.25),
+                  e.collisionRadius,
+                );
+            }
+          }
+          let reflected = 0;
+          for (const b of bullets) {
+            const dx = b.x - player.x,
+              dz = b.z - player.z,
+              d = Math.hypot(dx, dz);
+            if (
+              !b.friendly &&
+              d < 3.25 &&
+              (dx * f.x + dz * f.z) / Math.max(d, 0.01) > 0.1 &&
+              lineClear(player, b)
+            ) {
+              b.friendly = true;
+              b.dx = -b.dx;
+              b.dy = -b.dy;
+              b.dz = -b.dz;
+              b.speed *= 1.45;
+              b.damage = 64;
+              b.life = 3;
+              reflected++;
+              sparks(b.x, b.y, b.z, palette.mint, 12, 4);
+            }
+          }
+          if (reflected) {
+            toast("RETURN TO SENDER / BOLT DEFLECTED", 1.6);
+            tone(1200, 0.18, "square", 0.07, 600);
+          } else if (heavy) toast("ARC FINISHER", 0.8);
+          const contact = sceneHit(
+            { x: player.x, y: 1.3, z: player.z },
+            forward(player.yaw),
+            reach,
+          );
+          if (contact < reach) {
+            sparks(
+              player.x + f.x * contact,
+              1.3,
+              player.z + f.z * contact,
+              palette.mint,
+              10,
+              3,
+            );
+            tone(700, 0.1, "triangle", 0.1, 80);
+          }
+        }
         function fire() {
           if (mode !== "playing" || mapOpen || fireTimer > 0 || reloadTimer > 0)
             return;
           if (player.weapon === 1) {
             bladeStep = gameTime - lastSwing < 0.95 ? (bladeStep + 1) % 3 : 0;
             lastSwing = gameTime;
-            const heavy = bladeStep === 2,
-              reach = heavy ? 3.25 : 2.85;
+            const heavy = bladeStep === 2;
             fireTimer = heavy ? 0.56 : 0.34;
             bladeDuration = fireTimer;
             bladeTimer = fireTimer;
-            tone(heavy ? 110 : 230, 0.22, "sawtooth", 0.12, heavy ? 45 : 70);
-            tone(880, 0.16, "triangle", 0.06, 220);
-            noise(0.14, 0.13, 2600);
-            slashes.push({
-              x: player.x,
-              y: 1.3,
-              z: player.z,
-              yaw: player.yaw,
-              step: bladeStep,
-              life: 0.24,
-              max: 0.24,
-            });
-            const f = forward(player.yaw);
-            for (const e of enemies) {
-              const dx = e.x - player.x,
-                dz = e.z - player.z,
-                d = Math.hypot(dx, dz);
-              if (
-                e.health > 0 &&
-                d < reach &&
-                (dx * f.x + dz * f.z) / Math.max(d, 0.01) > 0.18 &&
-                lineClear(player, e)
-              ) {
-                enemyHit(e, [46, 52, 78][bladeStep], true);
-                e.stun = heavy ? 1.2 : 0.45;
-                e.charge = 0;
-                if (d > 0.01)
-                  moveBody(
-                    e,
-                    (dx / d) * (heavy ? 0.85 : 0.25),
-                    (dz / d) * (heavy ? 0.85 : 0.25),
-                    e.collisionRadius,
-                  );
-              }
-            }
-            let reflected = 0;
-            for (const b of bullets) {
-              const dx = b.x - player.x,
-                dz = b.z - player.z,
-                d = Math.hypot(dx, dz);
-              if (
-                !b.friendly &&
-                d < 3.25 &&
-                (dx * f.x + dz * f.z) / Math.max(d, 0.01) > 0.1 &&
-                lineClear(player, b)
-              ) {
-                b.friendly = true;
-                b.dx = -b.dx;
-                b.dy = -b.dy;
-                b.dz = -b.dz;
-                b.speed *= 1.45;
-                b.damage = 64;
-                b.life = 3;
-                reflected++;
-                sparks(b.x, b.y, b.z, palette.mint, 12, 4);
-              }
-            }
-            if (reflected) {
-              toast("RETURN TO SENDER / BOLT DEFLECTED", 1.6);
-              tone(1200, 0.18, "square", 0.07, 600);
-            } else if (heavy) toast("ARC FINISHER", 0.8);
-            const contact = sceneHit(
-              { x: player.x, y: 1.3, z: player.z },
-              forward(player.yaw),
-              reach,
-            );
-            if (contact < reach) {
-              sparks(
-                player.x + f.x * contact,
-                1.3,
-                player.z + f.z * contact,
-                palette.mint,
-                10,
-                3,
-              );
-              tone(700, 0.1, "triangle", 0.1, 80);
-            }
+            bladePending = true;
             return;
           }
           if (player.ammo <= 0) {
@@ -4583,6 +4578,7 @@ gl_FragColor=vec4(col,1.);}`;
             if (e.code === "KeyE") interact();
             if (e.code === "Digit1" || e.code === "Digit2") {
               player.weapon = e.code === "Digit1" ? 1 : 2;
+              if (player.weapon !== 1) bladePending = false;
               reloadTimer = 0;
             }
           }
@@ -4744,6 +4740,7 @@ gl_FragColor=vec4(col,1.);}`;
         $("touch-dash").onclick = dash;
         $("touch-weapon").onclick = () => {
           player.weapon = player.weapon === 1 ? 2 : 1;
+          bladePending = false;
           reloadTimer = 0;
         };
         function update(dt) {
@@ -4758,8 +4755,14 @@ gl_FragColor=vec4(col,1.);}`;
           player.elapsed += dt;
           portalCharge = Math.min(1, portalCharge + (cardTaken ? dt * 1.6 : 0));
           bladeTimer = Math.max(0, bladeTimer - dt);
-          for (const slash of slashes) slash.life -= dt;
-          slashes = slashes.filter((s) => s.life > 0);
+          if (bladePending && player.weapon !== 1) bladePending = false;
+          if (
+            bladePending &&
+            bladeTimer <= bladeDuration * (1 - BLADE_CONTACT)
+          ) {
+            bladePending = false;
+            strikeBlade();
+          }
           fireTimer = Math.max(0, fireTimer - dt);
           empTimer = Math.max(0, empTimer - dt);
           dashTimer = Math.max(0, dashTimer - dt);
@@ -5662,42 +5665,6 @@ gl_FragColor=vec4(col,1.);}`;
           for (const p of particles)
             box(out, p.x, p.y, p.z, p.size, p.size, p.size, p.color, 2);
           for (const t of traces) beam(out, t.a, t.b, palette.orange, 0.013, 3);
-          if (!reduced)
-            for (const slash of slashes) {
-              const progress = 1 - slash.life / slash.max,
-                heavy = slash.step === 2;
-              for (let i = 0; i < 14; i++) {
-                const a = slash.yaw - 0.95 + i * 0.14 + progress * 0.22,
-                  b = a + 0.14,
-                  r = heavy ? 2.6 : 2.1;
-                const one = {
-                  x: slash.x + Math.sin(a) * r,
-                  y:
-                    slash.y +
-                    Math.sin(a - slash.yaw) * (slash.step === 1 ? -0.45 : 0.45),
-                  z: slash.z - Math.cos(a) * r,
-                };
-                const two = {
-                  x: slash.x + Math.sin(b) * r,
-                  y:
-                    slash.y +
-                    Math.sin(b - slash.yaw) * (slash.step === 1 ? -0.45 : 0.45),
-                  z: slash.z - Math.cos(b) * r,
-                };
-                if (
-                  lineClear({ x: slash.x, y: slash.y, z: slash.z }, one) &&
-                  lineClear({ x: slash.x, y: slash.y, z: slash.z }, two)
-                )
-                  beam(
-                    out,
-                    one,
-                    two,
-                    heavy ? [0.7, 0.4, 1] : palette.mint,
-                    (1 - progress) * 0.028,
-                    2,
-                  );
-              }
-            }
           // Slow drifting motes give the pressurized air a little depth.
           for (let i = 0; i < 32; i++) {
             const x = player.x + Math.sin(i * 13.4) * 8,
@@ -5707,6 +5674,58 @@ gl_FragColor=vec4(col,1.);}`;
               box(out, x, y, z, 0.012, 0.012, 0.012, [0.28, 0.46, 0.48], 0.5);
           }
           return out;
+        }
+        const BLADE_CONTACT = 0.42;
+        const BLADE_REST = [0.3, -0.38, -0.86, -0.18, -0.2, -0.32];
+        const BLADE_CUTS = [
+          [
+            [0.48, -0.2, -0.65, -0.12, -0.35, -0.9],
+            [0.02, -0.24, -1.1, -1.2, -0.15, 0.15],
+            [-0.38, -0.53, -0.85, -1.95, 0.4, 1.25],
+          ],
+          [
+            [-0.4, -0.23, -0.7, -0.2, 0.3, 0.95],
+            [0.06, -0.23, -1.12, -1.25, 0.1, -0.2],
+            [0.48, -0.46, -0.85, -1.9, -0.35, -1.2],
+          ],
+          [
+            [0.2, 0.1, -0.62, 0.22, -0.1, -0.14],
+            [0.08, -0.22, -1.15, -1.45, 0, 0],
+            [0.02, -0.65, -0.92, -2.45, 0.1, 0.15],
+          ],
+        ];
+        function bladePose(step, progress, quiet = reduced) {
+          const p = clamp(progress, 0, 1);
+          if (quiet) {
+            const thrust = Math.sin(Math.PI * Math.min(1, p / 0.75));
+            return BLADE_REST.map(
+              (v, i) =>
+                v - (i === 2 ? thrust * 0.24 : i === 3 ? thrust * 0.35 : 0),
+            );
+          }
+          const frames = [BLADE_REST, ...BLADE_CUTS[step], BLADE_REST],
+            times = [0, 0.2, BLADE_CONTACT, 0.64, 1];
+          let segment = 0;
+          while (segment < 3 && p > times[segment + 1]) segment++;
+          const t =
+              (p - times[segment]) / (times[segment + 1] - times[segment]),
+            ease = t * t * (3 - 2 * t);
+          return frames[segment].map(
+            (v, i) => v + (frames[segment + 1][i] - v) * ease,
+          );
+        }
+        function bladeTransform(pose, x, y, z, normal = false) {
+          const [tx, ty, tz, pitch, yaw, roll] = pose,
+            scale = normal ? 1 : 0.8,
+            rx = (x * Math.cos(roll) - y * Math.sin(roll)) * scale,
+            ry = (x * Math.sin(roll) + y * Math.cos(roll)) * scale,
+            py = ry * Math.cos(pitch) - z * scale * Math.sin(pitch),
+            pz = ry * Math.sin(pitch) + z * scale * Math.cos(pitch);
+          return [
+            rx * Math.cos(yaw) + pz * Math.sin(yaw) + (normal ? 0 : tx),
+            py + (normal ? 0 : ty),
+            -rx * Math.sin(yaw) + pz * Math.cos(yaw) + (normal ? 0 : tz),
+          ];
         }
         function bladeMesh(time) {
           const mesh = [],
@@ -5806,32 +5825,86 @@ gl_FragColor=vec4(col,1.);}`;
           }
           for (let i = 0; i < 3; i++)
             B(-0.058, 0.23 + i * 0.07, 0, 0.026, 0.038, 0.064, palette.trim);
-          let roll = -0.28,
-            tx = 0.23,
-            ty = -0.4,
-            tz = -0.9;
-          if (active && !reduced) {
-            const sweep = Math.sin(Math.min(1, progress / 0.7) * Math.PI),
-              sign = bladeStep === 1 ? -1 : 1;
-            roll +=
-              sign * (1.15 - 2.7 * progress) * Math.sin(progress * Math.PI);
-            tx -= sweep * (heavy ? 0.5 : 0.36);
-            ty += sweep * 0.14;
-            tz -= sweep * 0.1;
-          }
-          tx += bxForBlade();
-          const ca = Math.cos(roll),
-            sa = Math.sin(roll);
+          // The gauntlet grips the hilt; the forearm reaches from a fixed elbow.
+          B(0, -0.16, 0.025, 0.19, 0.22, 0.21, [0.16, 0.19, 0.21]);
+          B(0.105, -0.15, 0.04, 0.045, 0.16, 0.16, palette.trim);
+          for (let i = 0; i < 3; i++)
+            B(
+              -0.02,
+              -0.23 + i * 0.055,
+              0.14,
+              0.15,
+              0.043,
+              0.045,
+              [0.28, 0.33, 0.34],
+            );
+          const pose = bladePose(bladeStep, progress);
+          pose[0] += bxForBlade();
           for (let i = 0; i < mesh.length; i += 12) {
-            const x = mesh[i] * 0.8,
-              y = mesh[i + 1] * 0.8,
-              nx = mesh[i + 3],
-              ny = mesh[i + 4];
-            mesh[i] = tx + x * ca - y * sa;
-            mesh[i + 1] = ty + x * sa + y * ca;
-            mesh[i + 2] = mesh[i + 2] * 0.8 + tz;
-            mesh[i + 3] = nx * ca - ny * sa;
-            mesh[i + 4] = nx * sa + ny * ca;
+            const point = bladeTransform(
+                pose,
+                mesh[i],
+                mesh[i + 1],
+                mesh[i + 2],
+              ),
+              normal = bladeTransform(
+                pose,
+                mesh[i + 3],
+                mesh[i + 4],
+                mesh[i + 5],
+                true,
+              );
+            for (let axis = 0; axis < 3; axis++) {
+              mesh[i + axis] = point[axis];
+              mesh[i + 3 + axis] = normal[axis];
+            }
+          }
+          const wrist = bladeTransform(pose, 0, -0.29, 0.025),
+            elbow = [0.42, -0.78, -0.25],
+            delta = wrist.map((v, i) => v - elbow[i]),
+            length = Math.hypot(...delta),
+            axis = delta.map((v) => v / length),
+            sideLength = Math.hypot(axis[0], axis[2]),
+            side = [axis[2] / sideLength, 0, -axis[0] / sideLength],
+            up = [
+              axis[1] * side[2],
+              axis[2] * side[0] - axis[0] * side[2],
+              -axis[1] * side[0],
+            ],
+            sleeve = [];
+          box(sleeve, 0, 0, 0, 0.16, length, 0.18, [0.12, 0.17, 0.19]);
+          for (let i = 0; i < sleeve.length; i += 12) {
+            const p = sleeve.slice(i, i + 3),
+              n = sleeve.slice(i + 3, i + 6);
+            for (let j = 0; j < 3; j++) {
+              sleeve[i + j] =
+                (wrist[j] + elbow[j]) / 2 +
+                side[j] * p[0] +
+                axis[j] * p[1] +
+                up[j] * p[2];
+              sleeve[i + 3 + j] =
+                side[j] * n[0] + axis[j] * n[1] + up[j] * n[2];
+            }
+          }
+          mesh.push(...sleeve);
+          // A short edge trail follows the actual blade path through depth.
+          if (active && !reduced && progress > 0.2 && progress < 0.76) {
+            const end = Math.min(0.64, progress),
+              begin = Math.max(0.2, progress - 0.12);
+            for (let i = 0; i < 7; i++) {
+              const a = bladePose(bladeStep, begin + ((end - begin) * i) / 7),
+                b = bladePose(bladeStep, begin + ((end - begin) * (i + 1)) / 7),
+                one = bladeTransform(a, 0.08, 1.04, 0),
+                two = bladeTransform(b, 0.08, 1.04, 0);
+              beam(
+                mesh,
+                { x: one[0], y: one[1], z: one[2] },
+                { x: two[0], y: two[1], z: two[2] },
+                energy.map((v) => v * (0.25 + i * 0.08)),
+                0.006 + i * 0.0015,
+                0.8,
+              );
+            }
           }
           return mesh;
         }

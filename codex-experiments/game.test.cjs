@@ -613,6 +613,8 @@ test("rifle fire, reload timing and melee with no ammunition use the live contro
   e.health = 40;
   g.player.yaw = Math.PI / 2;
   g.fire();
+  assert.equal(e.health, 40, "wind-up does not deal damage");
+  tick(0.15);
   assert.ok(e.health <= 0);
   assert.equal(g.player.kills, 1);
 });
@@ -1150,6 +1152,7 @@ test("furniture blocks the rifle, blade, EMP and incoming enemy bolts", () => {
   tick(0.2);
   p.weapon = 1;
   g.fire();
+  tick(0.15);
   assert.equal(e.health, 200);
   g.emp();
   assert.equal(e.health, 200);
@@ -1351,24 +1354,110 @@ test("the blade chains two cuts into a stronger finisher, then resets after a pa
   g.player.yaw = Math.PI / 2;
   place();
   g.fire();
+  assert.equal(e.health, 1000);
+  tick(0.15);
   assert.equal(e.health, 954);
   assert.equal(g.state.bladeStep, 0);
   tick(0.36);
   place();
   g.fire();
+  assert.equal(e.health, 1000);
+  tick(0.15);
   assert.equal(e.health, 948);
   assert.equal(g.state.bladeStep, 1);
   tick(0.36);
   place();
   g.fire();
+  assert.equal(e.health, 1000);
+  tick(0.24);
   assert.equal(e.health, 922);
   assert.equal(g.state.bladeStep, 2);
-  assert.ok(e.stun >= 1.2);
+  assert.ok(
+    e.stun > 1.16,
+    "finisher stun has only advanced one simulation frame",
+  );
   tick(1.1);
   place();
   g.fire();
+  tick(0.15);
   assert.equal(e.health, 954);
   assert.equal(g.state.bladeStep, 0);
+});
+
+test("blade contact fires once, pauses during wind-up, and cancels when switching weapons", () => {
+  for (const reduced of [false, true]) {
+    const s = campaign({ reduced }),
+      { game: g, tick } = s;
+    g.startRun();
+    g.enemies.forEach((e) => (e.health = 0));
+    g.player.weapon = 1;
+    g.player.yaw = Math.PI / 2;
+    const e = g.enemies[0];
+    Object.assign(e, {
+      x: g.player.x + 1.5,
+      z: g.player.z,
+      health: 1000,
+      stun: 99,
+    });
+    g.fire();
+    tick(0.1);
+    assert.equal(e.health, 1000);
+    g.pause();
+    tick(1);
+    assert.equal(e.health, 1000);
+    g.setPlaying(false);
+    tick(0.05);
+    assert.equal(e.health, 954);
+    tick(0.4);
+    assert.equal(e.health, 954, "follow-through cannot strike again");
+    g.fire();
+    s.event("keydown", { code: "Digit2" });
+    s.event("keydown", { code: "Digit1" });
+    tick(0.4);
+    assert.equal(
+      e.health,
+      954,
+      "switching away cancels even if immediately re-equipped",
+    );
+  }
+});
+
+test("cutlass swings extend forward with finite geometry, unit normals and camera clearance", () => {
+  const { game: g, tick } = campaign({ reduced: false });
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  g.player.weapon = 1;
+  const idle = g.bladeMesh(2);
+  const depth = (mesh) => {
+    let z = 0;
+    for (let i = 2; i < mesh.length; i += 12) z = Math.min(z, mesh[i]);
+    return z;
+  };
+  for (let step = 0; step < 3; step++) {
+    g.fire();
+    let furthest = 0;
+    while (g.state.bladeTimer > 0) {
+      tick(1 / 60);
+      const mesh = g.bladeMesh(2);
+      assert.ok(mesh.every(Number.isFinite));
+      furthest = Math.min(furthest, depth(mesh));
+      for (let i = 0; i < mesh.length; i += 12) {
+        assert.ok(
+          mesh[i + 2] < -0.04,
+          "weapon stays in front of the camera near plane",
+        );
+        assert.ok(
+          Math.abs(Math.hypot(mesh[i + 3], mesh[i + 4], mesh[i + 5]) - 1) <
+            1e-8,
+          "3D transforms preserve lighting normals",
+        );
+      }
+    }
+    assert.ok(
+      furthest < depth(idle) - 0.6,
+      "each cut reaches forward instead of only rotating on screen",
+    );
+  }
 });
 
 test("blade parries return projectiles to enemies and cannot reflect bolts behind the pilot", () => {
@@ -1410,9 +1499,11 @@ test("blade parries return projectiles to enemies and cannot reflect bolts behin
   });
   const shield = g.player.shield;
   g.fire();
+  assert.ok(!g.bullets[0].friendly, "parry occurs as the blade swings through");
+  tick(0.15);
   assert.equal(g.bullets[0].friendly, true);
   assert.ok(!g.bullets[1].friendly);
-  tick(0.2);
+  tick(0.3);
   assert.ok(e.health <= 0);
   assert.equal(g.player.shield, shield);
 });
