@@ -1956,14 +1956,17 @@ test("soundtrack selection persists safely before the audio context exists", () 
   assert.equal(restored.element("music-title").textContent, "ION RUNNER");
 });
 
-test("lockdown has a soft deadline, Explorer grace, and unbounded strength with bounded cadence", () => {
-  assert.equal(C.floorClock(179.99).tier, 0);
-  assert.equal(C.floorClock(180).tier, 1);
-  assert.equal(C.floorClock(224.99).tier, 1);
-  assert.equal(C.floorClock(225).tier, 2);
-  assert.equal(C.floorClock(180).next, 45);
-  assert.equal(C.floorClock(239.99, "explorer").tier, 0);
-  assert.equal(C.floorClock(240, "explorer").tier, 1);
+test("lockdown starts after one minute, surges every thirty seconds, and bounds cadence but not strength", () => {
+  for (const difficulty of ["standard", "explorer"]) {
+    assert.equal(C.floorClock(0, difficulty).next, 60);
+    assert.equal(C.floorClock(59.99, difficulty).tier, 0);
+    assert.equal(C.floorClock(60, difficulty).tier, 1);
+    assert.equal(C.floorClock(60, difficulty).next, 30);
+    assert.equal(C.floorClock(89.99, difficulty).tier, 1);
+    assert.equal(C.floorClock(90, difficulty).tier, 2);
+    assert.equal(C.floorClock(90, difficulty).next, 30);
+    assert.equal(C.floorClock(120, difficulty).tier, 3);
+  }
   for (const type of Object.keys(C.enemyTypes)) {
     const e = C.makeEnemy(C.rng(99), type, 4),
       original = { ...e };
@@ -2070,6 +2073,8 @@ test("floor clock and node production pause together and reset after lockdown ex
   const s = campaign(),
     g = s.game;
   g.startRun();
+  g.updateHUD();
+  assert.equal(s.element("pressure-time").textContent, "01:00");
   g.enemies.forEach((e) => {
     e.stun = 1e6;
   });
@@ -2092,17 +2097,20 @@ test("floor clock and node production pause together and reset after lockdown ex
   assert.equal(g.state.floorStats.seconds, seconds);
   s.setHidden(false);
   g.setPlaying(false);
-  g.state.floorStats.seconds = 179.99;
+  g.state.floorStats.seconds = 59.99;
   s.tick(0.05);
   assert.equal(g.state.lockdownTier, 1);
   assert.ok(g.enemies.every((e) => e.lockdownTier === 1 && e.alert));
+  g.updateHUD();
+  assert.equal(s.element("pressure-time").textContent, "00:30");
   const health = g.enemies[0].maxHealth;
-  g.state.floorStats.seconds = 224.99;
+  g.state.floorStats.seconds = 89.99;
   s.tick(0.05);
   assert.equal(g.state.lockdownTier, 2);
   assert.ok(g.enemies[0].maxHealth > health);
   g.updateHUD();
   assert.match(s.element("pressure-label").textContent, /LOCKDOWN 2/);
+  assert.equal(s.element("pressure-time").textContent, "00:30");
   g.enemies.forEach((e) => (e.health = 0));
   g.spawners.forEach((node) => g.spawnerHit(node, 1e6));
   Object.assign(g.player, g.level.card);
@@ -2118,6 +2126,8 @@ test("floor clock and node production pause together and reset after lockdown ex
   s.element("upgrade-blade").onclick();
   assert.equal(g.state.lockdownTier, 0);
   assert.equal(g.state.floorStats.seconds, 0);
+  g.updateHUD();
+  assert.equal(s.element("pressure-time").textContent, "01:00");
   assert.ok(
     g.spawners.every((node) => node.health === node.maxHealth && !node.pending),
   );
@@ -2149,7 +2159,7 @@ test("nodes telegraph individual reinforcements, inherit lockdown, and revalidat
   assert.equal(node.pending, null);
   assert.equal(node.cooldown, 3);
   Object.assign(g.player, g.level.start);
-  g.state.floorStats.seconds = 225;
+  g.state.floorStats.seconds = 90;
   node.cooldown = 0;
   g.updatePressure(0.01);
   assert.equal(g.state.lockdownTier, 2);
@@ -2638,7 +2648,7 @@ test("guardian wind-ups pause with the map, and lockdown preserves wounds", () =
   g.toggleMap();
   boss.health = boss.maxHealth * 0.4;
   const damage = boss.damage;
-  g.state.floorStats.seconds = 180;
+  g.state.floorStats.seconds = 60;
   tick(0.02);
   assert.ok(boss.damage > damage);
   assert.ok(Math.abs(boss.health / boss.maxHealth - 0.4) < 1e-10);

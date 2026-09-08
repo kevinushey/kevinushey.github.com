@@ -50,10 +50,10 @@ machines scrapped, and contract progress. **Arc welder** adds 12 damage to each
 cut and 16 damage to reflected bolts, alongside the rifle, armor, and ability
 upgrades. Contracts and their rewards reset each floor; upgrades last for the run.
 
-**Floor lockdown:** A visible countdown gives you three minutes per floor
-(four in Explorer). At zero, every surviving machine begins hunting you and
+**Floor lockdown:** A visible countdown gives you one minute per floor in both
+Standard and Explorer. At zero, every surviving machine begins hunting you and
 gains health, damage, speed, and firing cadence. Another overclock surge arrives
-every 45 seconds. Health and damage keep increasing; movement and attack rates
+every 30 seconds. Health and damage keep increasing; movement and attack rates
 stay bounded. Wounded enemies retain their health percentage. A warning plays
 30 seconds before lockdown, and the music gains its combat layers. The lift
 remains usable: the deadline adds pressure rather than ending the run. The

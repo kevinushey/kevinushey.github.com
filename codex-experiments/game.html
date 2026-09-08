@@ -1469,7 +1469,7 @@
           </div>
           <div id="floor-pressure" class="floor-pressure mono">
             <span id="pressure-label">LOCKDOWN IN</span>
-            <strong id="pressure-time">03:00</strong>
+            <strong id="pressure-time">01:00</strong>
             <small id="breach-status">2 BREACH NODES ONLINE</small>
           </div>
         </div>
@@ -1690,10 +1690,10 @@
         shots, and use the cutlass. Excess pickup ammo stays on the floor.
       </p>
       <p>
-        Each floor locks down after three minutes (four in Explorer). Every 45
-        seconds after that, surviving enemies gain health, damage, speed, and
-        aggression. The lift stays available. The timer pauses with the game and
-        tactical map, and resets at the next floor.
+        Each floor locks down after one minute. Every 30 seconds after that,
+        surviving enemies gain health, damage, speed, and aggression. The lift
+        stays available. The timer pauses with the game and tactical map, and
+        resets at the next floor.
       </p>
       <p>
         Two violet breach nodes manufacture reinforcements throughout each
@@ -1983,7 +1983,7 @@
             squadSize: Math.min(5, 1 + Math.floor(deck / 3)),
           };
         }
-        const LOCKDOWN = { standard: 180, explorer: 240, step: 45 };
+        const LOCKDOWN = { standard: 60, explorer: 60, step: 30 };
         const BREACH = {
           charge: 2.4,
           interval: 35,
@@ -5321,7 +5321,7 @@ gl_FragColor=vec4(col,1.);}`;
           makeLevel();
           setPlaying();
           radio(
-            `${difficulty === "explorer" ? "Four" : "Three"} minutes before lockdown. Find the access card, then take the lift. Violet breach cores keep making machines. Cut them down if you can.`,
+            "One minute before lockdown. Hostiles power up every thirty seconds after that. Find the access card and defeat the portal guardian. Seal violet breach cores to stop reinforcements.",
             9,
           );
           toast(
