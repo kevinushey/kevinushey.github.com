@@ -75,7 +75,7 @@ provide cover and flanking routes; enemies, supplies, and objectives occupy
 separate clear floor tiles. Furniture also keeps narrow interior aisles clear.
 
 Collect supplies and scrap hostile machines. The Storm Cutlass chains a diagonal
-cut, a returning backhand, and an overhead finisher, with a visible gauntlet and
+cut, a returning backhand, and a wide horizontal finisher, with a visible gauntlet and
 forearm driving each swing forward. Wind-up, contact, and follow-through have
 distinct poses; the edge trail follows the blade. Damage, sound, and bolt parries
 occur at contact, after the short wind-up. Switching weapons cancels a pending
