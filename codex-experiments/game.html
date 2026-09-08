@@ -3735,6 +3735,15 @@ gl_FragColor=vec4(col,1.);}`;
               15,
               407 + i * 27,
             );
+          // A small weapon stencil shares the generated sign atlas. Keep the
+          // white material texel at (.98, .98) clear of the printed region.
+          actx.fillStyle = "#bdc9c6";
+          actx.fillRect(724, 380, 288, 108);
+          actx.fillStyle = "#26383d";
+          actx.font = "bold 48px monospace";
+          actx.fillText("P–24", 740, 435);
+          actx.font = "14px monospace";
+          actx.fillText("PULSE ARRAY / KEPLER", 742, 467);
           gl.bindTexture(gl.TEXTURE_2D, atlas);
           gl.texImage2D(
             gl.TEXTURE_2D,
@@ -7613,76 +7622,264 @@ gl_FragColor=vec4(col,1.);}`;
         function bxForStaff() {
           return reduced ? 0 : Math.sin(bob) * 0.008 * walkAmount;
         }
-        function weaponMesh(time) {
+        function rifleHousing(out, x, y, z, w, h, d, color, bevel = 0.015) {
+          const c = Math.min(bevel, w / 3, h / 3),
+            outline = [
+              [-w / 2 + c, -h / 2],
+              [w / 2 - c, -h / 2],
+              [w / 2, -h / 2 + c],
+              [w / 2, h / 2 - c],
+              [w / 2 - c, h / 2],
+              [-w / 2 + c, h / 2],
+              [-w / 2, h / 2 - c],
+              [-w / 2, -h / 2 + c],
+            ];
+          for (let i = 0; i < outline.length; i++) {
+            const a = outline[i],
+              b = outline[(i + 1) % outline.length],
+              length = Math.hypot(b[0] - a[0], b[1] - a[1]),
+              point = (p, side) => [x + p[0], y + p[1], z + (side * d) / 2];
+            quad(
+              out,
+              [point(a, -1), point(b, -1), point(b, 1), point(a, 1)],
+              [(b[1] - a[1]) / length, (a[0] - b[0]) / length, 0],
+              color,
+            );
+            for (const side of [-1, 1]) {
+              const center = [x, y, z + (side * d) / 2];
+              quad(
+                out,
+                [center, point(a, side), point(b, side), center],
+                [0, 0, side],
+                color,
+              );
+            }
+          }
+        }
+        function rifleRing(
+          out,
+          x,
+          y,
+          z,
+          length,
+          outer,
+          inner,
+          color,
+          glow = 0,
+          axis = "z",
+        ) {
+          const transform = ([a, b, c], normal = false) =>
+              axis === "x"
+                ? [
+                    (normal ? 0 : x) + c,
+                    (normal ? 0 : y) + b,
+                    (normal ? 0 : z) - a,
+                  ]
+                : [
+                    (normal ? 0 : x) + a,
+                    (normal ? 0 : y) + b,
+                    (normal ? 0 : z) + c,
+                  ],
+            face = (points, normal) =>
+              quad(
+                out,
+                points.map((p) => transform(p)),
+                transform(normal, true),
+                color,
+                glow,
+              ),
+            point = (angle, radius, end) => [
+              Math.cos(angle) * radius,
+              Math.sin(angle) * radius,
+              (end * length) / 2,
+            ];
+          for (let i = 0; i < 10; i++) {
+            const a = (i * Math.PI) / 5,
+              b = ((i + 1) * Math.PI) / 5,
+              normal = [Math.cos((a + b) / 2), Math.sin((a + b) / 2), 0];
+            face(
+              [
+                point(a, outer, -1),
+                point(b, outer, -1),
+                point(b, outer, 1),
+                point(a, outer, 1),
+              ],
+              normal,
+            );
+            if (inner > 0)
+              face(
+                [
+                  point(a, inner, -1),
+                  point(b, inner, -1),
+                  point(b, inner, 1),
+                  point(a, inner, 1),
+                ],
+                normal.map((v) => -v),
+              );
+            for (const end of [-1, 1])
+              face(
+                [
+                  point(a, outer, end),
+                  point(b, outer, end),
+                  point(b, inner, end),
+                  point(a, inner, end),
+                ],
+                [0, 0, end],
+              );
+          }
+        }
+        function rifleMesh(time) {
           const out = [],
             motion = reduced ? 0 : 1,
-            kick = flashTimer / 0.09,
-            bx = Math.sin(bob) * 0.012 * walkAmount * motion,
-            by = Math.abs(Math.cos(bob)) * 0.015 * walkAmount * motion,
-            reload =
-              reloadTimer > 0
-                ? Math.sin((reloadTimer / player.reloadDuration) * Math.PI)
-                : 0;
-          const B = (x, y, z, w, h, d, color, glow = 0, angle = 0) =>
-            box(
-              out,
-              x + bx,
-              y + by - reload * 0.45,
-              z + kick * 0.045,
-              w,
-              h,
-              d,
-              color,
-              glow,
-              angle,
-            );
-          if (player.weapon === 1) return staffMesh(time);
-          B(0.31, -0.32, -0.63, 0.2, 0.19, 0.52, [0.13, 0.18, 0.21]);
-          B(0.31, -0.23, -0.69, 0.23, 0.065, 0.58, [0.33, 0.41, 0.43]);
-          B(0.31, -0.31, -0.93, 0.14, 0.12, 0.27, palette.dark);
-          B(0.31, -0.31, -1.08, 0.175, 0.15, 0.055, palette.trim);
-          B(0.31, -0.31, -1.113, 0.075, 0.065, 0.02, palette.dark);
-          B(
-            0.31,
-            -0.31,
-            -1.13,
-            0.05,
-            0.045,
-            0.02,
-            palette.orange,
-            flashTimer > 0 ? 6 : 0.9,
-          );
-          B(0.31, -0.2, -0.68, 0.09, 0.03, 0.41, palette.dark);
-          for (let i = 0; i < 7; i++)
-            B(0.31, -0.18, -0.48 - i * 0.055, 0.12, 0.02, 0.025, palette.trim);
-          const reloading = reloadTimer > 0,
+            kick = clamp(flashTimer / 0.09, 0, 1) * motion,
+            reloading = reloadTimer > 0,
+            progress = reloading
+              ? clamp(1 - reloadTimer / player.reloadDuration, 0, 1)
+              : 0,
+            reload = Math.sin(progress * Math.PI),
+            magazine = Math.sin(
+              Math.PI * clamp((progress - 0.12) / 0.76, 0, 1),
+            ),
+            ammoFraction = reloading ? progress : player.ammo / player.magSize,
             ammoColor = reloading
               ? palette.orange
               : player.ammo <= player.magSize * 0.25
                 ? palette.red
-                : palette.mint;
-          B(0.31, -0.14, -0.55, 0.13, 0.105, 0.13, palette.trim);
-          B(0.31, -0.14, -0.48, 0.114, 0.089, 0.012, palette.dark);
-          B(0.31, -0.077, -0.55, 0.055, 0.02, 0.07, ammoColor, 1);
-          // A physical rear-facing display shares the rifle's recoil and bob.
-          const panel = (x, y, w, h, color, glow = 0) => {
-            const px = x + bx,
-              py = y + by - reload * 0.45,
-              pz = -0.473 + kick * 0.045;
-            quad(
-              out,
-              [
-                [px - w / 2, py - h / 2, pz],
-                [px + w / 2, py - h / 2, pz],
-                [px + w / 2, py + h / 2, pz],
-                [px - w / 2, py + h / 2, pz],
-              ],
-              [0, 0, 1],
-              color,
-              glow,
+                : palette.mint,
+            ceramic = [0.57, 0.64, 0.62],
+            metal = [0.2, 0.27, 0.3],
+            copper = [0.57, 0.31, 0.12],
+            coreColor =
+              player.ammo || reloading ? [0.24, 0.84, 1] : [0.1, 0.2, 0.23],
+            charge = player.ammo || reloading ? 0.8 + kick * 1.7 : 0.08,
+            B = (x, y, z, w, h, d, col, glow = 0) =>
+              box(out, x, y, z, w, h, d, col, glow),
+            H = (x, y, z, w, h, d, col, bevel) =>
+              rifleHousing(out, x, y, z, w, h, d, col, bevel),
+            R = (x, y, z, length, outer, inner, col, glow = 0, axis = "z") =>
+              rifleRing(out, x, y, z, length, outer, inner, col, glow, axis);
+          // Layered receiver: a dark chassis, bevelled ceramic plates, and a
+          // separate exposed capacitor instead of one solid rectangular shell.
+          H(0.3, -0.315, -0.665, 0.215, 0.17, 0.49, palette.dark);
+          H(0.3, -0.232, -0.69, 0.237, 0.055, 0.59, ceramic, 0.012);
+          H(0.3, -0.39, -0.63, 0.19, 0.046, 0.43, metal, 0.01);
+          H(0.184, -0.268, -0.61, 0.026, 0.095, 0.275, ceramic, 0.004);
+          H(0.417, -0.31, -0.65, 0.028, 0.12, 0.37, metal, 0.007);
+          B(0.174, -0.315, -0.61, 0.014, 0.012, 0.25, palette.orange, 0.25);
+          // The stencil sits just outside its plate, never coplanar with it.
+          quad(
+            out,
+            [
+              [0.1705, -0.291, -0.717],
+              [0.1705, -0.291, -0.503],
+              [0.1705, -0.228, -0.503],
+              [0.1705, -0.228, -0.717],
+            ],
+            [-1, 0, 0],
+            [1, 1, 1],
+            0,
+            [
+              [724 / 1024, 488 / 512],
+              [1012 / 1024, 488 / 512],
+              [1012 / 1024, 380 / 512],
+              [724 / 1024, 380 / 512],
+            ],
+          );
+          // Slotted cooling fins and individual fasteners catch the headlamp.
+          for (let i = 0; i < 7; i++) {
+            B(0.3, -0.195, -0.52 - i * 0.049, 0.13, 0.018, 0.025, metal);
+            B(0.423, -0.3, -0.5 - i * 0.04, 0.018, 0.047, 0.013, palette.dark);
+          }
+          for (const z of [-0.487, -0.734]) {
+            R(0.165, -0.276, z, 0.012, 0.008, 0.003, metal, 0, "x");
+            B(0.1575, -0.276, z, 0.004, 0.003, 0.012, palette.dark);
+          }
+          // Side-mounted plasma chamber, caged end caps, and copper bus bars.
+          R(0.172, -0.351, -0.742, 0.22, 0.034, 0, coreColor, charge);
+          for (const z of [-0.865, -0.625])
+            R(0.172, -0.351, z, 0.035, 0.044, 0, metal);
+          for (let i = 0; i < 5; i++)
+            R(0.172, -0.351, -0.66 - i * 0.04, 0.012, 0.039, 0.034, copper);
+          B(0.129, -0.351, -0.743, 0.011, 0.017, 0.265, palette.dark);
+          B(0.153, -0.39, -0.71, 0.012, 0.012, 0.35, copper);
+          B(0.153, -0.37, -0.536, 0.014, 0.055, 0.014, copper);
+          // The accelerator's coils are visible through an open shroud.
+          R(0.3, -0.3, -1.03, 0.32, 0.036, 0, palette.dark);
+          for (let i = 0; i < 4; i++) {
+            const z = -0.926 - i * 0.067;
+            R(0.3, -0.3, z, 0.027, 0.061, 0.037, copper);
+            R(0.3, -0.3, z - 0.02, 0.011, 0.047, 0.036, coreColor, charge);
+          }
+          H(0.3, -0.227, -1.055, 0.146, 0.035, 0.33, ceramic, 0.008);
+          H(0.3, -0.369, -1.04, 0.128, 0.03, 0.32, metal, 0.008);
+          B(0.379, -0.3, -1.055, 0.018, 0.1, 0.33, metal);
+          for (let i = 0; i < 4; i++)
+            B(
+              0.3,
+              -0.206,
+              -0.96 - i * 0.056,
+              0.083,
+              0.011,
+              0.013,
+              palette.dark,
             );
-          };
-          const digitMasks = [63, 6, 91, 79, 102, 109, 125, 7, 127, 111],
+          R(0.3, -0.3, -1.257 + kick * 0.018, 0.116, 0.082, 0.039, metal);
+          R(0.3, -0.3, -1.318 + kick * 0.018, 0.018, 0.09, 0.043, palette.dark);
+          R(
+            0.3,
+            -0.3,
+            -1.33 + kick * 0.018,
+            0.005,
+            0.056,
+            0.045,
+            palette.orange,
+            0.5 + kick * 3,
+          );
+          // Small open reflex sight: its frame never fills in the sight picture.
+          B(0.3, -0.171, -0.879, 0.1, 0.021, 0.105, palette.dark);
+          for (const side of [-1, 1]) {
+            H(
+              0.3 + side * 0.051,
+              -0.12,
+              -0.875,
+              0.019,
+              0.096,
+              0.045,
+              metal,
+              0.004,
+            );
+            B(
+              0.3 + side * 0.05,
+              -0.123,
+              -0.85,
+              0.007,
+              0.012,
+              0.007,
+              palette.mint,
+              0.75,
+            );
+          }
+          H(0.3, -0.068, -0.875, 0.119, 0.016, 0.045, metal, 0.004);
+          B(0.3, -0.12, -0.898, 0.006, 0.006, 0.003, palette.mint, 0.9);
+          // Protected rear ammo counter, attached to the same transform as the rifle.
+          H(0.26, -0.162, -0.528, 0.154, 0.106, 0.116, metal, 0.014);
+          H(0.26, -0.162, -0.466, 0.133, 0.084, 0.008, palette.dark, 0.009);
+          for (const x of [0.193, 0.327])
+            R(x, -0.121, -0.468, 0.012, 0.004, 0, ceramic);
+          const panel = (x, y, w, h, color, glow = 0) =>
+              quad(
+                out,
+                [
+                  [x - w / 2, y - h / 2, -0.461],
+                  [x + w / 2, y - h / 2, -0.461],
+                  [x + w / 2, y + h / 2, -0.461],
+                  [x - w / 2, y + h / 2, -0.461],
+                ],
+                [0, 0, 1],
+                color,
+                glow,
+              ),
+            digitMasks = [63, 6, 91, 79, 102, 109, 125, 7, 127, 111],
             segments = [
               [0, 0.024, 0.022, 0.005],
               [0.013, 0.012, 0.005, 0.018],
@@ -7697,49 +7894,148 @@ gl_FragColor=vec4(col,1.);}`;
             .split("")
             .forEach((digit, index) => {
               const mask = digitMasks[Number(digit)];
-              segments.forEach(([x, y, w, h], segment) => {
-                const lit = mask & (1 << segment);
+              segments.forEach(([x, y, w, h], segment) =>
                 panel(
-                  0.289 + index * 0.042 + x,
-                  -0.132 + y,
+                  0.239 + index * 0.042 + x,
+                  -0.153 + y,
                   w,
                   h,
-                  lit ? ammoColor : [0.035, 0.065, 0.07],
-                  lit ? 0.85 : 0,
-                );
-              });
+                  mask & (1 << segment) ? ammoColor : [0.035, 0.065, 0.07],
+                  mask & (1 << segment) ? 0.85 : 0,
+                ),
+              );
             });
-          // The charge strip becomes a refill progress meter during reloads.
-          const ammoFraction = reloading
-            ? C.clamp(1 - reloadTimer / player.reloadDuration, 0, 1)
-            : player.ammo / player.magSize;
           for (let i = 0; i < 12; i++) {
             const lit = i < Math.ceil(ammoFraction * 12);
             panel(
-              0.2715 + i * 0.007,
-              -0.171,
+              0.2215 + i * 0.007,
+              -0.193,
               0.005,
               0.004,
               lit ? ammoColor : [0.035, 0.065, 0.07],
               lit ? 0.65 : 0,
             );
           }
-          B(0.195, -0.27, -0.57, 0.025, 0.08, 0.19, palette.orange, 0.8);
-          B(0.425, -0.285, -0.52, 0.026, 0.055, 0.26, palette.trim);
-          B(0.31, -0.45, -0.64, 0.125, 0.19, 0.18, [0.15, 0.21, 0.23]);
-          B(0.31, -0.55 - reload * 0.14, -0.66, 0.14, 0.07, 0.19, palette.trim);
-          B(0.3, -0.44, -0.41, 0.13, 0.21, 0.14, palette.dark);
-          B(0.31, -0.49, -0.36, 0.22, 0.17, 0.2, [0.18, 0.25, 0.25]);
-          B(0.35, -0.59, -0.22, 0.25, 0.29, 0.29, [0.22, 0.29, 0.28]);
-          B(0.23, -0.43, -0.82, 0.19, 0.15, 0.2, [0.23, 0.3, 0.28]);
-          B(0.19, -0.56, -0.7, 0.18, 0.21, 0.28, [0.16, 0.22, 0.23]);
-          if (flashTimer > 0 && !reduced) {
-            const a = time * 89;
-            B(0.31, -0.31, -1.2, 0.07, 0.07, 0.17, [1, 0.76, 0.36], 5);
-            B(0.31, -0.31, -1.23, 0.21, 0.027, 0.04, palette.orange, 4, a);
-            B(0.31, -0.31, -1.23, 0.025, 0.2, 0.04, palette.orange, 4, a);
+          // Battery pack slides out and reseats; its six windows show charge.
+          const magY = -0.471 - magazine * 0.18;
+          H(0.3, magY, -0.657, 0.128, 0.174, 0.16, metal, 0.014);
+          H(0.3, magY - 0.092, -0.657, 0.145, 0.03, 0.176, palette.dark, 0.006);
+          B(0.231, magY, -0.657, 0.012, 0.112, 0.1, palette.dark);
+          for (let i = 0; i < 6; i++)
+            B(
+              0.223,
+              magY - 0.044 + i * 0.018,
+              -0.657,
+              0.006,
+              0.009,
+              0.071,
+              i < Math.ceil(ammoFraction * 6) ? ammoColor : metal,
+              i < Math.ceil(ammoFraction * 6) ? 0.7 : 0,
+            );
+          // Skeleton trigger guard, stippled grip, and armoured supporting hands.
+          H(0.3, -0.466, -0.42, 0.102, 0.16, 0.106, palette.dark, 0.018);
+          for (let i = 0; i < 4; i++)
+            B(0.244, -0.42 - i * 0.03, -0.42, 0.008, 0.014, 0.083, metal);
+          B(0.3, -0.446, -0.5, 0.076, 0.018, 0.1, metal);
+          B(0.3, -0.416, -0.542, 0.076, 0.06, 0.016, metal);
+          B(0.3, -0.411, -0.482, 0.02, 0.041, 0.014, ceramic);
+          H(
+            0.308,
+            -0.475,
+            -0.373,
+            0.166,
+            0.134,
+            0.145,
+            [0.18, 0.24, 0.25],
+            0.024,
+          );
+          H(0.342, -0.582, -0.285, 0.18, 0.22, 0.14, [0.13, 0.19, 0.21], 0.023);
+          H(
+            0.3,
+            -0.441 - magazine * 0.14,
+            -0.862 + magazine * 0.14,
+            0.167,
+            0.11,
+            0.17,
+            [0.18, 0.24, 0.25],
+            0.022,
+          );
+          for (let i = 0; i < 3; i++)
+            B(
+              0.207,
+              -0.414 - i * 0.029 - magazine * 0.14,
+              -0.861 + magazine * 0.14,
+              0.022,
+              0.021,
+              0.134,
+              ceramic,
+            );
+          H(
+            0.21,
+            -0.55 - magazine * 0.08,
+            -0.71,
+            0.134,
+            0.22,
+            0.18,
+            [0.13, 0.19, 0.21],
+            0.02,
+          );
+          if (kick > 0) {
+            R(
+              0.3,
+              -0.3,
+              -1.37,
+              0.018,
+              0.036 + kick * 0.05,
+              0.032,
+              [0.5, 0.88, 1],
+              kick * 3,
+            );
+            beam(
+              out,
+              { x: 0.3, y: -0.3, z: -1.35 },
+              { x: 0.3, y: -0.3, z: -1.48 - kick * 0.15 },
+              [1, 0.79, 0.4],
+              0.023 * kick,
+              4,
+            );
+          }
+          // Recoil and reload tilt apply to every component, including decals
+          // and display pixels. A smaller inset keeps the counter on phones.
+          const narrow = clamp((1.2 - width / height) / 0.7, 0, 1),
+            pitch = kick * 0.035 - reload * 0.09 * motion,
+            roll = -reload * 0.2 * motion,
+            cp = Math.cos(pitch),
+            sp = Math.sin(pitch),
+            cr = Math.cos(roll),
+            sr = Math.sin(roll),
+            cy = Math.cos(0.16),
+            sy = Math.sin(0.16),
+            bx = Math.sin(bob) * 0.012 * walkAmount * motion - narrow * 0.15,
+            by =
+              Math.abs(Math.cos(bob)) * 0.015 * walkAmount * motion -
+              reload * 0.055 +
+              narrow * 0.16,
+            bz = kick * 0.04 - narrow * 0.12;
+          for (let i = 0; i < out.length; i += 12) {
+            for (const offset of [0, 3]) {
+              const normal = offset === 3,
+                x = out[i + offset] - (normal ? 0 : 0.3),
+                y = out[i + offset + 1] - (normal ? 0 : -0.3),
+                z = out[i + offset + 2] - (normal ? 0 : -0.5),
+                ry = y * cp - z * sp,
+                rz = y * sp + z * cp,
+                rx = x * cr - ry * sr;
+              out[i + offset] = rx * cy + rz * sy + (normal ? 0 : 0.3 + bx);
+              out[i + offset + 1] = x * sr + ry * cr + (normal ? 0 : -0.3 + by);
+              out[i + offset + 2] =
+                -rx * sy + rz * cy + (normal ? 0 : -0.5 + bz);
+            }
           }
           return out;
+        }
+        function weaponMesh(time) {
+          return player.weapon === 1 ? staffMesh(time) : rifleMesh(time);
         }
         function bindGeometry(buffer) {
           gl.bindBuffer(gl.ARRAY_BUFFER, buffer);

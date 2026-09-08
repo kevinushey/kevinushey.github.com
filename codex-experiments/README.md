@@ -85,6 +85,16 @@ have a 20% chance to drop six rounds, and crew caches supply eight. Pickups and
 caches leave excess ammunition behind when your reserve is full. Reloading
 conserves rounds, and lift resupply adds only one magazine.
 
+The P–24 pulse rifle has bevelled ceramic armor, a printed receiver plate,
+exposed copper accelerator coils, a caged plasma chamber, cooling fins,
+individual fasteners, and an open reflex sight. Its protected rear display
+shows loaded rounds, turns red at six or fewer, and uses an amber progress
+strip during reloads. The removable battery has six charge windows; it slides
+out and reseats as the supporting hand follows it. Recoil moves the whole
+rifle, including the display, while the chamber brightens and a pulse ring
+flashes at the muzzle. Reduced motion keeps firing steady and suppresses the
+flash. The rifle is inset on narrow screens to keep its counter visible.
+
 Enemy health and damage grow cubically, eventually outpacing linear suit
 upgrades. Squads grow to six enemies per room; movement, fire cadence, and
 projectile speed increase within bounds to keep simulation costs predictable.

@@ -113,7 +113,7 @@ function campaign(initialSave = {}) {
       listen(windowListeners, type, callback),
   };
   sandbox.window = sandbox;
-  const exposed = `\nwindow.testGame = { startRun, update, updatePressure, updateGuardian, moveGuardian, portalReady, guardianCrest, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, spawnerHit, breachMesh, robot, staffMesh, portalMesh, sceneLights, lightBurst, staffPose, staffTransform,
+  const exposed = `\nwindow.testGame = { startRun, update, updatePressure, updateGuardian, moveGuardian, portalReady, guardianCrest, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, spawnerHit, breachMesh, robot, staffMesh, rifleMesh, portalMesh, sceneLights, lightBurst, staffPose, staffTransform,
     projectWaypoint, updateWaypoint, perspective, view, multiply, render, frame,
     get currentVP() { return currentVP; },
     get player() { return player; }, get level() { return level; }, get enemies() { return enemies; },
@@ -3046,4 +3046,134 @@ test("staff strikes alternate impact heads and keep the finisher a wide horizont
     Math.abs(start[1] - finish[1]) < 0.05,
     "the sweep stays level instead of chopping downward",
   );
+});
+
+test("detailed rifle geometry stays finite and clear of the camera through recoil and reload", () => {
+  for (const [w, h] of [
+    [1280, 720],
+    [390, 680],
+  ])
+    for (const reduced of [false, true]) {
+      const harness = campaign({ reduced }),
+        { game: g, tick } = harness;
+      harness.viewport(w, h);
+      g.startRun();
+      g.enemies.forEach((e) => (e.health = 0));
+      g.spawners.forEach((e) => (e.health = 0));
+      const check = () => {
+        const mesh = g.rifleMesh(2);
+        assert.ok(mesh.length > 0 && mesh.length % 12 === 0);
+        assert.ok(mesh.every(Number.isFinite));
+        for (let i = 0; i < mesh.length; i += 12) {
+          assert.ok(
+            mesh[i + 2] < -0.04,
+            "hands, display, and moving parts remain in front of the near plane",
+          );
+          assert.ok(
+            Math.abs(Math.hypot(mesh[i + 3], mesh[i + 4], mesh[i + 5]) - 1) <
+              1e-8,
+            "lighting normals remain normalized through the whole rifle transform",
+          );
+          if (mesh[i + 9] === 0.85) {
+            const focal = 1 / Math.tan((65 * Math.PI) / 360),
+              x = w / 2 + ((mesh[i] / -mesh[i + 2]) * focal * h) / 2,
+              y = h / 2 - ((mesh[i + 1] / -mesh[i + 2]) * focal * h) / 2;
+            assert.ok(
+              x > 8 && x < w - 8 && y > 8 && y < h - 16,
+              "the physical ammo digits stay in view during recoil and reload",
+            );
+          }
+        }
+        return mesh;
+      };
+      const idle = check();
+      g.fire();
+      const shot = check();
+      assert.equal(g.player.ammo, 23);
+      if (!reduced)
+        assert.notEqual(
+          shot.length,
+          idle.length,
+          "a fired pulse adds a muzzle ring and flare",
+        );
+      else
+        assert.equal(
+          shot.length,
+          idle.length,
+          "reduced motion suppresses the firing flash",
+        );
+      tick(0.2);
+      g.reloadWeapon();
+      for (let i = 0; i < 14; i++) {
+        check();
+        tick(0.1);
+      }
+      assert.equal(g.player.ammo, 24);
+      assert.equal(
+        g.player.reserve,
+        23,
+        "the makeover preserves ammunition accounting",
+      );
+    }
+});
+
+test("the rifle's physical counter and charge strip reflect loaded, low, empty, and reloading ammo", () => {
+  const { game: g, tick } = campaign({ reduced: true });
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  const readout = () => {
+    const mesh = g.rifleMesh(0),
+      digits = [],
+      bars = [];
+    for (let i = 0; i < mesh.length; i += 12) {
+      if (mesh[i + 9] === 0.85) digits.push(mesh.slice(i, i + 12));
+      if (mesh[i + 9] === 0.65) bars.push(mesh.slice(i, i + 12));
+    }
+    return { digits, bars };
+  };
+  for (const [ammo, segments, bars] of [
+    [24, 9, 12],
+    [23, 10, 12],
+    [6, 12, 3],
+    [3, 11, 2],
+    [0, 12, 0],
+  ]) {
+    g.player.ammo = ammo;
+    const result = readout(),
+      color = ammo <= 6 ? [1, 0.15, 0.09] : [0.24, 0.93, 0.75];
+    assert.equal(
+      result.digits.length,
+      segments * 6,
+      `physical digits show ${String(ammo).padStart(2, "0")}`,
+    );
+    assert.equal(result.bars.length, bars * 6);
+    assert.ok(
+      result.digits.every((v) =>
+        color.every((c, i) => Math.abs(v[i + 6] - c) < 1e-8),
+      ),
+    );
+  }
+  g.player.ammo = 3;
+  g.reloadWeapon();
+  tick(g.player.reloadDuration / 2);
+  const midway = readout();
+  assert.equal(
+    g.player.ammo,
+    3,
+    "digits keep showing real loaded rounds until the reload completes",
+  );
+  assert.equal(midway.digits.length, 11 * 6);
+  assert.ok(
+    midway.digits.every(
+      (v) => Math.abs(v[6] - 1) < 1e-8 && Math.abs(v[7] - 0.44) < 1e-8,
+    ),
+  );
+  assert.ok(
+    midway.bars.length > 0 && midway.bars.length < 12 * 6,
+    "the strip indicates reload progress",
+  );
+  tick(g.player.reloadDuration);
+  assert.equal(g.player.ammo, 24);
+  assert.equal(readout().digits.length, 9 * 6);
+  assert.equal(readout().bars.length, 12 * 6);
 });
