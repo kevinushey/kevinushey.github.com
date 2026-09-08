@@ -839,17 +839,34 @@
       }
       #waypoint {
         position: absolute;
-        transform: translate(-50%, -50%);
+        left: 0;
+        top: 0;
+        width: 144px;
+        height: 28px;
+        opacity: 0;
+        will-change: transform;
         text-align: center;
         color: var(--orange);
         font-size: 10px;
         letter-spacing: 1px;
         text-shadow: 0 2px 8px #000;
       }
-      #waypoint .diamond {
-        font-size: 24px;
+      #waypoint svg {
         display: block;
-        margin-bottom: 3px;
+        width: 28px;
+        height: 28px;
+        margin: 0 auto 3px;
+        overflow: visible;
+        filter: drop-shadow(0 2px 3px #000);
+      }
+      #waypoint-arrow {
+        transform-origin: 14px 14px;
+      }
+      #waypoint-label {
+        display: block;
+        line-height: 14px;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
       }
       #radio {
         position: absolute;
@@ -1523,7 +1540,19 @@
       <div id="target-health" hidden><span></span></div>
       <div id="target-name" class="mono" hidden></div>
       <div id="waypoint">
-        <span class="diamond">◇</span><span id="waypoint-label"></span>
+        <svg
+          viewBox="0 0 28 28"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path id="waypoint-diamond" d="M14 5 L23 14 L14 23 L5 14 Z" />
+          <path id="waypoint-arrow" d="M10 6 L18 14 L10 22" />
+        </svg>
+        <span id="waypoint-label"></span>
       </div>
       <div id="interact" hidden></div>
       <div id="toast" role="status" aria-live="polite"></div>
@@ -8042,6 +8071,77 @@ gl_FragColor=vec4(col,1.);}`;
           ctx.fill();
           ctx.restore();
         }
+        function projectWaypoint(v, objective, viewportWidth, viewportHeight) {
+          const x = objective.x,
+            y = 1.6,
+            z = objective.z,
+            w = v[3] * x + v[7] * y + v[11] * z + v[15],
+            px = ((v[0] * x + v[4] * y + v[8] * z + v[12]) * viewportWidth) / 2,
+            // Behind the camera, carry the cue around the lower rim. Dividing
+            // by negative depth would mirror it and flip the turn direction.
+            py =
+              ((-(v[1] * x + v[5] * y + v[9] * z + v[13]) +
+                Math.max(0, -w) * 2) *
+                viewportHeight) /
+              2,
+            edge = Math.max(
+              // Leave room for the whole label, including on narrow phones.
+              Math.abs(px) /
+                Math.max(
+                  1,
+                  viewportWidth / 2 - Math.max(80, viewportWidth * 0.14),
+                ),
+              Math.abs(py) / (viewportHeight * (py < 0 ? 0.2 : 0.16)),
+              0.00001,
+            ),
+            depth = Math.max(w, edge),
+            blend = clamp((edge - w) / (edge * 0.15), 0, 1);
+          // Clip before the perspective divide, keeping the camera plane and
+          // safe-area boundary continuous, even during a dash or resize.
+          return {
+            x: viewportWidth / 2 + px / depth,
+            y: viewportHeight / 2 + py / depth,
+            angle: Math.atan2(py, px),
+            arrow: blend * blend * (3 - 2 * blend),
+          };
+        }
+        function updateWaypoint() {
+          if (!currentVP) return;
+          const ready = portalReady(),
+            objective = cardTaken
+              ? ready
+                ? level.exit
+                : guardian
+              : level.card,
+            distance = Math.hypot(
+              objective.x - player.x,
+              objective.z - player.z,
+            ),
+            marker = projectWaypoint(
+              currentVP,
+              objective,
+              innerWidth,
+              innerHeight,
+            ),
+            fade = clamp((distance - 2) / 2, 0, 1),
+            label = `${cardTaken ? (ready ? "LIFT" : "GUARDIAN") : "CARD"} · ${Math.round(distance)}m`;
+          // Anchor the icon itself; changing text or glyph must never move it.
+          $("waypoint").style.transform =
+            `translate3d(${marker.x}px, ${marker.y}px, 0) translate(-50%, -50%)`;
+          $("waypoint").style.opacity = String(
+            0.85 * fade * fade * (3 - 2 * fade),
+          );
+          $("waypoint").style.color = cardTaken
+            ? ready
+              ? "#9af5d3"
+              : "#ff9388"
+            : "#ffad66";
+          $("waypoint-diamond").style.opacity = String(1 - marker.arrow);
+          $("waypoint-arrow").style.opacity = String(marker.arrow);
+          $("waypoint-arrow").style.transform = `rotate(${marker.angle}rad)`;
+          if ($("waypoint-label").textContent !== label)
+            $("waypoint-label").textContent = label;
+        }
         function updateHUD() {
           const clock = C.floorClock(floorStats.seconds, difficulty),
             activeNodes = spawners.filter((node) => node.health > 0).length,
@@ -8222,49 +8322,6 @@ gl_FragColor=vec4(col,1.);}`;
           if (target)
             $("target-health").firstElementChild.style.width =
               (target.health / target.maxHealth) * 100 + "%";
-          const objective = cardTaken
-              ? portalReady()
-                ? level.exit
-                : guardian
-              : level.card,
-            dx = objective.x - player.x,
-            dz = objective.z - player.z,
-            dist = Math.hypot(dx, dz),
-            angle = Math.atan2(dx, -dz) - player.yaw,
-            a = Math.atan2(Math.sin(angle), Math.cos(angle));
-          let sx =
-              innerWidth / 2 +
-              Math.tan(clamp(a, -1.1, 1.1)) * innerWidth * 0.43,
-            sy = innerHeight * 0.46;
-          if (currentVP && Math.abs(a) < 1.1) {
-            const v = currentVP,
-              x = objective.x,
-              y = 1.6,
-              z = objective.z,
-              w = v[3] * x + v[7] * y + v[11] * z + v[15];
-            if (w > 0.1) {
-              sx =
-                (((v[0] * x + v[4] * y + v[8] * z + v[12]) / w) * 0.5 + 0.5) *
-                innerWidth;
-              sy =
-                ((-(v[1] * x + v[5] * y + v[9] * z + v[13]) / w) * 0.5 + 0.5) *
-                innerHeight;
-            }
-          }
-          $("waypoint").style.left =
-            clamp(sx, innerWidth * 0.14, innerWidth * 0.86) + "px";
-          $("waypoint").style.top =
-            clamp(sy, innerHeight * 0.3, innerHeight * 0.66) + "px";
-          $("waypoint").style.opacity = dist < 3 ? "0" : "0.85";
-          $("waypoint").style.color = cardTaken
-            ? portalReady()
-              ? "#9af5d3"
-              : "#ff9388"
-            : "#ffad66";
-          $("waypoint").firstElementChild.textContent =
-            Math.abs(a) > 1.1 ? (a > 0 ? "›" : "‹") : "◇";
-          $("waypoint-label").textContent =
-            `${cardTaken ? (portalReady() ? "LIFT" : "GUARDIAN") : "CARD"} · ${Math.round(dist)}m`;
           drawMap($("minimap"));
         }
         let uiTimer = 0;
@@ -8280,6 +8337,9 @@ gl_FragColor=vec4(col,1.);}`;
               mode === "title" ? (reduced ? 0 : timestamp / 1000) : gameTime;
             render(time);
             if (mode === "playing") {
+              // Spatial cues use this frame's camera; expensive HUD/map work
+              // can remain throttled without making objective tracking stutter.
+              updateWaypoint();
               uiTimer -= dt;
               if (uiTimer <= 0) {
                 updateHUD();

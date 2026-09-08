@@ -114,6 +114,8 @@ function campaign(initialSave = {}) {
   };
   sandbox.window = sandbox;
   const exposed = `\nwindow.testGame = { startRun, update, updatePressure, updateGuardian, moveGuardian, portalReady, guardianCrest, updateHUD, fire, reloadWeapon, emp, damage, interact, pause, setPlaying, dash, enemyHit, spawnerHit, breachMesh, robot, bladeMesh, portalMesh, sceneLights, lightBurst,
+    projectWaypoint, updateWaypoint, perspective, view, multiply, render, frame,
+    get currentVP() { return currentVP; },
     get player() { return player; }, get level() { return level; }, get enemies() { return enemies; },
     get pickups() { return pickups; }, get bullets() { return bullets; },
     get spawners() { return spawners; },
@@ -130,6 +132,12 @@ function campaign(initialSave = {}) {
     element,
     get lockRequests() {
       return lockRequests;
+    },
+    viewport(w, h, dpr = 1) {
+      sandbox.innerWidth = w;
+      sandbox.innerHeight = h;
+      sandbox.devicePixelRatio = dpr;
+      this.event("resize", {}, "window");
     },
     event(type, properties = {}, target = "document") {
       eventTime = properties.timeStamp ?? eventTime + 10;
@@ -2832,4 +2840,159 @@ test("invalid hits and hits without a known direction cannot create misleading d
     null,
     "overlapping origins have no meaningful horizontal bearing",
   );
+});
+
+test("objective waypoints match perspective at different viewports and dash fields of view", () => {
+  const { game: g } = campaign();
+  for (const [w, h] of [
+    [1280, 720],
+    [390, 844],
+    [844, 390],
+  ])
+    for (const fov of [74, 88, 102]) {
+      const focal = 1 / Math.tan((fov * Math.PI) / 360),
+        v = g.multiply(
+          g.perspective((fov * Math.PI) / 180, w / h),
+          g.view([0, 1.55, 0], 0, 0),
+        );
+      for (const x of [-1, 0, 1]) {
+        const marker = g.projectWaypoint(v, { x, z: -20 }, w, h);
+        assert.ok(
+          Math.abs(marker.x - (w / 2 + ((x / 20) * focal * h) / 2)) < 0.001,
+        );
+        assert.ok(
+          Math.abs(marker.y - (h / 2 - ((0.05 / 20) * focal * h) / 2)) < 0.001,
+        );
+        assert.equal(marker.arrow, 0, "a visible objective keeps its diamond");
+      }
+    }
+});
+
+test("objective waypoints stay continuous through screen edges, the camera plane, and directly behind", () => {
+  const { game: g } = campaign();
+  for (const [w, h] of [
+    [1280, 720],
+    [320, 640],
+    [390, 844],
+    [844, 390],
+  ])
+    for (const pitch of [-0.9, 0, 0.9]) {
+      let previous;
+      for (let step = 0; step <= 1440; step++) {
+        const yaw = (step * Math.PI) / 720,
+          v = g.multiply(
+            g.perspective((74 * Math.PI) / 180, w / h),
+            g.view([12, 1.55, 8], yaw, pitch),
+          ),
+          marker = g.projectWaypoint(v, { x: 12, z: -12 }, w, h);
+        assert.ok(Object.values(marker).every(Number.isFinite));
+        assert.ok(marker.x >= w * 0.14 - 0.001 && marker.x <= w * 0.86 + 0.001);
+        assert.ok(
+          marker.x >= 80 - 0.001 && marker.x <= w - 80 + 0.001,
+          "the longest label retains horizontal clearance on phones",
+        );
+        assert.ok(marker.y >= h * 0.3 - 0.001 && marker.y <= h * 0.66 + 0.001);
+        if (previous) {
+          assert.ok(
+            Math.hypot(
+              (marker.x - previous.x) / w,
+              (marker.y - previous.y) / h,
+            ) < 0.015,
+            `waypoint jumped at yaw ${yaw}, pitch ${pitch}, viewport ${w}×${h}`,
+          );
+          assert.ok(
+            Math.abs(marker.arrow - previous.arrow) < 0.3,
+            "edge glyph crossfades without a pop",
+          );
+        }
+        if (step === 720) {
+          assert.ok(Math.abs(marker.x - w / 2) < 0.001);
+          assert.ok(Math.abs(marker.y - h * 0.66) < 0.001);
+          assert.ok(Math.abs(marker.angle - Math.PI / 2) < 0.001);
+          assert.equal(
+            marker.arrow,
+            1,
+            "a target behind stays on the lower rim",
+          );
+        }
+        previous = marker;
+      }
+    }
+});
+
+test("objective waypoints update on every rendered frame using its camera, including after resize", () => {
+  const harness = campaign({ reduced: true }),
+    { game: g, element } = harness;
+  g.startRun();
+  g.enemies.forEach((e) => (e.health = 0));
+  Object.assign(g.level.card, { x: g.player.x + 2, z: g.player.z - 20 });
+  g.player.yaw = 0;
+  const position = () =>
+    element("waypoint")
+      .style.transform.match(/translate3d\(([^p]+)px, ([^p]+)px/)
+      .slice(1)
+      .map(Number);
+  const check = (w, h) => {
+    const expected = g.projectWaypoint(g.currentVP, g.level.card, w, h),
+      [x, y] = position();
+    assert.ok(Math.abs(x - expected.x) < 0.0001);
+    assert.ok(Math.abs(y - expected.y) < 0.0001);
+  };
+  g.frame(1000);
+  let last = position();
+  for (let i = 1; i <= 5; i++) {
+    g.player.yaw += 0.015;
+    g.player.pitch += 0.005;
+    g.frame(1000 + i * 8);
+    check(1280, 720);
+    assert.notDeepEqual(
+      position(),
+      last,
+      "120 Hz camera turns must not wait for the 20 Hz HUD timer",
+    );
+    last = position();
+  }
+  harness.viewport(390, 844, 3);
+  g.frame(1048);
+  check(390, 844);
+  assert.equal(
+    element("world").width,
+    585,
+    "CSS pixels remain independent of render resolution",
+  );
+});
+
+test("objective waypoints fade smoothly on approach and immediately select card, guardian, or lift", () => {
+  const { game: g, element, tick } = campaign({ reduced: true });
+  g.startRun();
+  g.enemies.filter((e) => !e.boss).forEach((e) => (e.health = 0));
+  g.player.yaw = 0;
+  const start = { x: g.player.x, z: g.player.z };
+  let previous = 0;
+  for (const distance of [2, 2.5, 2.99, 3, 3.01, 3.5, 4]) {
+    Object.assign(g.level.card, { x: start.x, z: start.z - distance });
+    g.render(0);
+    g.updateWaypoint();
+    const opacity = Number(element("waypoint").style.opacity);
+    assert.ok(opacity >= previous && opacity <= 0.85);
+    if (Math.abs(distance - 3) <= 0.01)
+      assert.ok(Math.abs(opacity - 0.425) < 0.01);
+    previous = opacity;
+  }
+  assert.equal(element("waypoint-label").textContent, "CARD · 4m");
+  Object.assign(g.player, g.level.card);
+  tick(0.02);
+  Object.assign(g.player, start);
+  g.render(0);
+  g.updateWaypoint();
+  assert.match(element("waypoint-label").textContent, /^GUARDIAN · /);
+  assert.equal(element("waypoint").style.color, "#ff9388");
+  g.guardian.health = 0;
+  g.updateWaypoint();
+  assert.match(element("waypoint-label").textContent, /^LIFT · /);
+  assert.equal(element("waypoint").style.color, "#9af5d3");
+  g.startRun();
+  g.frame(1000);
+  assert.match(element("waypoint-label").textContent, /^CARD · /);
+  assert.equal(element("waypoint").style.color, "#ffad66");
 });

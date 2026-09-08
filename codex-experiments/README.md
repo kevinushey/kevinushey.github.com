@@ -18,6 +18,11 @@ Your score is floors completed, saved at each lift; dying on floor 7 scores 6.
 Standard and Explorer have separate local records. Old point-based records
 are not reused as floor counts, and audio/accessibility preferences carry over.
 
+The objective marker follows the rendered camera every frame. Its diamond
+becomes an edge arrow when the target leaves the central view; targets behind
+you travel around the lower edge. The marker fades as you approach, and its
+fixed icon anchor keeps changing distance labels from shifting its position.
+
 **Portal guardians:** Every lift room has one boss, replacing an ordinary squad
 member so the population cap stays unchanged. Three forms rotate with the floors;
 the seed determines the first form and a small health variation. The armored
